@@ -4,6 +4,10 @@ from app.schemas.incident import Incident, IncidentDraft
 from app.services.firestore_factory import get_firestore_service
 
 
+class IncidentNotFoundError(LookupError):
+    pass
+
+
 class IncidentService:
     def __init__(self, firestore_service=None) -> None:
         self.firestore_service = firestore_service or get_firestore_service()
@@ -27,4 +31,28 @@ class IncidentService:
             document_id=incident.id,
         )
         incident.id = stored_incident["id"]
+        return incident
+
+    async def list_incidents(
+        self,
+        status_filter: str | None = None,
+        priority: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        filters = {}
+        if status_filter:
+            filters["status"] = status_filter
+        if priority:
+            filters["priority"] = priority
+
+        return await self.firestore_service.list_documents(
+            "incidents",
+            filters=filters or None,
+            limit=limit,
+        )
+
+    async def get_incident(self, incident_id: str) -> dict:
+        incident = await self.firestore_service.get_document("incidents", incident_id)
+        if incident is None:
+            raise IncidentNotFoundError(f"Incident not found: {incident_id}")
         return incident

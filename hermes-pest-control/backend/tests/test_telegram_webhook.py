@@ -25,6 +25,9 @@ class SpyConversationService:
     def __init__(self) -> None:
         self.received_messages: list[IncomingMessage] = []
 
+    def build_conversation_id(self, message: IncomingMessage) -> str:
+        return f"{message.channel}:{message.external_user_id}"
+
     async def handle_incoming_message(self, message: IncomingMessage) -> AgentResponse:
         self.received_messages.append(message)
         return AgentResponse(

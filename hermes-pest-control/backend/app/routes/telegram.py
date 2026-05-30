@@ -1,5 +1,6 @@
 from typing import Any
 
+import logging
 from secrets import compare_digest
 
 from fastapi import APIRouter, Header, HTTPException, status
@@ -13,6 +14,7 @@ from app.services.conversation_service import ConversationService
 router = APIRouter(tags=["telegram"])
 telegram_adapter = TelegramAdapter(settings)
 conversation_service = ConversationService()
+logger = logging.getLogger(__name__)
 
 
 class SetWebhookRequest(BaseModel):
@@ -25,10 +27,37 @@ async def telegram_webhook(
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
 ) -> dict[str, str]:
     _validate_telegram_secret(x_telegram_bot_api_secret_token)
+    logger.info("Telegram webhook received update_id=%s", raw_update.get("update_id"))
 
     try:
         incoming_message = telegram_adapter.parse_incoming(raw_update)
+        conversation_id = conversation_service.build_conversation_id(incoming_message)
+        logger.info(
+            "IncomingMessage normalized channel=%s external_user_id=%s "
+            "conversation_id=%s message_type=%s attachment_count=%s",
+            incoming_message.channel,
+            incoming_message.external_user_id,
+            conversation_id,
+            incoming_message.message_type,
+            len(incoming_message.attachments),
+        )
+
         agent_response = await conversation_service.handle_incoming_message(incoming_message)
+        incident_should_create = (
+            agent_response.incident.should_create
+            if agent_response.incident is not None
+            else False
+        )
+        logger.info(
+            "ConversationService completed channel=%s external_user_id=%s "
+            "conversation_id=%s action_type=%s incident_should_create=%s",
+            incoming_message.channel,
+            incoming_message.external_user_id,
+            conversation_id,
+            agent_response.action.type,
+            incident_should_create,
+        )
+
         outgoing_message = OutgoingMessage(
             channel=incoming_message.channel,
             external_chat_id=incoming_message.external_chat_id,
@@ -37,7 +66,14 @@ async def telegram_webhook(
             metadata={},
         )
         await telegram_adapter.send_message(outgoing_message)
+        logger.info(
+            "Telegram response sent channel=%s external_user_id=%s conversation_id=%s",
+            incoming_message.channel,
+            incoming_message.external_user_id,
+            conversation_id,
+        )
     except TelegramAdapterError as exc:
+        logger.warning("Telegram webhook failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

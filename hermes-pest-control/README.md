@@ -4,6 +4,9 @@ Hermes Pest Control System is a channel-agnostic backend for pest control operat
 The first planned channel is Telegram, but Telegram is only an adapter. Business logic
 works with normalized messages and does not depend on Telegram payloads.
 
+For daily local usage, diagnostics, Telegram E2E testing, and mode switching, see
+[OPERATIONS.md](./OPERATIONS.md).
+
 ## Architecture
 
 ```text
@@ -179,6 +182,80 @@ Never commit Firebase credential JSON files. The repository ignores `.env`,
 `.env.*`, `*.json`, `firebase-service-account.json`, and `serviceAccountKey.json`.
 If a JSON example is ever needed, name it with `.example.json`.
 
+## Hermes Agent Integration
+
+`HermesService` can run in mock mode or real HTTP mode without changing
+`TelegramAdapter`, `ConversationService`, or the public API routes.
+
+Modes:
+
+- `HERMES_MODE=mock`: uses `HermesMockClient` and preserves the current deterministic
+  sprint behavior.
+- `HERMES_MODE=real`: uses `HermesRealClient` and sends a POST request to
+  `HERMES_API_URL`.
+
+Environment variables:
+
+```bash
+HERMES_MODE=mock
+HERMES_API_URL=
+HERMES_API_KEY=
+HERMES_TIMEOUT_SECONDS=30
+```
+
+Recommended request payload sent to Hermes Agent in real mode:
+
+```json
+{
+  "message": {
+    "channel": "telegram",
+    "external_user_id": "12345",
+    "external_chat_id": "67890",
+    "message_type": "text",
+    "text": "Tengo cucarachas",
+    "attachments": [],
+    "metadata": {}
+  },
+  "conversation_history": [],
+  "business_context": {
+    "domain": "pest_control",
+    "company_type": "real_company",
+    "language": "es",
+    "agent_role": "operational_orchestrator"
+  },
+  "response_contract": "AgentResponse"
+}
+```
+
+Expected response contract:
+
+```json
+{
+  "reply": "Texto para responder al usuario.",
+  "action": {
+    "type": "create_incident",
+    "missing_fields": []
+  },
+  "incident": {
+    "should_create": true,
+    "pest_type": "cucarachas",
+    "location": "Torremolinos",
+    "affected_area": "cocina",
+    "priority": "high",
+    "summary": "Resumen operativo."
+  }
+}
+```
+
+If Hermes real times out, returns invalid JSON, or does not match `AgentResponse`,
+`HermesService` returns a safe `escalate_to_human` fallback and the rest of the
+pipeline continues. Logs include the Hermes mode, request lifecycle, invalid
+response events, and fallback usage. Logs do not include API keys or full customer
+message text.
+
+Telegram works independently of Hermes mode: the same `/webhooks/telegram` route
+and `TelegramAdapter` are used whether Hermes is mocked or real.
+
 ## Telegram Setup
 
 Telegram is integrated as a channel adapter. `TelegramAdapter` normalizes Telegram
@@ -186,16 +263,18 @@ updates into `IncomingMessage` and sends `OutgoingMessage` responses through the
 Telegram Bot API. Business logic remains in `ConversationService` and downstream
 services.
 
-1. Create a bot with BotFather in Telegram.
-2. Copy the bot token.
-3. Create a local `.env` file from `.env.example`.
-4. Set `TELEGRAM_BOT_TOKEN`.
-5. Optionally set `TELEGRAM_WEBHOOK_SECRET` to validate Telegram's
+1. Open Telegram and talk to BotFather.
+2. Create a bot with `/newbot`.
+3. Copy the token BotFather returns.
+4. Create a local `.env` file from `.env.example`.
+5. Set `TELEGRAM_BOT_TOKEN`.
+6. Optionally set `TELEGRAM_WEBHOOK_SECRET` to validate Telegram's
    `X-Telegram-Bot-Api-Secret-Token` header.
-6. Run the backend locally.
-7. Expose the local server with ngrok or Cloudflare Tunnel.
-8. Configure the webhook.
-9. Send a message to the bot.
+7. Start FastAPI locally.
+8. Expose local port `8000` with ngrok or Cloudflare Tunnel.
+9. Configure the Telegram webhook.
+10. Check webhook info.
+11. Send a message to the bot and watch backend logs.
 
 Example `.env` values:
 
@@ -203,6 +282,7 @@ Example `.env` values:
 APP_ENV=development
 TELEGRAM_BOT_TOKEN=123456:your-bot-token
 TELEGRAM_WEBHOOK_SECRET=choose-a-long-random-secret
+TELEGRAM_WEBHOOK_URL=https://your-public-url.example.com/webhooks/telegram
 TELEGRAM_INTERNAL_ALERT_CHAT_ID=
 ```
 
@@ -212,6 +292,18 @@ Run locally:
 cd hermes-pest-control/backend
 source .venv/bin/activate
 uvicorn app.main:app --reload
+```
+
+Expose local port `8000` with ngrok:
+
+```bash
+ngrok http 8000
+```
+
+Or with Cloudflare Tunnel:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8000
 ```
 
 Configure the webhook directly with Telegram:
@@ -231,12 +323,21 @@ curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
   }'
 ```
 
-The backend also provides a helper endpoint:
+The backend also provides a helper endpoint. It uses `TELEGRAM_BOT_TOKEN` and, if
+configured, `TELEGRAM_WEBHOOK_SECRET`:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/telegram/set-webhook \
   -H "Content-Type: application/json" \
   -d '{"webhook_url": "<PUBLIC_URL>/webhooks/telegram"}'
+```
+
+There is also an optional script:
+
+```bash
+cd hermes-pest-control/backend
+source .venv/bin/activate
+python scripts/set_telegram_webhook.py
 ```
 
 And webhook info:
@@ -245,9 +346,79 @@ And webhook info:
 curl http://127.0.0.1:8000/telegram/webhook-info
 ```
 
+You can also query Telegram directly:
+
+```bash
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
+```
+
 For local tests, no Telegram token is required. Without `TELEGRAM_BOT_TOKEN`, the
 application still starts, but real Telegram send/configuration calls return a
 clear configuration error.
+
+## Manual Telegram E2E Test
+
+This test keeps `HermesService` mocked. If no Firebase credentials are configured
+in development, persistence uses `MockFirestoreService`.
+
+1. Configure `.env` with `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_URL`, and optional
+   `TELEGRAM_WEBHOOK_SECRET`.
+2. Start the backend:
+
+```bash
+cd hermes-pest-control/backend
+source .venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+3. Start ngrok or Cloudflare Tunnel and set `TELEGRAM_WEBHOOK_URL` to:
+
+```text
+https://<PUBLIC_URL>/webhooks/telegram
+```
+
+4. Configure the webhook:
+
+```bash
+python scripts/set_telegram_webhook.py
+```
+
+5. Confirm webhook info:
+
+```bash
+curl http://127.0.0.1:8000/telegram/webhook-info
+```
+
+6. Send this exact message to the Telegram bot:
+
+```text
+Tengo cucarachas en la cocina en Torremolinos desde hace una semana
+```
+
+Expected bot response begins with:
+
+```text
+Gracias por la información. He registrado el aviso para que el equipo lo revise...
+```
+
+Expected backend logs include:
+
+```text
+Telegram webhook received
+IncomingMessage normalized
+ConversationService completed
+```
+
+The structured log fields should show:
+
+- `channel=telegram`
+- `external_user_id=<telegram user id>`
+- `conversation_id=telegram:<telegram user id>`
+- `action_type=create_incident`
+- `incident_should_create=True`
+
+Logs intentionally do not include Telegram tokens, Firebase credentials, full
+headers, or unnecessary personal data.
 
 ## Docker
 

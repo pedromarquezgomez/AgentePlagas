@@ -1,75 +1,109 @@
+import logging
+from typing import Any
+
+from app.config.settings import Settings
 from app.schemas.agent_response import AgentResponse
 from app.schemas.incoming_message import IncomingMessage
+from app.services.hermes_clients import (
+    HermesClientError,
+    HermesMockClient,
+    HermesRealClient,
+    default_business_context,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class HermesService:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        client: HermesMockClient | HermesRealClient | None = None,
+    ) -> None:
+        self.settings = settings or Settings()
+        self.hermes_mode = self.settings.hermes_mode.casefold()
+        self.client = client or self._build_client()
+
     async def process_message(
         self,
-        message: IncomingMessage,
-        conversation_id: str,
+        incoming_message: IncomingMessage,
+        conversation_history: list[dict[str, Any]] | str | None = None,
+        business_context: dict[str, Any] | None = None,
     ) -> AgentResponse:
-        text = (message.text or "").casefold()
-
-        has_cockroach = "cucaracha" in text or "cucarachas" in text
-        has_kitchen = "cocina" in text
-        has_torremolinos = "torremolinos" in text
-
-        missing_fields: list[str] = []
-        if not has_cockroach:
-            missing_fields.append("pest_type")
-        if not has_kitchen:
-            missing_fields.append("affected_area")
-        if not has_torremolinos:
-            missing_fields.append("location")
-
-        if not missing_fields:
-            return AgentResponse(
-                reply=(
-                    "Gracias por la información. He registrado el aviso para que el "
-                    "equipo lo revise. Si puedes, envíanos una foto de la zona afectada "
-                    "para ayudar al técnico a valorar mejor el caso."
-                ),
-                action={
-                    "type": "create_incident",
-                    "missing_fields": [],
-                },
-                incident={
-                    "should_create": True,
-                    "pest_type": "cucarachas",
-                    "location": "Torremolinos",
-                    "affected_area": "cocina",
-                    "priority": "high",
-                    "summary": (
-                        "Cliente informa de presencia de cucarachas en la cocina "
-                        "en Torremolinos."
-                    ),
-                },
-            )
-
-        return AgentResponse(
-            reply=self._build_missing_data_reply(missing_fields),
-            action={
-                "type": "collect_missing_data",
-                "missing_fields": missing_fields,
-            },
-            incident={
-                "should_create": False,
-                "conversation_id": conversation_id,
-            },
+        conversation_history, business_context = self._normalize_context_args(
+            conversation_history,
+            business_context,
+        )
+        logger.info(
+            "hermes_request_started hermes_mode=%s channel=%s message_type=%s "
+            "attachment_count=%s",
+            self.hermes_mode,
+            incoming_message.channel,
+            incoming_message.message_type,
+            len(incoming_message.attachments),
         )
 
-    def _build_missing_data_reply(self, missing_fields: list[str]) -> str:
-        prompts = {
-            "pest_type": "qué tipo de plaga has visto",
-            "affected_area": "en qué zona del inmueble está ocurriendo",
-            "location": "en qué localidad se encuentra el aviso",
-        }
-        requested = [prompts[field] for field in missing_fields]
+        try:
+            response = await self.client.process_message(
+                incoming_message,
+                conversation_history=conversation_history,
+                business_context=business_context,
+            )
+            logger.info(
+                "hermes_request_completed hermes_mode=%s action_type=%s",
+                self.hermes_mode,
+                response.action.type,
+            )
+            return response
+        except HermesClientError as exc:
+            logger.warning(
+                "hermes_response_invalid hermes_mode=%s error=%s",
+                self.hermes_mode,
+                exc,
+            )
+            return self._safe_fallback_response()
+        except Exception as exc:
+            logger.warning(
+                "hermes_response_invalid hermes_mode=%s error=%s",
+                self.hermes_mode,
+                exc.__class__.__name__,
+            )
+            return self._safe_fallback_response()
 
-        if len(requested) == 1:
-            details = requested[0]
-        else:
-            details = ", ".join(requested[:-1]) + f" y {requested[-1]}"
+    def _build_client(self) -> HermesMockClient | HermesRealClient:
+        if self.hermes_mode == "real":
+            return HermesRealClient(self.settings)
+        return HermesMockClient()
 
-        return f"Para registrar el aviso necesito saber {details}."
+    def _normalize_context_args(
+        self,
+        conversation_history: list[dict[str, Any]] | str | None,
+        business_context: dict[str, Any] | None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        if isinstance(conversation_history, str):
+            return [], business_context or default_business_context(conversation_history)
+        return (
+            conversation_history or [],
+            business_context or default_business_context(),
+        )
 
+    def _safe_fallback_response(self) -> AgentResponse:
+        logger.info("hermes_fallback_used hermes_mode=%s", self.hermes_mode)
+        return AgentResponse(
+            reply=(
+                "Ahora mismo no he podido procesar correctamente tu solicitud. "
+                "He dejado constancia para que el equipo lo revise."
+            ),
+            action={
+                "type": "escalate_to_human",
+                "missing_fields": [],
+            },
+            incident={
+                "should_create": True,
+                "pest_type": None,
+                "location": None,
+                "affected_area": None,
+                "priority": "medium",
+                "summary": "Error procesando respuesta del agente. Requiere revisión humana.",
+            },
+        )
