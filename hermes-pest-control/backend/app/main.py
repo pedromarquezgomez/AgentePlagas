@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.routes import health, messages_test
+from app.routes import health, messages_test, telegram
 
 app = FastAPI(
     title="Hermes Pest Control System",
@@ -10,4 +10,4 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(messages_test.router)
-
+app.include_router(telegram.router)

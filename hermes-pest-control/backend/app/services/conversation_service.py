@@ -1,8 +1,7 @@
-from pydantic import ValidationError
-
 from app.schemas.agent_response import AgentResponse
 from app.schemas.incoming_message import IncomingMessage
 from app.schemas.incident import IncidentDraft
+from app.services.firestore_factory import get_firestore_service
 from app.services.hermes_service import HermesService
 from app.services.incident_service import IncidentService
 
@@ -12,13 +11,23 @@ class ConversationService:
         self,
         hermes_service: HermesService | None = None,
         incident_service: IncidentService | None = None,
+        firestore_service=None,
     ) -> None:
         self.hermes_service = hermes_service or HermesService()
-        self.incident_service = incident_service or IncidentService()
+        self.firestore_service = (
+            firestore_service
+            or getattr(incident_service, "firestore_service", None)
+            or get_firestore_service()
+        )
+        self.incident_service = incident_service or IncidentService(self.firestore_service)
 
     async def handle_incoming_message(self, message: IncomingMessage) -> AgentResponse:
         conversation_id = self.build_conversation_id(message)
+        await self._upsert_conversation(message, conversation_id)
+        await self._store_inbound_message(message, conversation_id)
+
         response = await self._get_hermes_response(message, conversation_id)
+        await self._store_outbound_message(message, conversation_id, response)
 
         if self._should_create_incident(response):
             incident = self._build_incident(message, conversation_id, response)
@@ -74,7 +83,7 @@ class ConversationService:
             if isinstance(raw_response, AgentResponse):
                 return raw_response
             return AgentResponse.model_validate(raw_response)
-        except (ValidationError, TypeError, ValueError, AttributeError):
+        except Exception:
             return self._build_safe_agent_error_response()
 
     def _build_safe_agent_error_response(self) -> AgentResponse:
@@ -94,5 +103,71 @@ class ConversationService:
                 "affected_area": None,
                 "priority": "medium",
                 "summary": "Error procesando respuesta del agente. Requiere revisión humana.",
+            },
+        )
+
+    async def _upsert_conversation(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+    ) -> None:
+        existing_conversation = await self.firestore_service.get_document(
+            "conversations",
+            conversation_id,
+        )
+        conversation_data = {
+            "id": conversation_id,
+            "channel": message.channel,
+            "external_user_id": message.external_user_id,
+            "external_chat_id": message.external_chat_id,
+            "status": "active",
+        }
+
+        if existing_conversation is None:
+            await self.firestore_service.create_document(
+                "conversations",
+                conversation_data,
+                document_id=conversation_id,
+            )
+            return
+
+        await self.firestore_service.update_document(
+            "conversations",
+            conversation_id,
+            conversation_data,
+        )
+
+    async def _store_inbound_message(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+    ) -> None:
+        await self.firestore_service.create_document(
+            "messages",
+            {
+                "conversation_id": conversation_id,
+                "direction": "inbound",
+                "channel": message.channel,
+                "text": message.text,
+                "attachments": message.attachments,
+                "metadata": message.metadata,
+            },
+        )
+
+    async def _store_outbound_message(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        response: AgentResponse,
+    ) -> None:
+        await self.firestore_service.create_document(
+            "messages",
+            {
+                "conversation_id": conversation_id,
+                "direction": "outbound",
+                "channel": message.channel,
+                "text": response.reply,
+                "attachments": [],
+                "metadata": {},
             },
         )
