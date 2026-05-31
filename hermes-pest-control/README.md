@@ -11,9 +11,12 @@ For system boundaries and technical architecture, see
 [ARCHITECTURE.md](./ARCHITECTURE.md). For the Hermes agent harness definition
 and roadmap, including offline evaluations, see [HARNESS.md](./HARNESS.md).
 
-The operations panel lives in [frontend](./frontend). It shows generated
-incidents at `/incidents`, supports basic incident updates from `/incidents/:id`,
-and exposes the human review queue at `/human-review`.
+The operations panel lives in [frontend](./frontend). It opens at `/dashboard`,
+shows operational counters, links into generated incidents at `/incidents`,
+supports basic incident updates from `/incidents/:id`, exposes the human review
+queue at `/human-review`, and includes manual technician and visit management at
+`/technicians` and `/visits`. The internal agenda view lives at `/calendar` and
+groups scheduled visits by day or week without any Google Calendar integration.
 
 Offline Hermes evaluation cases live in [backend/evals](./backend/evals) and can
 be run with `make evals`.
@@ -163,6 +166,10 @@ The test suite covers:
 - Incident creation from an `IncidentDraft`.
 - Safe fallback behavior when Hermes returns an invalid response.
 - Human review queue creation for escalation, fallback, and urgent cases.
+- Protected technician and visit endpoints for manual scheduling.
+- Protected dashboard summary counters for incidents, human review, visits, and
+  technicians.
+- Protected calendar visit range queries for the internal agenda.
 
 ## Firebase / Firestore Setup
 
@@ -231,8 +238,13 @@ messages
 incidents
 decision_records
 human_review_items
+technicians
+visits
 system_checks
 ```
+
+Calendar views read from the existing `visits` collection; no separate calendar
+collection is created.
 
 Never commit Firebase credential JSON files. The repository ignores `.env`,
 `.env.*`, `*.json`, `firebase-service-account.json`, and `serviceAccountKey.json`.

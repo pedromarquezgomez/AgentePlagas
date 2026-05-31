@@ -372,12 +372,22 @@ Backend owns:
 - allowed incident updates;
 - fallback creation;
 - Telegram delivery;
+- manual technician and visit APIs;
 - configuration and diagnostics.
+
+Hermes does not own:
+
+- technician assignment;
+- agenda writes;
+- route optimization;
+- calendar synchronization.
 
 Humans currently own:
 
 - reviewing incidents in the panel;
 - reviewing escalated and fallback cases in the human review queue;
+- creating technicians and visits manually;
+- assigning visits to technicians;
 - changing basic operational status;
 - adding internal notes.
 

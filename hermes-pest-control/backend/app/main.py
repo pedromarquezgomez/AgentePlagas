@@ -5,12 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import (
     audit,
+    calendar,
     config_status,
+    dashboard,
     health,
     human_review,
     incidents,
     messages_test,
+    technicians,
     telegram,
+    visits,
 )
 
 logging.basicConfig(
@@ -38,7 +42,11 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(config_status.router)
 app.include_router(audit.router)
+app.include_router(calendar.router)
+app.include_router(dashboard.router)
 app.include_router(human_review.router)
 app.include_router(incidents.router)
+app.include_router(technicians.router)
+app.include_router(visits.router)
 app.include_router(messages_test.router)
 app.include_router(telegram.router)

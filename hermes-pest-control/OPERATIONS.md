@@ -158,11 +158,21 @@ Protected endpoints:
 - `GET /incidents`
 - `GET /incidents/{incident_id}`
 - `PATCH /incidents/{incident_id}`
+- `GET /dashboard/summary`
+- `GET /calendar/visits`
 - `GET /audit/decisions`
 - `GET /audit/decisions/{decision_id}`
 - `GET /human-review`
 - `GET /human-review/{item_id}`
 - `PATCH /human-review/{item_id}`
+- `GET /technicians`
+- `POST /technicians`
+- `GET /technicians/{technician_id}`
+- `PATCH /technicians/{technician_id}`
+- `GET /visits`
+- `POST /visits`
+- `GET /visits/{visit_id}`
+- `PATCH /visits/{visit_id}`
 
 Public endpoints:
 
@@ -179,6 +189,39 @@ Example protected request:
 curl http://127.0.0.1:8000/incidents \
   -H "X-Admin-API-Key: <ADMIN_API_KEY>"
 ```
+
+## Dashboard Summary
+
+The operational dashboard uses a protected aggregate endpoint:
+
+```bash
+curl http://127.0.0.1:8000/dashboard/summary \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+It returns safe counters only: incidents, human review items, visits, and
+technicians. It does not expose customer message text, API keys, Telegram
+tokens, or Firebase credentials.
+
+## Calendar Visits API
+
+The internal calendar reads visits by date range. It is read-only; Hermes does
+not assign technicians, create visits, or modify the agenda.
+
+```bash
+curl "http://127.0.0.1:8000/calendar/visits?start_date=2026-06-01&end_date=2026-06-07" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Optional filters:
+
+```bash
+curl "http://127.0.0.1:8000/calendar/visits?start_date=2026-06-01&end_date=2026-06-07&technician_id=<technician_id>&status=scheduled" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+`start_date` and `end_date` are required. The backend returns `422` if the dates
+are missing or if `end_date` is earlier than `start_date`.
 
 ## Normalized Message Smoke Test
 
@@ -349,6 +392,99 @@ dismissed
 When status is `resolved` or `dismissed`, the backend sets `resolved_at`
 automatically.
 
+## Technicians API
+
+Technicians are managed manually by operators. Hermes does not create,
+update, or assign technicians.
+
+List technicians:
+
+```bash
+curl http://127.0.0.1:8000/technicians \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Create technician:
+
+```bash
+curl -X POST http://127.0.0.1:8000/technicians \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>" \
+  -d '{
+    "name": "Ana Técnica",
+    "phone": "+34111111111",
+    "email": "ana@example.com",
+    "active": true,
+    "service_area": "Málaga",
+    "skills": ["cucarachas", "roedores"]
+  }'
+```
+
+PATCH only accepts:
+
+- `name`
+- `phone`
+- `email`
+- `active`
+- `service_area`
+- `skills`
+
+## Visits API
+
+Visits are agenda entries associated with incidents. Creation and assignment are
+manual from the panel or API. There is no route optimization and no Google
+Calendar sync yet.
+
+List visits:
+
+```bash
+curl http://127.0.0.1:8000/visits \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Filter visits:
+
+```bash
+curl "http://127.0.0.1:8000/visits?incident_id=<incident_id>&status=scheduled" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Create visit:
+
+```bash
+curl -X POST http://127.0.0.1:8000/visits \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>" \
+  -d '{
+    "incident_id": "<incident_id>",
+    "technician_id": "<technician_id>",
+    "scheduled_start": "2026-06-01T09:00:00+02:00",
+    "scheduled_end": "2026-06-01T10:00:00+02:00",
+    "status": "scheduled",
+    "address": "Dirección del aviso",
+    "notes": "Primera visita."
+  }'
+```
+
+PATCH only accepts:
+
+- `technician_id`
+- `scheduled_start`
+- `scheduled_end`
+- `status`
+- `address`
+- `notes`
+
+Allowed visit statuses:
+
+```text
+draft
+scheduled
+in_progress
+completed
+cancelled
+```
+
 ## Incidents API
 
 List incidents:
@@ -441,10 +577,21 @@ VITE_REQUIRE_LOGIN=true
 ```
 
 If `VITE_REQUIRE_LOGIN=true`, open `/login`, enter `ADMIN_API_KEY`, and the
-frontend stores it in localStorage. Requests to incidents and future audit views
-send `X-Admin-API-Key`. Use the `Salir` button to clear localStorage.
+frontend stores it in localStorage. Requests to dashboard, calendar, incidents,
+human review, technicians, visits, and future audit views send
+`X-Admin-API-Key`. Use the `Salir` button to clear localStorage.
 
 Open:
+
+```text
+http://127.0.0.1:5173/dashboard
+```
+
+The dashboard shows counters for pending and urgent incidents, open human
+review items, scheduled visits, visits today, visits this week, and active
+technicians. Each card links to its operational section.
+
+Open incidents:
 
 ```text
 http://127.0.0.1:5173/incidents
@@ -470,6 +617,31 @@ http://127.0.0.1:5173/human-review/<item_id>
 
 The review screen supports filters by status and priority. The detail screen
 allows the operator to change status, assign the item, and save resolution notes.
+
+Open technicians:
+
+```text
+http://127.0.0.1:5173/technicians
+```
+
+Open visits:
+
+```text
+http://127.0.0.1:5173/visits
+```
+
+Open calendar:
+
+```text
+http://127.0.0.1:5173/calendar
+```
+
+The calendar supports daily or weekly views, groups visits by day, and filters
+by technician and visit status. Clicking a visit opens `/visits/<visit_id>`.
+
+The incident detail screen includes a `Visitas asociadas` block. From there an
+operator can create a visit linked to that incident. This is a manual scheduling
+action; Hermes does not assign technicians or modify the agenda directly.
 
 If the backend has no incidents, the panel shows an empty state. If the backend
 is unavailable, it shows an error state.
@@ -744,6 +916,8 @@ messages
 incidents
 decision_records
 human_review_items
+technicians
+visits
 system_checks
 ```
 
@@ -774,7 +948,8 @@ curl http://127.0.0.1:8000/human-review \
 
 Then confirm documents appear in Firebase Console under `conversations`,
 `messages`, `incidents`, `decision_records`, and `human_review_items` when the
-message requires human review.
+message requires human review. Manual scheduling creates documents under
+`technicians` and `visits`.
 
 Never commit service account JSON files.
 

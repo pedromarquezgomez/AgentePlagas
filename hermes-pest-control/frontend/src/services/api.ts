@@ -13,10 +13,12 @@ export const INCIDENT_STATUSES = [
 
 export const INCIDENT_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
 export const HUMAN_REVIEW_STATUSES = ['open', 'in_review', 'resolved', 'dismissed'] as const
+export const VISIT_STATUSES = ['draft', 'scheduled', 'in_progress', 'completed', 'cancelled'] as const
 
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
 export type IncidentPriority = (typeof INCIDENT_PRIORITIES)[number]
 export type HumanReviewStatus = (typeof HUMAN_REVIEW_STATUSES)[number]
+export type VisitStatus = (typeof VISIT_STATUSES)[number]
 
 export interface Incident {
   id: string
@@ -103,6 +105,112 @@ export interface HumanReviewUpdate {
   resolution_notes?: string | null
 }
 
+export interface Technician {
+  id: string
+  name: string
+  phone?: string | null
+  email?: string | null
+  active: boolean
+  service_area?: string | null
+  skills: string[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TechnicianFilters {
+  active?: boolean
+  limit?: number
+}
+
+export interface TechnicianCreate {
+  name: string
+  phone?: string | null
+  email?: string | null
+  active?: boolean
+  service_area?: string | null
+  skills?: string[]
+}
+
+export interface TechnicianUpdate {
+  name?: string
+  phone?: string | null
+  email?: string | null
+  active?: boolean
+  service_area?: string | null
+  skills?: string[]
+}
+
+export interface Visit {
+  id: string
+  incident_id: string
+  technician_id?: string | null
+  scheduled_start?: string | null
+  scheduled_end?: string | null
+  status: VisitStatus | string
+  address?: string | null
+  notes?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface VisitFilters {
+  incident_id?: string
+  technician_id?: string
+  status?: string
+  limit?: number
+}
+
+export interface CalendarVisitFilters {
+  start_date: string
+  end_date: string
+  technician_id?: string
+  status?: string
+}
+
+export interface VisitCreate {
+  incident_id: string
+  technician_id?: string | null
+  scheduled_start?: string | null
+  scheduled_end?: string | null
+  status?: VisitStatus
+  address?: string | null
+  notes?: string | null
+}
+
+export interface VisitUpdate {
+  technician_id?: string | null
+  scheduled_start?: string | null
+  scheduled_end?: string | null
+  status?: VisitStatus
+  address?: string | null
+  notes?: string | null
+}
+
+export interface DashboardSummary {
+  incidents: {
+    total: number
+    pending_review: number
+    urgent: number
+    ready_for_scheduling: number
+  }
+  human_review: {
+    open: number
+    urgent: number
+  }
+  visits: {
+    total: number
+    scheduled: number
+    in_progress: number
+    completed: number
+    today: number
+    scheduled_this_week: number
+  }
+  technicians: {
+    total: number
+    active: number
+  }
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 export const REQUIRE_LOGIN = (import.meta.env.VITE_REQUIRE_LOGIN ?? 'true') !== 'false'
 const ADMIN_API_KEY_STORAGE_KEY = 'hermes_admin_api_key'
@@ -155,6 +263,14 @@ async function parseApiResponse<T>(response: Response, errorMessage: string): Pr
   }
 
   return response.json()
+}
+
+export async function fetchDashboardSummary(): Promise<DashboardSummary> {
+  const response = await fetch(`${API_BASE_URL}/dashboard/summary`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<DashboardSummary>(response, 'No se pudo cargar el dashboard')
 }
 
 export async function fetchIncidents(filters: IncidentFilters = {}): Promise<Incident[]> {
@@ -253,4 +369,112 @@ export async function updateHumanReviewItem(
     response,
     'No se pudo guardar el elemento de revisión',
   )
+}
+
+export async function fetchTechnicians(
+  filters: TechnicianFilters = {},
+): Promise<Technician[]> {
+  const params = new URLSearchParams()
+  if (filters.active !== undefined) params.set('active', String(filters.active))
+  if (filters.limit) params.set('limit', String(filters.limit))
+
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/technicians${query ? `?${query}` : ''}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<Technician[]>(response, 'No se pudieron cargar los técnicos')
+}
+
+export async function createTechnician(
+  technician: TechnicianCreate,
+): Promise<Technician> {
+  const response = await fetch(`${API_BASE_URL}/technicians`, {
+    method: 'POST',
+    headers: buildHeaders(true),
+    body: JSON.stringify(technician),
+  })
+
+  return parseApiResponse<Technician>(response, 'No se pudo crear el técnico')
+}
+
+export async function fetchTechnician(technicianId: string): Promise<Technician> {
+  const response = await fetch(`${API_BASE_URL}/technicians/${encodeURIComponent(technicianId)}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<Technician>(response, 'No se pudo cargar el técnico')
+}
+
+export async function updateTechnician(
+  technicianId: string,
+  update: TechnicianUpdate,
+): Promise<Technician> {
+  const response = await fetch(`${API_BASE_URL}/technicians/${encodeURIComponent(technicianId)}`, {
+    method: 'PATCH',
+    headers: buildHeaders(true),
+    body: JSON.stringify(update),
+  })
+
+  return parseApiResponse<Technician>(response, 'No se pudo guardar el técnico')
+}
+
+export async function fetchVisits(filters: VisitFilters = {}): Promise<Visit[]> {
+  const params = new URLSearchParams()
+  if (filters.incident_id) params.set('incident_id', filters.incident_id)
+  if (filters.technician_id) params.set('technician_id', filters.technician_id)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.limit) params.set('limit', String(filters.limit))
+
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/visits${query ? `?${query}` : ''}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<Visit[]>(response, 'No se pudieron cargar las visitas')
+}
+
+export async function listCalendarVisits(filters: CalendarVisitFilters): Promise<Visit[]> {
+  const params = new URLSearchParams()
+  params.set('start_date', filters.start_date)
+  params.set('end_date', filters.end_date)
+  if (filters.technician_id) params.set('technician_id', filters.technician_id)
+  if (filters.status) params.set('status', filters.status)
+
+  const response = await fetch(`${API_BASE_URL}/calendar/visits?${params.toString()}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<Visit[]>(response, 'No se pudo cargar el calendario')
+}
+
+export async function createVisit(visit: VisitCreate): Promise<Visit> {
+  const response = await fetch(`${API_BASE_URL}/visits`, {
+    method: 'POST',
+    headers: buildHeaders(true),
+    body: JSON.stringify(visit),
+  })
+
+  return parseApiResponse<Visit>(response, 'No se pudo crear la visita')
+}
+
+export async function fetchVisit(visitId: string): Promise<Visit> {
+  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<Visit>(response, 'No se pudo cargar la visita')
+}
+
+export async function updateVisit(
+  visitId: string,
+  update: VisitUpdate,
+): Promise<Visit> {
+  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}`, {
+    method: 'PATCH',
+    headers: buildHeaders(true),
+    body: JSON.stringify(update),
+  })
+
+  return parseApiResponse<Visit>(response, 'No se pudo guardar la visita')
 }

@@ -11,6 +11,7 @@ HumanReviewReason = Literal[
     "urgent_priority",
     "sensitive_case",
 ]
+VisitStatus = Literal["draft", "scheduled", "in_progress", "completed", "cancelled"]
 IncidentStatus = Literal[
     "new",
     "pending_review",

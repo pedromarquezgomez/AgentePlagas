@@ -14,6 +14,7 @@ The current product surface is intentionally small:
 - Mock or Firestore-ready persistence.
 - Incidents API.
 - Minimal Vue operations panel.
+- Manual technician and visit management.
 
 ## Architectural Principles
 
@@ -109,6 +110,8 @@ ConversationService is the orchestrator. It:
 - records structured decision audit entries through DecisionAuditService;
 - creates human review items through HumanReviewService when decisions require
   operator attention.
+
+It does not assign technicians or modify the agenda from Hermes output.
 
 ### HermesService
 
@@ -217,6 +220,39 @@ The service supports create, list, detail, and controlled updates. PATCH accepts
 only `status`, `assigned_to`, and `resolution_notes`; it does not allow free-form
 editing of decision, incident, or trace fields.
 
+### TechnicianService
+
+Location: `backend/app/services/technician_service.py`
+
+TechnicianService owns manual technician records. It supports create, list,
+detail, and controlled updates. Hermes has no write path to this service.
+
+PATCH allows only:
+
+- `name`;
+- `phone`;
+- `email`;
+- `active`;
+- `service_area`;
+- `skills`.
+
+### VisitService
+
+Location: `backend/app/services/visit_service.py`
+
+VisitService owns basic agenda entries associated with incidents. It supports
+manual create, list, detail, and controlled updates. There is no route
+optimization, no Google Calendar integration, and no agent-driven assignment.
+
+PATCH allows only:
+
+- `technician_id`;
+- `scheduled_start`;
+- `scheduled_end`;
+- `status`;
+- `address`;
+- `notes`.
+
 ### Persistence
 
 Location: `backend/app/services/firestore_service.py` and
@@ -243,6 +279,8 @@ Runtime Firestore collections:
 - `incidents`;
 - `decision_records`;
 - `human_review_items`;
+- `technicians`;
+- `visits`;
 - `system_checks`.
 
 ### API Routes
@@ -258,6 +296,14 @@ Current operational routes:
 - `GET /human-review`
 - `GET /human-review/{item_id}`
 - `PATCH /human-review/{item_id}`
+- `GET /technicians`
+- `POST /technicians`
+- `GET /technicians/{technician_id}`
+- `PATCH /technicians/{technician_id}`
+- `GET /visits`
+- `POST /visits`
+- `GET /visits/{visit_id}`
+- `PATCH /visits/{visit_id}`
 - `POST /messages/test`
 - `POST /webhooks/telegram`
 - `POST /telegram/set-webhook`
@@ -288,6 +334,10 @@ Current screens:
 - `/human-review`: table, filters, loading/error/empty states.
 - `/human-review/:id`: detail, status/assigned-to/resolution-notes edit form,
   save feedback.
+- `/technicians`: table, filters, loading/error/empty states, create action.
+- `/technicians/:id`: create/detail form for technician profile.
+- `/visits`: table, filters, loading/error/empty states, create action.
+- `/visits/:id`: create/detail form for visit scheduling.
 
 ## Security Posture
 
@@ -303,6 +353,9 @@ Current safeguards:
 - Operational incident and audit endpoints can be protected with
   `REQUIRE_ADMIN_AUTH=true` and `X-Admin-API-Key`.
 - Human review queue endpoints use the same admin API-key protection.
+- Technician and visit endpoints use the same admin API-key protection.
+- Hermes cannot directly assign technicians, create visits, or update agenda
+  records.
 - The frontend has a minimal API-key login screen prepared to evolve toward
   Firebase Auth.
 
@@ -330,6 +383,7 @@ Backend tests cover:
 - Hermes Agent wrapper contract behavior;
 - decision records and audit routes;
 - human review service and routes;
+- technician and visit service/routes;
 - incidents list/detail/update routes.
 
 Frontend currently relies on TypeScript/Vite build verification and manual smoke
