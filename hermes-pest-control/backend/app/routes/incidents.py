@@ -1,8 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.dependencies.admin_auth import require_admin_auth
+from app.schemas.incident import IncidentUpdate
 from app.services.incident_service import IncidentNotFoundError, IncidentService
 
-router = APIRouter(prefix="/incidents", tags=["incidents"])
+router = APIRouter(
+    prefix="/incidents",
+    tags=["incidents"],
+    dependencies=[Depends(require_admin_auth)],
+)
 incident_service = IncidentService()
 
 
@@ -23,6 +29,18 @@ async def list_incidents(
 async def get_incident(incident_id: str) -> dict:
     try:
         return await incident_service.get_incident(incident_id)
+    except IncidentNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found.",
+        ) from exc
+
+
+@router.patch("/{incident_id}")
+async def update_incident(incident_id: str, incident_update: IncidentUpdate) -> dict:
+    updates = incident_update.model_dump(exclude_unset=True)
+    try:
+        return await incident_service.update_incident(incident_id, updates)
     except IncidentNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

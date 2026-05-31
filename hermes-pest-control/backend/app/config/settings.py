@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     hermes_api_url: str = ""
     hermes_api_key: str = ""
     hermes_timeout_seconds: float = 30.0
+    admin_api_key: str = ""
+    require_admin_auth: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

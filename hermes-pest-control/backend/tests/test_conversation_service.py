@@ -25,7 +25,11 @@ class InvalidHermesService:
 
 @pytest.mark.asyncio
 async def test_conversation_service_returns_safe_response_for_invalid_hermes() -> None:
-    service = ConversationService(hermes_service=InvalidHermesService())
+    firestore_service = MockFirestoreService()
+    service = ConversationService(
+        hermes_service=InvalidHermesService(),
+        firestore_service=firestore_service,
+    )
     message = IncomingMessage(
         channel="telegram",
         external_user_id="12345",
@@ -40,6 +44,16 @@ async def test_conversation_service_returns_safe_response_for_invalid_hermes() -
     assert response.incident is not None
     assert response.incident.should_create is True
     assert response.incident.status == "pending_review"
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:12345"},
+    )
+    assert len(decision_records) == 1
+    assert decision_records[0]["fallback_used"] is True
+    assert (
+        decision_records[0]["fallback_reason"]
+        == "conversation_service_invalid_agent_response"
+    )
 
 
 @pytest.mark.asyncio
@@ -68,6 +82,10 @@ async def test_conversation_service_persists_conversation_messages_and_incident(
         "incidents",
         filters={"conversation_id": "telegram:test-user-1"},
     )
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:test-user-1"},
+    )
 
     assert response.action.type == "create_incident"
     assert conversation is not None
@@ -76,3 +94,11 @@ async def test_conversation_service_persists_conversation_messages_and_incident(
     assert {message["direction"] for message in messages} == {"inbound", "outbound"}
     assert len(incidents) == 1
     assert incidents[0]["status"] == "pending_review"
+    assert len(decision_records) == 1
+    assert decision_records[0]["trace_id"]
+    assert decision_records[0]["message_id"]
+    assert decision_records[0]["incident_id"] == incidents[0]["id"]
+    assert decision_records[0]["hermes_mode"] == "mock"
+    assert decision_records[0]["action_type"] == "create_incident"
+    assert decision_records[0]["fallback_used"] is False
+    assert decision_records[0]["response_contract_version"] == "AgentResponse.v1"

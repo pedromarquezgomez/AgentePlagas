@@ -56,3 +56,29 @@ class IncidentService:
         if incident is None:
             raise IncidentNotFoundError(f"Incident not found: {incident_id}")
         return incident
+
+    async def update_incident(
+        self,
+        incident_id: str,
+        updates: dict,
+    ) -> dict:
+        current_incident = await self.firestore_service.get_document(
+            "incidents",
+            incident_id,
+        )
+        if current_incident is None:
+            raise IncidentNotFoundError(f"Incident not found: {incident_id}")
+
+        await self.firestore_service.update_document(
+            "incidents",
+            incident_id,
+            updates,
+        )
+
+        updated_incident = await self.firestore_service.get_document(
+            "incidents",
+            incident_id,
+        )
+        if updated_incident is None:
+            raise IncidentNotFoundError(f"Incident not found after update: {incident_id}")
+        return updated_incident

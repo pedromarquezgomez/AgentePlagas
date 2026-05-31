@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import config_status, health, incidents, messages_test, telegram
+from app.routes import audit, config_status, health, incidents, messages_test, telegram
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,12 +23,13 @@ app.add_middleware(
         "http://localhost:5173",
     ],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
 app.include_router(health.router)
 app.include_router(config_status.router)
+app.include_router(audit.router)
 app.include_router(incidents.router)
 app.include_router(messages_test.router)
 app.include_router(telegram.router)

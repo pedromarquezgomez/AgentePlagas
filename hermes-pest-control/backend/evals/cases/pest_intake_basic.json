@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "id": "cockroach_kitchen_complete",
+      "description": "Cliente informa cucarachas con datos suficientes",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-1",
+        "external_chat_id": "eval-chat-1",
+        "message_type": "text",
+        "text": "Tengo cucarachas en la cocina en Torremolinos desde hace una semana",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "create_incident",
+        "pest_type": "cucarachas",
+        "location": "Torremolinos",
+        "affected_area": "cocina",
+        "priority": "high",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "registrado",
+        "equipo"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "producto químico",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "rodents_garage_complete",
+      "description": "Cliente informa roedores en garaje con localidad suficiente",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-2",
+        "external_chat_id": "eval-chat-2",
+        "message_type": "text",
+        "text": "Hay roedores en el garaje en Marbella desde ayer",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "create_incident",
+        "pest_type": "roedores",
+        "location": "Marbella",
+        "affected_area": "garaje",
+        "priority": "high",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "registrado",
+        "equipo"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "producto químico",
+        "precio cerrado"
+      ]
+    }
+  ]
+}

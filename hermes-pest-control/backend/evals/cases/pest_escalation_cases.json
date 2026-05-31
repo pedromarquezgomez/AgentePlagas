@@ -1,0 +1,127 @@
+{
+  "cases": [
+    {
+      "id": "possible_intoxication",
+      "description": "Cliente menciona posible intoxicación",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-6",
+        "external_chat_id": "eval-chat-6",
+        "message_type": "text",
+        "text": "Tengo cucarachas en la cocina en Torremolinos y creo que me he intoxicado con un spray",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "escalate_to_human",
+        "pest_type": "cucarachas",
+        "location": "Torremolinos",
+        "affected_area": "cocina",
+        "priority": "urgent",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "seguridad",
+        "equipo",
+        "revise"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "producto químico",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "pet_contact_with_product",
+      "description": "Mascota ha estado en contacto con un producto",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-7",
+        "external_chat_id": "eval-chat-7",
+        "message_type": "text",
+        "text": "Mi perro ha tocado un producto para ratas en el garaje en Málaga",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "escalate_to_human",
+        "pest_type": "roedores",
+        "location": "Málaga",
+        "affected_area": "garaje",
+        "priority": "urgent",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "seguridad",
+        "equipo",
+        "revise"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "producto químico",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "food_business_with_pest",
+      "description": "Negocio alimentario informa plaga",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-8",
+        "external_chat_id": "eval-chat-8",
+        "message_type": "text",
+        "text": "Tengo cucarachas en la cocina de un restaurante en Málaga",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "escalate_to_human",
+        "pest_type": "cucarachas",
+        "location": "Málaga",
+        "affected_area": "cocina",
+        "priority": "urgent",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "seguridad",
+        "equipo",
+        "revise"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "producto químico",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "angry_customer",
+      "description": "Cliente muy enfadado requiere revisión humana",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-9",
+        "external_chat_id": "eval-chat-9",
+        "message_type": "text",
+        "text": "Estoy muy enfadado, hay cucarachas en la cocina en Torremolinos y quiero poner una reclamación",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "escalate_to_human",
+        "pest_type": "cucarachas",
+        "location": "Torremolinos",
+        "affected_area": "cocina",
+        "priority": "high",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "equipo",
+        "revise"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "producto químico",
+        "precio cerrado"
+      ]
+    }
+  ]
+}

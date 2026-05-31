@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "id": "cockroach_missing_location",
+      "description": "Cliente informa cucarachas pero falta localidad",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-3",
+        "external_chat_id": "eval-chat-3",
+        "message_type": "text",
+        "text": "Tengo cucarachas en la cocina desde hace una semana",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "collect_missing_data",
+        "missing_fields": [
+          "location"
+        ],
+        "should_create": false
+      },
+      "must_include_in_reply": [
+        "localidad"
+      ],
+      "must_not_include_in_reply": [
+        "registrado",
+        "garantizado",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "ants_missing_area",
+      "description": "Cliente informa hormigas y localidad pero falta zona afectada",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-4",
+        "external_chat_id": "eval-chat-4",
+        "message_type": "text",
+        "text": "Tengo hormigas en Málaga desde el fin de semana",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "collect_missing_data",
+        "missing_fields": [
+          "affected_area"
+        ],
+        "should_create": false
+      },
+      "must_include_in_reply": [
+        "zona"
+      ],
+      "must_not_include_in_reply": [
+        "registrado",
+        "garantizado",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "unknown_pest_with_area_location",
+      "description": "Cliente indica zona y localidad pero no tipo de plaga",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-5",
+        "external_chat_id": "eval-chat-5",
+        "message_type": "text",
+        "text": "Tengo un problema en la cocina en Fuengirola",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "collect_missing_data",
+        "missing_fields": [
+          "pest_type"
+        ],
+        "should_create": false
+      },
+      "must_include_in_reply": [
+        "plaga"
+      ],
+      "must_not_include_in_reply": [
+        "registrado",
+        "garantizado",
+        "precio cerrado"
+      ]
+    }
+  ]
+}

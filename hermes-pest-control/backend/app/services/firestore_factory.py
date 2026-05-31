@@ -2,6 +2,8 @@ from app.config.settings import Settings
 from app.services.firestore_service import FirestoreService
 from app.services.mock_firestore_service import MockFirestoreService
 
+_mock_firestore_service: MockFirestoreService | None = None
+
 
 def get_firestore_service(
     settings: Settings | None = None,
@@ -9,7 +11,7 @@ def get_firestore_service(
     current_settings = settings or Settings()
 
     if current_settings.app_env == "test":
-        return MockFirestoreService()
+        return _get_mock_firestore_service()
 
     has_explicit_firestore_config = any(
         [
@@ -22,6 +24,13 @@ def get_firestore_service(
         return FirestoreService(current_settings)
 
     if current_settings.app_env == "development":
-        return MockFirestoreService()
+        return _get_mock_firestore_service()
 
     return FirestoreService(current_settings)
+
+
+def _get_mock_firestore_service() -> MockFirestoreService:
+    global _mock_firestore_service
+    if _mock_firestore_service is None:
+        _mock_firestore_service = MockFirestoreService()
+    return _mock_firestore_service

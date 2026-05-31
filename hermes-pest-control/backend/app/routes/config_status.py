@@ -13,6 +13,8 @@ async def config_status() -> dict[str, bool | str]:
         "telegram_configured": bool(settings.telegram_bot_token),
         "firestore_mode": _firestore_mode(),
         "firebase_project_id_configured": bool(settings.firebase_project_id),
+        "admin_auth_required": settings.require_admin_auth,
+        "admin_api_key_configured": bool(settings.admin_api_key),
     }
 
 

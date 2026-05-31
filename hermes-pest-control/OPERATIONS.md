@@ -116,12 +116,60 @@ Example:
   "hermes_mode": "mock",
   "telegram_configured": true,
   "firestore_mode": "mock",
-  "firebase_project_id_configured": false
+  "firebase_project_id_configured": false,
+  "admin_auth_required": false,
+  "admin_api_key_configured": false
 }
 ```
 
 This endpoint never returns tokens, API keys, Firebase credentials, or raw
 secrets.
+
+## Admin Auth
+
+Development mode can run without admin authentication:
+
+```bash
+REQUIRE_ADMIN_AUTH=false
+ADMIN_API_KEY=
+```
+
+Protected mode requires an internal API key for operational endpoints:
+
+```bash
+REQUIRE_ADMIN_AUTH=true
+ADMIN_API_KEY=change-this-long-random-value
+```
+
+When enabled, these endpoints require:
+
+```text
+X-Admin-API-Key: <ADMIN_API_KEY>
+```
+
+Protected endpoints:
+
+- `GET /incidents`
+- `GET /incidents/{incident_id}`
+- `PATCH /incidents/{incident_id}`
+- `GET /audit/decisions`
+- `GET /audit/decisions/{decision_id}`
+
+Public endpoints:
+
+- `GET /health`
+- `GET /config/status`
+- `POST /webhooks/telegram`
+
+`POST /messages/test` remains open for development. Disable or protect it before
+production exposure.
+
+Example protected request:
+
+```bash
+curl http://127.0.0.1:8000/incidents \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
 
 ## Normalized Message Smoke Test
 
@@ -154,6 +202,198 @@ Expected:
 action.type=create_incident
 incident.status=pending_review
 ```
+
+## Running Evaluations
+
+Run the offline Hermes evaluation suite:
+
+```bash
+make evals
+```
+
+Equivalent backend command:
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m evals.run_evals
+```
+
+Optional JSON export:
+
+```bash
+python -m evals.run_evals --output evals/results/latest.json
+```
+
+The evaluation runner:
+
+- loads cases from `backend/evals/cases`;
+- builds `IncomingMessage` objects;
+- executes `HermesService` in mock mode by default;
+- checks expected `AgentResponse` fields;
+- checks required and forbidden reply text;
+- prints pass/fail results and a summary.
+
+It does not call Telegram, does not send channel messages, and does not persist
+evaluation traces to Firestore.
+
+The optional JSON output includes decision-like fields such as `trace_id`,
+`hermes_mode`, `action_type`, `incident_should_create`, `fallback_used`, and
+`response_contract_version`.
+
+## Decision Audit
+
+Every message processed through `ConversationService` creates a structured
+decision record in the `decision_records` collection.
+
+List records:
+
+```bash
+curl http://127.0.0.1:8000/audit/decisions \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Filter records:
+
+```bash
+curl "http://127.0.0.1:8000/audit/decisions?conversation_id=telegram:test-user-1" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+curl "http://127.0.0.1:8000/audit/decisions?action_type=create_incident" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+curl "http://127.0.0.1:8000/audit/decisions?fallback_used=true" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Get one record:
+
+```bash
+curl http://127.0.0.1:8000/audit/decisions/<decision_id> \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Decision records include traceability fields such as `trace_id`, `hermes_mode`,
+`action_type`, `fallback_used`, `fallback_reason`, and
+`response_contract_version`. They do not include Telegram tokens, Hermes API
+keys, Firebase credentials, or full request headers.
+
+## Incidents API
+
+List incidents:
+
+```bash
+curl http://127.0.0.1:8000/incidents \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Filter by status or priority:
+
+```bash
+curl "http://127.0.0.1:8000/incidents?status=pending_review&priority=high" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Get one incident:
+
+```bash
+curl http://127.0.0.1:8000/incidents/<incident_id> \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Update controlled operational fields:
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/incidents/<incident_id> \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>" \
+  -d '{
+    "status": "ready_for_scheduling",
+    "priority": "high",
+    "internal_notes": "Cliente disponible por las tardes."
+  }'
+```
+
+Only these fields are editable from the API:
+
+- `status`
+- `priority`
+- `internal_notes`
+
+Allowed statuses:
+
+```text
+new
+pending_review
+waiting_for_client_data
+ready_for_scheduling
+scheduled
+in_progress
+completed
+follow_up_pending
+closed
+cancelled
+```
+
+Allowed priorities:
+
+```text
+low
+medium
+high
+urgent
+```
+
+## Incidents Panel
+
+Install and run the frontend:
+
+```bash
+make frontend-install
+make frontend-dev
+```
+
+Or manually:
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Default API URL:
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_REQUIRE_LOGIN=true
+```
+
+If `VITE_REQUIRE_LOGIN=true`, open `/login`, enter `ADMIN_API_KEY`, and the
+frontend stores it in localStorage. Requests to incidents and future audit views
+send `X-Admin-API-Key`. Use the `Salir` button to clear localStorage.
+
+Open:
+
+```text
+http://127.0.0.1:5173/incidents
+```
+
+Open one incident detail:
+
+```text
+http://127.0.0.1:5173/incidents/<incident_id>
+```
+
+If the backend has no incidents, the panel shows an empty state. If the backend
+is unavailable, it shows an error state.
+
+From the detail screen the operator can update:
+
+- status
+- priority
+- internal notes
+
+The detail screen shows saving, success, and error states. After saving, it
+reloads the incident detail from the backend.
 
 ## Telegram Real E2E Test
 
@@ -260,6 +500,9 @@ make test
 make smoke
 make set-telegram-webhook
 make telegram-webhook-info
+make frontend-install
+make frontend-dev
+make frontend-build
 ```
 
 ## Expected Logs
@@ -309,4 +552,3 @@ If the title is different, restart ngrok with:
 ```bash
 ngrok http http://127.0.0.1:8000
 ```
-

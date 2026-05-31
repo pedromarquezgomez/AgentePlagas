@@ -7,6 +7,24 @@ works with normalized messages and does not depend on Telegram payloads.
 For daily local usage, diagnostics, Telegram E2E testing, and mode switching, see
 [OPERATIONS.md](./OPERATIONS.md).
 
+For system boundaries and technical architecture, see
+[ARCHITECTURE.md](./ARCHITECTURE.md). For the Hermes agent harness definition
+and roadmap, including offline evaluations, see [HARNESS.md](./HARNESS.md).
+
+The first operations panel lives in [frontend](./frontend). It shows generated
+incidents at `/incidents` and supports basic status, priority, and internal
+notes updates from `/incidents/:id`.
+
+Offline Hermes evaluation cases live in [backend/evals](./backend/evals) and can
+be run with `make evals`.
+
+Decision audit records are exposed through `GET /audit/decisions` and documented
+in [HARNESS.md](./HARNESS.md).
+
+The operations panel and operational API endpoints support a basic admin API key
+guard. Set `REQUIRE_ADMIN_AUTH=true` and `ADMIN_API_KEY` in `backend/.env`, then
+log in at `/login` in the frontend.
+
 ## Architecture
 
 ```text

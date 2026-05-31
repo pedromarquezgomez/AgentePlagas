@@ -61,7 +61,7 @@ def test_get_incidents_filters_by_status(monkeypatch) -> None:
         firestore_service.update_document,
         "incidents",
         second_id,
-        {"status": "resolved"},
+        {"status": "closed"},
     )
 
     response = client.get("/incidents?status=pending_review")
@@ -99,3 +99,110 @@ def test_get_incident_returns_404_for_missing_incident(monkeypatch) -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Incident not found."
+
+
+def test_patch_incident_updates_status(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    import anyio
+
+    incident_id, _ = anyio.run(_seed_incidents, service)
+
+    response = client.patch(
+        f"/incidents/{incident_id}",
+        json={"status": "ready_for_scheduling"},
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["id"] == incident_id
+    assert body["status"] == "ready_for_scheduling"
+    assert "updated_at" in body
+
+
+def test_patch_incident_updates_priority(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    import anyio
+
+    incident_id, _ = anyio.run(_seed_incidents, service)
+
+    response = client.patch(
+        f"/incidents/{incident_id}",
+        json={"priority": "urgent"},
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["priority"] == "urgent"
+
+
+def test_patch_incident_allows_internal_notes(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    import anyio
+
+    incident_id, _ = anyio.run(_seed_incidents, service)
+
+    response = client.patch(
+        f"/incidents/{incident_id}",
+        json={"internal_notes": "Llamar al cliente antes de planificar visita."},
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["internal_notes"] == "Llamar al cliente antes de planificar visita."
+
+
+def test_patch_incident_rejects_invalid_status(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    import anyio
+
+    incident_id, _ = anyio.run(_seed_incidents, service)
+
+    response = client.patch(
+        f"/incidents/{incident_id}",
+        json={"status": "resolved"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_patch_incident_returns_404_for_missing_incident(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    response = client.patch(
+        "/incidents/missing",
+        json={"status": "ready_for_scheduling"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Incident not found."
+
+
+def test_patch_incident_rejects_arbitrary_fields(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    import anyio
+
+    incident_id, _ = anyio.run(_seed_incidents, service)
+
+    response = client.patch(
+        f"/incidents/{incident_id}",
+        json={"summary": "Intento de editar campo no permitido."},
+    )
+
+    assert response.status_code == 422

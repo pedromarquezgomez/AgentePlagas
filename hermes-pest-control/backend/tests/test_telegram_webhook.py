@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.adapters.telegram_adapter import TelegramAdapter
+from app.dependencies import admin_auth
 from app.main import app
 from app.routes import telegram as telegram_route
 from app.schemas.agent_response import AgentResponse
@@ -91,3 +92,18 @@ def test_telegram_webhook_requires_secret_when_configured(monkeypatch) -> None:
 
     assert missing_secret_response.status_code == 401
     assert valid_secret_response.status_code == 200
+
+
+def test_telegram_webhook_is_not_blocked_by_admin_auth(monkeypatch) -> None:
+    adapter = SpyTelegramAdapter()
+    conversation_service = SpyConversationService()
+    monkeypatch.setattr(telegram_route, "telegram_adapter", adapter)
+    monkeypatch.setattr(telegram_route, "conversation_service", conversation_service)
+    monkeypatch.setattr(telegram_route.settings, "telegram_webhook_secret", "")
+    monkeypatch.setattr(admin_auth.settings, "require_admin_auth", True)
+    monkeypatch.setattr(admin_auth.settings, "admin_api_key", "test-admin-key")
+
+    response = client.post("/webhooks/telegram", json=_telegram_text_payload())
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

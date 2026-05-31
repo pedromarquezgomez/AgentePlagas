@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from app.schemas.types import AgentActionType, IncidentPriority
@@ -24,3 +26,4 @@ class AgentResponse(BaseModel):
     reply: str
     action: AgentAction
     incident: AgentIncidentProposal | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict, exclude=True)

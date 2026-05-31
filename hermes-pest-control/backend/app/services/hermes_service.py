@@ -106,4 +106,8 @@ class HermesService:
                 "priority": "medium",
                 "summary": "Error procesando respuesta del agente. Requiere revisión humana.",
             },
+            metadata={
+                "fallback_used": True,
+                "fallback_reason": "hermes_service_error",
+            },
         )
