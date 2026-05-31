@@ -13,6 +13,8 @@ router = APIRouter(prefix="/config", tags=["config"])
 async def config_status() -> dict[str, bool | str]:
     return {
         "app_env": settings.app_env,
+        "cors_allowed_origins_configured": bool(settings.cors_allowed_origins),
+        "frontend_public_url_configured": bool(settings.frontend_public_url),
         "hermes_mode": settings.hermes_mode,
         "hermes_api_url_configured": bool(settings.hermes_api_url),
         "hermes_api_key_configured": bool(settings.hermes_api_key),

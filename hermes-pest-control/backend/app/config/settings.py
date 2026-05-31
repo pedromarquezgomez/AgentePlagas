@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_env: str = "development"
+    cors_allowed_origins: str = ""
+    frontend_public_url: str = ""
     telegram_bot_token: str = ""
     telegram_webhook_secret: str = ""
     telegram_webhook_url: str = ""

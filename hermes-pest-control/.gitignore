@@ -13,6 +13,7 @@ backend/evals/results/
 .env.*
 !.env.example
 *.json
+!firebase.json
 !package.json
 !package-lock.json
 !frontend/package.json

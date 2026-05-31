@@ -9,6 +9,8 @@ client = TestClient(app)
 
 def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     monkeypatch.setattr(config_status_route.settings, "app_env", "development")
+    monkeypatch.setattr(config_status_route.settings, "cors_allowed_origins", "https://panel.example.com")
+    monkeypatch.setattr(config_status_route.settings, "frontend_public_url", "https://panel.example.com")
     monkeypatch.setattr(config_status_route.settings, "hermes_mode", "mock")
     monkeypatch.setattr(config_status_route.settings, "telegram_bot_token", "secret-token")
     monkeypatch.setattr(config_status_route.settings, "firebase_project_id", "")
@@ -42,6 +44,8 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     assert response.status_code == 200
     assert body == {
         "app_env": "development",
+        "cors_allowed_origins_configured": True,
+        "frontend_public_url_configured": True,
         "hermes_mode": "mock",
         "hermes_api_url_configured": True,
         "hermes_api_key_configured": True,

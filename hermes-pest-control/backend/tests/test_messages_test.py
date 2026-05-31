@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.routes import messages_test as messages_test_route
 
 
 client = TestClient(app)
@@ -47,3 +48,10 @@ def test_messages_test_incomplete_case_collects_missing_data() -> None:
     assert "location" in body["action"]["missing_fields"]
     assert body["incident"]["should_create"] is False
 
+
+def test_messages_test_disabled_in_production(monkeypatch) -> None:
+    monkeypatch.setattr(messages_test_route.settings, "app_env", "production")
+
+    response = client.post("/messages/test", json=_message_payload("Tengo cucarachas"))
+
+    assert response.status_code == 404

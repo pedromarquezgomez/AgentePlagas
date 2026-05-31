@@ -56,7 +56,7 @@ async def require_admin_auth(
 
 
 def _require_api_key(x_admin_api_key: str | None) -> AdminUserContext:
-    if not settings.require_admin_auth:
+    if not settings.require_admin_auth and settings.app_env != "production":
         return AdminUserContext(auth_mode="api_key")
 
     if (

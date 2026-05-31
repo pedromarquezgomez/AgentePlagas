@@ -38,6 +38,7 @@ def has_firestore_real_config(settings: Settings) -> bool:
         settings.use_firestore_emulator
         or settings.firebase_credentials_path
         or settings.firebase_credentials_json
+        or (settings.app_env == "production" and settings.firebase_project_id)
     )
 
 

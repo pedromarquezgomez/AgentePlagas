@@ -174,6 +174,22 @@ def test_auth_mode_disabled_is_rejected_in_production(monkeypatch) -> None:
     assert response.status_code == 500
 
 
+def test_api_key_mode_requires_key_in_production_even_if_legacy_flag_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(admin_auth.settings, "auth_mode", "api_key")
+    monkeypatch.setattr(admin_auth.settings, "app_env", "production")
+    monkeypatch.setattr(admin_auth.settings, "require_admin_auth", False)
+    monkeypatch.setattr(admin_auth.settings, "admin_api_key", "test-admin-key")
+
+    missing_key_response = client.get("/incidents")
+    valid_key_response = client.get(
+        "/incidents",
+        headers={"X-Admin-API-Key": "test-admin-key"},
+    )
+
+    assert missing_key_response.status_code == 401
+    assert valid_key_response.status_code == 200
+
+
 def test_webhooks_remain_public_in_firebase_auth_mode(monkeypatch) -> None:
     from app.routes import telegram as telegram_route
     from app.schemas.agent_response import AgentResponse

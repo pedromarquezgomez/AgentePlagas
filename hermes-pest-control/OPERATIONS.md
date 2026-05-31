@@ -3,6 +3,9 @@
 Operational runbook for local development, Telegram and WhatsApp channel
 testing, configuration diagnostics, and safe mode switching.
 
+For production deployment on Google Cloud Run and Firebase Hosting, see
+[DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ## Local Backend
 
 From the project root:
@@ -167,6 +170,19 @@ Public through ngrok:
 curl https://<NGROK_PUBLIC_URL>/health
 ```
 
+## Readiness Check
+
+Use `/ready` for deployment diagnostics. It does not write to Firestore and does
+not expose secrets:
+
+```bash
+curl http://127.0.0.1:8000/ready
+```
+
+Expected local response has `status=ready`. In production, `status=degraded`
+means required production configuration is missing, for example Firebase Auth or
+real Firestore configuration.
+
 ## Configuration Status
 
 Use this endpoint to verify safe runtime mode information:
@@ -293,7 +309,7 @@ Public endpoints:
 - `POST /webhooks/whatsapp`
 
 `POST /messages/test` remains open for development. Disable or protect it before
-production exposure.
+production exposure. When `APP_ENV=production`, the endpoint returns `404`.
 
 Example protected request:
 

@@ -11,6 +11,8 @@ For daily local usage, diagnostics, Telegram E2E testing, and mode switching, se
 For system boundaries and technical architecture, see
 [ARCHITECTURE.md](./ARCHITECTURE.md). For the Hermes agent harness definition
 and roadmap, including offline evaluations, see [HARNESS.md](./HARNESS.md).
+For production deployment on Cloud Run and Firebase Hosting, see
+[DEPLOYMENT.md](./DEPLOYMENT.md).
 
 The operations panel lives in [frontend](./frontend). It opens at `/dashboard`,
 shows operational counters, links into generated incidents at `/incidents`,
@@ -190,6 +192,9 @@ Authorization: Bearer <Firebase ID token>
 production. `GET /health`, `GET /config/status`, Telegram webhooks, and
 WhatsApp webhooks remain public. `POST /messages/test` is a development helper
 and should be protected or removed before production exposure.
+
+Use `GET /ready` for production readiness diagnostics. It returns safe status
+fields only and does not touch Firestore.
 
 ## Running Tests
 
