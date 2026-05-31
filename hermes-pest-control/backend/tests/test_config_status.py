@@ -21,6 +21,13 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     monkeypatch.setattr(config_status_route.settings, "hermes_skills_dir", "../hermes/skills")
     monkeypatch.setattr(config_status_route.settings, "admin_api_key", "secret-admin-key")
     monkeypatch.setattr(config_status_route.settings, "require_admin_auth", True)
+    monkeypatch.setattr(config_status_route.settings, "google_calendar_enabled", True)
+    monkeypatch.setattr(config_status_route.settings, "google_calendar_id", "secret-calendar-id")
+    monkeypatch.setattr(
+        config_status_route.settings,
+        "google_calendar_credentials_json",
+        "secret-google-json",
+    )
 
     response = client.get("/config/status")
 
@@ -40,6 +47,9 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "firestore_emulator_enabled": False,
         "admin_auth_required": True,
         "admin_api_key_configured": True,
+        "google_calendar_enabled": True,
+        "google_calendar_id_configured": True,
+        "google_calendar_credentials_configured": True,
     }
     assert "telegram_bot_token" not in body
     assert "hermes_api_key" not in body
@@ -49,6 +59,8 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     assert "secret-admin-key" not in response.text
     assert "firebase_credentials_json" not in body
     assert "secret-json" not in response.text
+    assert "secret-calendar-id" not in response.text
+    assert "secret-google-json" not in response.text
 
 
 def test_config_status_reports_mock_firestore_in_test(monkeypatch) -> None:

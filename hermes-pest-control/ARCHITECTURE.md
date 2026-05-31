@@ -15,6 +15,8 @@ The current product surface is intentionally small:
 - Incidents API.
 - Minimal Vue operations panel.
 - Manual technician and visit management.
+- Optional manual Google Calendar synchronization for visits.
+- Basic internal operational documents.
 
 ## Architectural Principles
 
@@ -23,6 +25,8 @@ The current product surface is intentionally small:
 - HermesService is replaceable and hides mock/real client selection.
 - Business services execute decisions; the agent proposes actions.
 - Persistence services are infrastructure, not domain logic.
+- Firestore/VisitService remains the source of truth for visits; Google Calendar
+  is only an optional external projection.
 - Schemas validate the boundary between layers.
 - Error paths must fail safely and avoid leaking secrets.
 
@@ -241,8 +245,14 @@ PATCH allows only:
 Location: `backend/app/services/visit_service.py`
 
 VisitService owns basic agenda entries associated with incidents. It supports
-manual create, list, detail, and controlled updates. There is no route
-optimization, no Google Calendar integration, and no agent-driven assignment.
+manual create, list, detail, controlled updates, and date-range reads for the
+internal calendar. There is no route optimization and no agent-driven
+assignment.
+
+Google Calendar synchronization is an optional projection invoked explicitly
+through `POST /visits/{visit_id}/sync-calendar`. Sync writes only external
+calendar metadata back to the visit; it does not make Google Calendar the source
+of truth.
 
 PATCH allows only:
 
@@ -281,7 +291,24 @@ Runtime Firestore collections:
 - `human_review_items`;
 - `technicians`;
 - `visits`;
+- `operational_documents`;
 - `system_checks`.
+
+### OperationalDocumentService
+
+Location: `backend/app/services/operational_document_service.py`
+
+OperationalDocumentService owns basic internal document drafts associated with
+incidents or visits. It supports create, list, detail, and controlled updates.
+Template generation uses persisted incident/visit data. Hermes cannot create
+documents directly.
+
+PATCH allows only:
+
+- `title`;
+- `content`;
+- `status`;
+- `metadata`.
 
 ### API Routes
 
@@ -304,6 +331,14 @@ Current operational routes:
 - `POST /visits`
 - `GET /visits/{visit_id}`
 - `PATCH /visits/{visit_id}`
+- `POST /visits/{visit_id}/sync-calendar`
+- `GET /calendar/visits`
+- `GET /documents`
+- `POST /documents`
+- `GET /documents/{document_id}`
+- `PATCH /documents/{document_id}`
+- `POST /incidents/{incident_id}/generate-summary-document`
+- `POST /visits/{visit_id}/generate-technician-brief`
 - `POST /messages/test`
 - `POST /webhooks/telegram`
 - `POST /telegram/set-webhook`
@@ -338,6 +373,10 @@ Current screens:
 - `/technicians/:id`: create/detail form for technician profile.
 - `/visits`: table, filters, loading/error/empty states, create action.
 - `/visits/:id`: create/detail form for visit scheduling.
+- `/calendar`: internal day/week agenda grouped by date with technician/status
+  filters.
+- `/documents`: table, filters, loading/error/empty states.
+- `/documents/:id`: editable title/content/status form.
 
 ## Security Posture
 
@@ -354,8 +393,11 @@ Current safeguards:
   `REQUIRE_ADMIN_AUTH=true` and `X-Admin-API-Key`.
 - Human review queue endpoints use the same admin API-key protection.
 - Technician and visit endpoints use the same admin API-key protection.
+- Google Calendar sync is disabled by default and uses service-account
+  credentials only when explicitly configured.
 - Hermes cannot directly assign technicians, create visits, or update agenda
-  records.
+  records, cannot invoke Google Calendar sync directly, and cannot create
+  operational documents directly.
 - The frontend has a minimal API-key login screen prepared to evolve toward
   Firebase Auth.
 

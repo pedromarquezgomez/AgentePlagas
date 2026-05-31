@@ -380,7 +380,8 @@ Hermes does not own:
 - technician assignment;
 - agenda writes;
 - route optimization;
-- calendar synchronization.
+- calendar synchronization;
+- operational document creation.
 
 Humans currently own:
 
@@ -389,7 +390,15 @@ Humans currently own:
 - creating technicians and visits manually;
 - assigning visits to technicians;
 - changing basic operational status;
-- adding internal notes.
+- adding internal notes;
+- generating and reviewing internal operational documents.
+
+### Operational Documents
+
+Operational documents are deterministic backend templates over persisted
+incident and visit data. They are not Hermes-authored artifacts and are not
+official legal certificates. Future agent-proposed document content should enter
+through a reviewable backend service boundary rather than direct agent writes.
 
 ## Pending Harness Capabilities
 

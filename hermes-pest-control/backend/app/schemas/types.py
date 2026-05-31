@@ -12,6 +12,14 @@ HumanReviewReason = Literal[
     "sensitive_case",
 ]
 VisitStatus = Literal["draft", "scheduled", "in_progress", "completed", "cancelled"]
+OperationalDocumentType = Literal[
+    "incident_summary",
+    "technician_brief",
+    "post_treatment_recommendations",
+    "work_report_draft",
+]
+OperationalDocumentStatus = Literal["draft", "reviewed", "archived"]
+OperationalDocumentGeneratedBy = Literal["system", "admin", "agent_proposal"]
 IncidentStatus = Literal[
     "new",
     "pending_review",

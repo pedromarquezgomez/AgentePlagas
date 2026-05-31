@@ -2,7 +2,8 @@
 
 Minimal Vue 3 + TypeScript + Vite operations panel with a dashboard, incident
 views, human review queue, manual technician and visit management, and an
-internal visit calendar.
+internal visit calendar. Google Calendar sync is optional and appears on visit
+detail when the backend endpoint is available.
 
 ## Install
 
@@ -54,6 +55,8 @@ Available paths:
 /visits
 /visits/:id
 /calendar
+/documents
+/documents/:id
 /login
 ```
 
@@ -80,7 +83,13 @@ npm run build
 13. Click `Guardar` and verify the success message.
 14. Open `/technicians`, create a technician, edit it, and verify the saved state.
 15. Open `/visits`, create a visit, edit it, and verify the saved state.
-16. Open `/calendar`, switch between day and week views, filter by technician and status, and open a visit.
-17. Open an incident detail and create a visit from `Visitas asociadas`.
-18. Refresh the detail page and verify the saved values are still present.
-19. Click `Salir` and verify localStorage is cleared and `/login` is shown.
+16. Open a visit detail and verify the `Sincronización calendario` block.
+17. Click `Sincronizar con calendario`; with backend sync disabled, verify the skipped message.
+18. Open `/calendar`, switch between day and week views, filter by technician and status, and open a visit.
+19. Open `/documents` and verify the documents table and filters.
+20. Open an incident detail and click `Generar resumen de incidencia`.
+21. Open a visit detail and click `Generar brief para técnico`.
+22. Open a document detail, edit title/content/status, and save.
+23. Open an incident detail and create a visit from `Visitas asociadas`.
+24. Refresh the detail page and verify the saved values are still present.
+25. Click `Salir` and verify localStorage is cleared and `/login` is shown.

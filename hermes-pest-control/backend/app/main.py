@@ -8,6 +8,7 @@ from app.routes import (
     calendar,
     config_status,
     dashboard,
+    documents,
     health,
     human_review,
     incidents,
@@ -44,6 +45,7 @@ app.include_router(config_status.router)
 app.include_router(audit.router)
 app.include_router(calendar.router)
 app.include_router(dashboard.router)
+app.include_router(documents.router)
 app.include_router(human_review.router)
 app.include_router(incidents.router)
 app.include_router(technicians.router)

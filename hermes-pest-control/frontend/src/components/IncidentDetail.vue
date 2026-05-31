@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import {
-  fetchIncident,
   createVisit,
+  fetchDocuments,
+  fetchIncident,
   fetchTechnicians,
   fetchVisits,
+  generateIncidentSummaryDocument,
   INCIDENT_PRIORITIES,
   INCIDENT_STATUSES,
   isUnauthorizedError,
@@ -13,6 +15,7 @@ import {
   type Incident,
   type IncidentPriority,
   type IncidentStatus,
+  type OperationalDocument,
   type Technician,
   type Visit,
   type VisitStatus,
@@ -29,17 +32,23 @@ const emit = defineEmits<{
 
 const incident = ref<Incident | null>(null)
 const visits = ref<Visit[]>([])
+const documents = ref<OperationalDocument[]>([])
 const technicians = ref<Technician[]>([])
 const loading = ref(false)
 const visitsLoading = ref(false)
+const documentsLoading = ref(false)
 const saving = ref(false)
 const visitSaving = ref(false)
+const documentGenerating = ref(false)
 const error = ref<string | null>(null)
 const visitsError = ref<string | null>(null)
+const documentsError = ref<string | null>(null)
 const saveError = ref<string | null>(null)
 const visitSaveError = ref<string | null>(null)
+const documentGenerateError = ref<string | null>(null)
 const saveSuccess = ref(false)
 const visitSaveSuccess = ref(false)
+const documentGenerateSuccess = ref(false)
 const formStatus = ref<IncidentStatus>('pending_review')
 const formPriority = ref<IncidentPriority>('medium')
 const formInternalNotes = ref('')
@@ -110,6 +119,24 @@ async function loadVisits(): Promise<void> {
   }
 }
 
+async function loadDocuments(): Promise<void> {
+  documentsLoading.value = true
+  documentsError.value = null
+
+  try {
+    documents.value = await fetchDocuments({ incident_id: props.incidentId, limit: 100 })
+  } catch (err) {
+    if (isUnauthorizedError(err)) {
+      emit('unauthorized')
+      return
+    }
+    documentsError.value = err instanceof Error ? err.message : 'No se pudieron cargar los documentos'
+    documents.value = []
+  } finally {
+    documentsLoading.value = false
+  }
+}
+
 async function loadIncident(): Promise<void> {
   loading.value = true
   error.value = null
@@ -120,7 +147,7 @@ async function loadIncident(): Promise<void> {
     const loadedIncident = await fetchIncident(props.incidentId)
     incident.value = loadedIncident
     syncForm(loadedIncident)
-    await loadVisits()
+    await Promise.all([loadVisits(), loadDocuments()])
   } catch (err) {
     if (isUnauthorizedError(err)) {
       emit('unauthorized')
@@ -130,6 +157,26 @@ async function loadIncident(): Promise<void> {
     incident.value = null
   } finally {
     loading.value = false
+  }
+}
+
+async function generateSummaryDocument(): Promise<void> {
+  documentGenerating.value = true
+  documentGenerateError.value = null
+  documentGenerateSuccess.value = false
+
+  try {
+    await generateIncidentSummaryDocument(props.incidentId)
+    documentGenerateSuccess.value = true
+    await loadDocuments()
+  } catch (err) {
+    if (isUnauthorizedError(err)) {
+      emit('unauthorized')
+      return
+    }
+    documentGenerateError.value = err instanceof Error ? err.message : 'No se pudo generar el resumen'
+  } finally {
+    documentGenerating.value = false
   }
 }
 
@@ -299,6 +346,52 @@ watch(
 
         <div v-if="saveError" class="stateMessage errorMessage">{{ saveError }}</div>
       </form>
+
+      <section class="detailPanel fullWidthPanel" aria-label="Documentos asociados">
+        <div class="sectionHeader">
+          <div>
+            <h3>Documentos asociados</h3>
+            <p class="sectionText">Documentos operativos internos vinculados a esta incidencia.</p>
+          </div>
+          <div class="formActions">
+            <button class="secondaryButton" type="button" :disabled="documentsLoading" @click="loadDocuments">
+              Actualizar
+            </button>
+            <button class="primaryButton" type="button" :disabled="documentGenerating" @click="generateSummaryDocument">
+              {{ documentGenerating ? 'Generando...' : 'Generar resumen de incidencia' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="documentsLoading" class="stateMessage">Cargando documentos...</div>
+        <div v-else-if="documentsError" class="stateMessage errorMessage">{{ documentsError }}</div>
+        <div v-else-if="documents.length === 0" class="stateMessage">
+          No hay documentos asociados a esta incidencia.
+        </div>
+        <div v-else class="compactTableShell">
+          <table class="incidentTable compactTable">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Título</th>
+                <th>Estado</th>
+                <th>Generado por</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="document in documents" :key="document.id">
+                <td>{{ document.document_type }}</td>
+                <td>{{ document.title }}</td>
+                <td><span class="badge status">{{ document.status }}</span></td>
+                <td>{{ document.generated_by }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p v-if="documentGenerateSuccess" class="saveMessage">Documento generado.</p>
+        <div v-if="documentGenerateError" class="stateMessage errorMessage">{{ documentGenerateError }}</div>
+      </section>
 
       <section class="detailPanel fullWidthPanel" aria-label="Visitas asociadas">
         <div class="sectionHeader">

@@ -173,6 +173,13 @@ Protected endpoints:
 - `POST /visits`
 - `GET /visits/{visit_id}`
 - `PATCH /visits/{visit_id}`
+- `POST /visits/{visit_id}/sync-calendar`
+- `GET /documents`
+- `POST /documents`
+- `GET /documents/{document_id}`
+- `PATCH /documents/{document_id}`
+- `POST /incidents/{incident_id}/generate-summary-document`
+- `POST /visits/{visit_id}/generate-technician-brief`
 
 Public endpoints:
 
@@ -432,8 +439,8 @@ PATCH only accepts:
 ## Visits API
 
 Visits are agenda entries associated with incidents. Creation and assignment are
-manual from the panel or API. There is no route optimization and no Google
-Calendar sync yet.
+manual from the panel or API. There is no route optimization. Google Calendar
+sync is optional and manual; Firestore remains the source of truth.
 
 List visits:
 
@@ -484,6 +491,89 @@ in_progress
 completed
 cancelled
 ```
+
+## Optional Google Calendar Sync
+
+Google Calendar is disabled by default:
+
+```bash
+GOOGLE_CALENDAR_ENABLED=false
+GOOGLE_CALENDAR_ID=
+GOOGLE_CALENDAR_CREDENTIALS_PATH=
+GOOGLE_CALENDAR_CREDENTIALS_JSON=
+```
+
+With sync disabled, the endpoint returns a controlled skipped response and does
+not call Google:
+
+```bash
+curl -X POST http://127.0.0.1:8000/visits/<visit_id>/sync-calendar \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Expected disabled response:
+
+```json
+{
+  "status": "skipped",
+  "reason": "google_calendar_disabled"
+}
+```
+
+To enable real sync, create a Google service account with access to the target
+calendar, share the calendar with that service account email, and set either:
+
+```bash
+GOOGLE_CALENDAR_ENABLED=true
+GOOGLE_CALENDAR_ID=your-calendar-id
+GOOGLE_CALENDAR_CREDENTIALS_PATH=/absolute/path/outside/repo/google-calendar-service-account.json
+```
+
+or:
+
+```bash
+GOOGLE_CALENDAR_ENABLED=true
+GOOGLE_CALENDAR_ID=your-calendar-id
+GOOGLE_CALENDAR_CREDENTIALS_JSON='{"type":"service_account","...":"..."}'
+```
+
+The sync stores only these fields on the visit:
+
+- `external_calendar_provider`
+- `external_calendar_event_id`
+- `external_calendar_sync_status`
+- `external_calendar_last_synced_at`
+- `external_calendar_error`
+
+Risks and limitations:
+
+- Google Calendar is not the system of record.
+- OAuth user consent is not implemented in this sprint.
+- Sync is manual from the visit detail or API.
+- Tests mock `GoogleCalendarService` and do not call Google.
+
+## Operational Documents API
+
+Documents are internal operational drafts, not official legal certificates.
+Hermes does not create documents directly.
+
+```bash
+curl http://127.0.0.1:8000/documents \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Generate template-based documents:
+
+```bash
+curl -X POST http://127.0.0.1:8000/incidents/<incident_id>/generate-summary-document \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+
+curl -X POST http://127.0.0.1:8000/visits/<visit_id>/generate-technician-brief \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+PATCH `/documents/{document_id}` accepts only `title`, `content`, `status`, and
+`metadata`.
 
 ## Incidents API
 
@@ -638,6 +728,17 @@ http://127.0.0.1:5173/calendar
 
 The calendar supports daily or weekly views, groups visits by day, and filters
 by technician and visit status. Clicking a visit opens `/visits/<visit_id>`.
+Visit detail includes a `Sincronización calendario` block with provider, event
+id, sync status, last sync timestamp, error message, and a manual sync button.
+
+Open documents:
+
+```text
+http://127.0.0.1:5173/documents
+```
+
+Incident detail can generate an incident summary. Visit detail can generate a
+technician brief. Document detail allows title, content, and status edits.
 
 The incident detail screen includes a `Visitas asociadas` block. From there an
 operator can create a visit linked to that incident. This is a manual scheduling
@@ -918,6 +1019,7 @@ decision_records
 human_review_items
 technicians
 visits
+operational_documents
 system_checks
 ```
 

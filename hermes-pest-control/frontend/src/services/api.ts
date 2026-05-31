@@ -14,11 +14,20 @@ export const INCIDENT_STATUSES = [
 export const INCIDENT_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
 export const HUMAN_REVIEW_STATUSES = ['open', 'in_review', 'resolved', 'dismissed'] as const
 export const VISIT_STATUSES = ['draft', 'scheduled', 'in_progress', 'completed', 'cancelled'] as const
+export const DOCUMENT_TYPES = [
+  'incident_summary',
+  'technician_brief',
+  'post_treatment_recommendations',
+  'work_report_draft',
+] as const
+export const DOCUMENT_STATUSES = ['draft', 'reviewed', 'archived'] as const
 
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
 export type IncidentPriority = (typeof INCIDENT_PRIORITIES)[number]
 export type HumanReviewStatus = (typeof HUMAN_REVIEW_STATUSES)[number]
 export type VisitStatus = (typeof VISIT_STATUSES)[number]
+export type OperationalDocumentType = (typeof DOCUMENT_TYPES)[number]
+export type OperationalDocumentStatus = (typeof DOCUMENT_STATUSES)[number]
 
 export interface Incident {
   id: string
@@ -149,6 +158,11 @@ export interface Visit {
   status: VisitStatus | string
   address?: string | null
   notes?: string | null
+  external_calendar_provider?: string | null
+  external_calendar_event_id?: string | null
+  external_calendar_sync_status?: string | null
+  external_calendar_last_synced_at?: string | null
+  external_calendar_error?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -186,6 +200,12 @@ export interface VisitUpdate {
   notes?: string | null
 }
 
+export interface VisitCalendarSyncResponse {
+  status: 'synced' | 'skipped'
+  reason?: string
+  visit: Visit
+}
+
 export interface DashboardSummary {
   incidents: {
     total: number
@@ -209,6 +229,46 @@ export interface DashboardSummary {
     total: number
     active: number
   }
+}
+
+export interface OperationalDocument {
+  id: string
+  document_type: OperationalDocumentType | string
+  incident_id?: string | null
+  visit_id?: string | null
+  title: string
+  content: string
+  status: OperationalDocumentStatus | string
+  generated_by: string
+  created_at?: string
+  updated_at?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface OperationalDocumentFilters {
+  incident_id?: string
+  visit_id?: string
+  document_type?: string
+  status?: string
+  limit?: number
+}
+
+export interface OperationalDocumentCreate {
+  document_type: OperationalDocumentType
+  incident_id?: string | null
+  visit_id?: string | null
+  title: string
+  content: string
+  status?: OperationalDocumentStatus
+  generated_by?: 'system' | 'admin' | 'agent_proposal'
+  metadata?: Record<string, unknown>
+}
+
+export interface OperationalDocumentUpdate {
+  title?: string
+  content?: string
+  status?: OperationalDocumentStatus
+  metadata?: Record<string, unknown>
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
@@ -477,4 +537,89 @@ export async function updateVisit(
   })
 
   return parseApiResponse<Visit>(response, 'No se pudo guardar la visita')
+}
+
+export async function syncVisitCalendar(visitId: string): Promise<VisitCalendarSyncResponse> {
+  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}/sync-calendar`, {
+    method: 'POST',
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<VisitCalendarSyncResponse>(
+    response,
+    'No se pudo sincronizar el calendario',
+  )
+}
+
+export async function fetchDocuments(
+  filters: OperationalDocumentFilters = {},
+): Promise<OperationalDocument[]> {
+  const params = new URLSearchParams()
+  if (filters.incident_id) params.set('incident_id', filters.incident_id)
+  if (filters.visit_id) params.set('visit_id', filters.visit_id)
+  if (filters.document_type) params.set('document_type', filters.document_type)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.limit) params.set('limit', String(filters.limit))
+
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/documents${query ? `?${query}` : ''}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<OperationalDocument[]>(response, 'No se pudieron cargar los documentos')
+}
+
+export async function createDocument(
+  document: OperationalDocumentCreate,
+): Promise<OperationalDocument> {
+  const response = await fetch(`${API_BASE_URL}/documents`, {
+    method: 'POST',
+    headers: buildHeaders(true),
+    body: JSON.stringify(document),
+  })
+
+  return parseApiResponse<OperationalDocument>(response, 'No se pudo crear el documento')
+}
+
+export async function fetchDocument(documentId: string): Promise<OperationalDocument> {
+  const response = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<OperationalDocument>(response, 'No se pudo cargar el documento')
+}
+
+export async function updateDocument(
+  documentId: string,
+  update: OperationalDocumentUpdate,
+): Promise<OperationalDocument> {
+  const response = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
+    method: 'PATCH',
+    headers: buildHeaders(true),
+    body: JSON.stringify(update),
+  })
+
+  return parseApiResponse<OperationalDocument>(response, 'No se pudo guardar el documento')
+}
+
+export async function generateIncidentSummaryDocument(
+  incidentId: string,
+): Promise<OperationalDocument> {
+  const response = await fetch(`${API_BASE_URL}/incidents/${encodeURIComponent(incidentId)}/generate-summary-document`, {
+    method: 'POST',
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<OperationalDocument>(response, 'No se pudo generar el resumen')
+}
+
+export async function generateTechnicianBriefDocument(
+  visitId: string,
+): Promise<OperationalDocument> {
+  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}/generate-technician-brief`, {
+    method: 'POST',
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<OperationalDocument>(response, 'No se pudo generar el brief')
 }

@@ -25,6 +25,12 @@ async def config_status() -> dict[str, bool | str]:
         "firestore_emulator_enabled": settings.use_firestore_emulator,
         "admin_auth_required": settings.require_admin_auth,
         "admin_api_key_configured": bool(settings.admin_api_key),
+        "google_calendar_enabled": settings.google_calendar_enabled,
+        "google_calendar_id_configured": bool(settings.google_calendar_id),
+        "google_calendar_credentials_configured": bool(
+            settings.google_calendar_credentials_path
+            or settings.google_calendar_credentials_json
+        ),
     }
 
 

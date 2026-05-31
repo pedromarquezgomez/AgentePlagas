@@ -15,6 +15,11 @@ class Visit(BaseModel):
     status: VisitStatus = "draft"
     address: str | None = None
     notes: str | None = None
+    external_calendar_provider: str | None = None
+    external_calendar_event_id: str | None = None
+    external_calendar_sync_status: str | None = None
+    external_calendar_last_synced_at: Any | None = None
+    external_calendar_error: str | None = None
     created_at: Any | None = None
     updated_at: Any | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
