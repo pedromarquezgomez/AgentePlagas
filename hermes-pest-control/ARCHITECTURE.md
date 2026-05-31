@@ -244,10 +244,14 @@ Current safeguards:
 - Logs avoid full headers, tokens, API keys, and full customer text.
 - CORS is restricted to local Vite origins for development.
 - PATCH uses a Pydantic schema with `extra="forbid"`.
+- Operational incident and audit endpoints can be protected with
+  `REQUIRE_ADMIN_AUTH=true` and `X-Admin-API-Key`.
+- The frontend has a minimal API-key login screen prepared to evolve toward
+  Firebase Auth.
 
 Known limitations:
 
-- No authentication or authorization exists yet for the operations panel.
+- The current panel login is a simple shared API-key guard, not user-level auth.
 - CORS settings are development-oriented.
 - Internal notes are plain text and should be treated as sensitive operational
   data once real users are added.
