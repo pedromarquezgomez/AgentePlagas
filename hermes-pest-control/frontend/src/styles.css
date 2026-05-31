@@ -44,6 +44,12 @@ textarea {
   gap: 10px;
 }
 
+.sectionNav {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 .eyebrow {
   color: #5c6773;
   font-size: 13px;
@@ -367,6 +373,7 @@ dd {
 
   .topBar,
   .topActions,
+  .sectionNav,
   .filters,
   .detailHeader,
   .formActions {

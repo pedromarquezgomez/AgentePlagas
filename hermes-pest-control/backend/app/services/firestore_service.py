@@ -190,7 +190,7 @@ class FirestoreService:
 
     def _to_dict(self, data: Any) -> dict[str, Any]:
         if hasattr(data, "model_dump"):
-            return data.model_dump()
+            return data.model_dump(mode="python")
         if isinstance(data, dict):
             return dict(data)
         raise FirestoreServiceError(

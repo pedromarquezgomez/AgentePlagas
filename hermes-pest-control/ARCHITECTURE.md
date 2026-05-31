@@ -106,7 +106,9 @@ ConversationService is the orchestrator. It:
 - calls HermesService;
 - converts actionable AgentResponse data into IncidentDraft;
 - delegates incident creation to IncidentService;
-- records structured decision audit entries through DecisionAuditService.
+- records structured decision audit entries through DecisionAuditService;
+- creates human review items through HumanReviewService when decisions require
+  operator attention.
 
 ### HermesService
 
@@ -121,6 +123,16 @@ Current modes:
 
 - `HERMES_MODE=mock`: deterministic local behavior.
 - `HERMES_MODE=real`: HTTP client prepared for Hermes Agent.
+
+Sprint 10A adds a development-only fake Hermes HTTP server at
+`backend/scripts/fake_hermes_server.py`. It is not part of the production
+runtime; it exists to verify the real-mode HTTP boundary, response validation,
+timeouts, invalid responses, and fallback behavior without Telegram traffic.
+
+Sprint 10B adds `backend/scripts/hermes_agent_server.py`, a first Hermes Agent
+wrapper. It loads the project skills, exposes the same `POST /agent` contract,
+and validates all outputs as `AgentResponse`. The wrapper is outside the
+business backend and has no direct persistence or Telegram-send permissions.
 
 ### IncidentService
 
@@ -189,6 +201,22 @@ Each decision record captures:
 The service does not decide business behavior. It only records decisions already
 made by the orchestrated flow.
 
+### HumanReviewService
+
+Location: `backend/app/services/human_review_service.py`
+
+HumanReviewService owns the operator review queue. It stores items in
+`human_review_items` after `ConversationService` detects one of these conditions:
+
+- Hermes requested `escalate_to_human`;
+- safe fallback was used;
+- priority is `urgent`;
+- response metadata marks the case as sensitive.
+
+The service supports create, list, detail, and controlled updates. PATCH accepts
+only `status`, `assigned_to`, and `resolution_notes`; it does not allow free-form
+editing of decision, incident, or trace fields.
+
 ### Persistence
 
 Location: `backend/app/services/firestore_service.py` and
@@ -201,6 +229,22 @@ see the same local data during a process lifetime.
 FirestoreService contains infrastructure behavior only: create, get, update,
 list, and append to subcollection. It does not know pest-control business rules.
 
+Persistence mode is selected by `backend/app/services/firestore_factory.py`:
+
+- `APP_ENV=test`: always `MockFirestoreService`.
+- `APP_ENV=development` without credentials: `MockFirestoreService`.
+- `APP_ENV=development` with credentials or emulator: `FirestoreService`.
+- `APP_ENV=production` without credentials: explicit configuration error.
+
+Runtime Firestore collections:
+
+- `conversations`;
+- `messages`;
+- `incidents`;
+- `decision_records`;
+- `human_review_items`;
+- `system_checks`.
+
 ### API Routes
 
 Location: `backend/app/routes/`
@@ -211,6 +255,9 @@ Current operational routes:
 - `GET /config/status`
 - `GET /audit/decisions`
 - `GET /audit/decisions/{decision_id}`
+- `GET /human-review`
+- `GET /human-review/{item_id}`
+- `PATCH /human-review/{item_id}`
 - `POST /messages/test`
 - `POST /webhooks/telegram`
 - `POST /telegram/set-webhook`
@@ -218,6 +265,12 @@ Current operational routes:
 - `GET /incidents`
 - `GET /incidents/{incident_id}`
 - `PATCH /incidents/{incident_id}`
+
+Separate development agent servers:
+
+- `backend/scripts/fake_hermes_server.py`: contract fake from Sprint 10A.
+- `backend/scripts/hermes_agent_server.py`: skill-loading wrapper from Sprint
+  10B.
 
 ### Frontend
 
@@ -232,6 +285,9 @@ Current screens:
 - `/incidents`: table, filters, loading/error/empty states.
 - `/incidents/:id`: detail, status/priority/internal-notes edit form, save
   feedback.
+- `/human-review`: table, filters, loading/error/empty states.
+- `/human-review/:id`: detail, status/assigned-to/resolution-notes edit form,
+  save feedback.
 
 ## Security Posture
 
@@ -243,9 +299,10 @@ Current safeguards:
 - Telegram webhook secret is validated when configured.
 - Logs avoid full headers, tokens, API keys, and full customer text.
 - CORS is restricted to local Vite origins for development.
-- PATCH uses a Pydantic schema with `extra="forbid"`.
+- PATCH routes use Pydantic schemas with `extra="forbid"`.
 - Operational incident and audit endpoints can be protected with
   `REQUIRE_ADMIN_AUTH=true` and `X-Admin-API-Key`.
+- Human review queue endpoints use the same admin API-key protection.
 - The frontend has a minimal API-key login screen prepared to evolve toward
   Firebase Auth.
 
@@ -269,7 +326,10 @@ Backend tests cover:
 - config status;
 - Telegram adapter/webhook behavior;
 - Hermes mock/real/fallback behavior;
+- Hermes real-mode fake endpoint/client behavior;
+- Hermes Agent wrapper contract behavior;
 - decision records and audit routes;
+- human review service and routes;
 - incidents list/detail/update routes.
 
 Frontend currently relies on TypeScript/Vite build verification and manual smoke

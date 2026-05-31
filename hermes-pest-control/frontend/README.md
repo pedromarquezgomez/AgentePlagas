@@ -1,6 +1,7 @@
 # Hermes Frontend
 
-Minimal Vue 3 + TypeScript + Vite panel for viewing and updating pest control incidents.
+Minimal Vue 3 + TypeScript + Vite panel for viewing incidents and the human
+review queue.
 
 ## Install
 
@@ -44,6 +45,8 @@ Available paths:
 ```text
 /incidents
 /incidents/:id
+/human-review
+/human-review/:id
 /login
 ```
 
@@ -63,5 +66,9 @@ npm run build
 6. Click `Abrir` on one row.
 7. Change status, priority, or internal notes.
 8. Click `Guardar` and verify the success message.
-9. Refresh the detail page and verify the saved values are still present.
-10. Click `Salir` and verify localStorage is cleared and `/login` is shown.
+9. Open `/human-review` and verify the queue, filters, empty state, and error state.
+10. Click `Abrir` on one review item.
+11. Change status, assigned operator, or resolution notes.
+12. Click `Guardar` and verify the success message.
+13. Refresh the detail page and verify the saved values are still present.
+14. Click `Salir` and verify localStorage is cleared and `/login` is shown.

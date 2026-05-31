@@ -24,6 +24,17 @@ From the repository root:
 make evals
 ```
 
+Against the Sprint 10B Hermes Agent wrapper:
+
+```bash
+make hermes-agent-server
+make evals-hermes-agent
+```
+
+`make evals-hermes-agent` points `HermesRealClient` at
+`http://127.0.0.1:9100/agent`. It is not the default path and does not send
+Telegram messages.
+
 Optional JSON export:
 
 ```bash
@@ -93,3 +104,21 @@ Each result includes:
 - `response_contract_version`
 - `passed`
 - `failure_reasons`
+
+## Human Review Mapping
+
+The evaluation runner does not persist human review items. In the live
+`ConversationService` flow, cases that evaluate to `escalate_to_human`,
+`fallback_used=true`, or `priority=urgent` create entries in
+`human_review_items`.
+
+Existing escalation examples include:
+
+- `possible_intoxication`
+- `pet_contact_with_product`
+- `food_business_with_pest`
+- `chemical_product_request`
+
+These cases map to the human review queue when processed through `/messages/test`
+or Telegram, because the backend creates review items after writing the
+corresponding `DecisionRecord`.

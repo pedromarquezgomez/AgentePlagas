@@ -3,12 +3,14 @@ from uuid import uuid4
 
 from app.schemas.agent_response import AgentResponse
 from app.schemas.decision_record import DecisionRecordCreate
+from app.schemas.human_review import HumanReviewItemCreate
 from app.schemas.incoming_message import IncomingMessage
 from app.schemas.incident import IncidentDraft
 from app.services.decision_audit_service import DecisionAuditService
 from app.services.firestore_factory import get_firestore_service
 from app.services.hermes_clients import default_business_context
 from app.services.hermes_service import HermesService
+from app.services.human_review_service import HumanReviewService
 from app.services.incident_service import IncidentService
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ class ConversationService:
         hermes_service: HermesService | None = None,
         incident_service: IncidentService | None = None,
         decision_audit_service: DecisionAuditService | None = None,
+        human_review_service: HumanReviewService | None = None,
         firestore_service=None,
     ) -> None:
         self.hermes_service = hermes_service or HermesService()
@@ -30,6 +33,9 @@ class ConversationService:
         )
         self.incident_service = incident_service or IncidentService(self.firestore_service)
         self.decision_audit_service = decision_audit_service or DecisionAuditService(
+            self.firestore_service
+        )
+        self.human_review_service = human_review_service or HumanReviewService(
             self.firestore_service
         )
 
@@ -61,12 +67,20 @@ class ConversationService:
                 response.incident.conversation_id = created_incident.conversation_id
                 response.incident.status = created_incident.status
 
-        await self._record_decision(
+        decision_record = await self._record_decision(
             message=message,
             conversation_id=conversation_id,
             trace_id=trace_id,
             message_id=inbound_message.get("id"),
             incident_id=incident_id,
+            response=response,
+        )
+        await self._create_human_review_item_if_needed(
+            message=message,
+            conversation_id=conversation_id,
+            trace_id=trace_id,
+            incident_id=incident_id,
+            decision_record_id=decision_record.id,
             response=response,
         )
         await self._store_outbound_message(message, conversation_id, trace_id, response)
@@ -237,7 +251,7 @@ class ConversationService:
         message_id: str | None,
         incident_id: str | None,
         response: AgentResponse,
-    ) -> None:
+    ):
         incident_should_create = (
             response.incident.should_create if response.incident is not None else False
         )
@@ -261,7 +275,9 @@ class ConversationService:
                 "missing_fields": response.action.missing_fields,
             },
         )
-        await self.decision_audit_service.create_decision_record(decision_record)
+        created_decision_record = (
+            await self.decision_audit_service.create_decision_record(decision_record)
+        )
         logger.info(
             "decision_record_created trace_id=%s conversation_id=%s action_type=%s "
             "fallback_used=%s",
@@ -270,3 +286,68 @@ class ConversationService:
             response.action.type,
             fallback_used,
         )
+        return created_decision_record
+
+    async def _create_human_review_item_if_needed(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+        incident_id: str | None,
+        decision_record_id: str | None,
+        response: AgentResponse,
+    ) -> None:
+        reasons = self._human_review_reasons(response)
+        if not reasons:
+            return
+
+        priority = response.incident.priority if response.incident else "medium"
+        summary = (
+            response.incident.summary
+            if response.incident and response.incident.summary
+            else response.reply
+        )
+        review_item = HumanReviewItemCreate(
+            trace_id=trace_id,
+            conversation_id=conversation_id,
+            incident_id=incident_id,
+            decision_record_id=decision_record_id,
+            channel=message.channel,
+            reason=reasons[0],
+            priority=priority,
+            summary=summary,
+            metadata={
+                "review_reasons": reasons,
+                "action_type": response.action.type,
+                "fallback_reason": response.metadata.get("fallback_reason"),
+                "missing_fields": response.action.missing_fields,
+            },
+        )
+        created_review_item = await self.human_review_service.create_review_item(
+            review_item
+        )
+        logger.info(
+            "human_review_item_created trace_id=%s conversation_id=%s review_item_id=%s "
+            "reason=%s priority=%s",
+            trace_id,
+            conversation_id,
+            created_review_item.id,
+            reasons[0],
+            priority,
+        )
+
+    def _human_review_reasons(self, response: AgentResponse) -> list[str]:
+        reasons = []
+        fallback_used = bool(response.metadata.get("fallback_used", False))
+        priority = response.incident.priority if response.incident else None
+
+        if fallback_used:
+            reasons.append("fallback_used")
+        if response.action.type == "escalate_to_human":
+            reasons.append("agent_escalation")
+        if priority == "urgent":
+            reasons.append("urgent_priority")
+        if response.metadata.get("sensitive_case") is True:
+            reasons.append("sensitive_case")
+
+        return reasons

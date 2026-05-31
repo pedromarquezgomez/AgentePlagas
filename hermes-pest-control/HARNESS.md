@@ -231,6 +231,24 @@ Current limitations:
 - real Hermes mode is wired but should not be used for production gating until
   the API contract is finalized.
 
+Real-mode spike:
+
+- `make fake-hermes` starts a local HTTP endpoint compatible with
+  `HermesRealClient`;
+- `make evals-real` can run the same evaluation runner with
+  `HERMES_MODE=real`;
+- the fake endpoint supports valid responses, invalid JSON, invalid
+  `AgentResponse`, HTTP error, and timeout simulations;
+- Telegram is not required and no channel messages are sent during these tests.
+
+Hermes Agent wrapper:
+
+- `make hermes-agent-server` starts the Sprint 10B wrapper on port `9100`;
+- the wrapper loads the pest-control skills from `hermes/skills`;
+- it exposes the same `POST /agent` contract consumed by `HermesRealClient`;
+- it validates all outputs as `AgentResponse`;
+- `make evals-hermes-agent` runs the evaluation harness against this wrapper.
+
 Next steps:
 
 - add multi-turn conversation cases;
@@ -239,6 +257,48 @@ Next steps:
 - add quality metrics over repeated runs;
 - add a curated Spanish pest-control dataset;
 - separate smoke cases from safety/regression gates if the suite grows.
+
+### Hermes Real Spike
+
+Implemented for Sprint 10A:
+
+- `HermesRealClient` sends the normalized `IncomingMessage`, conversation
+  history, business context, and response-contract marker to an HTTP endpoint;
+- responses are accepted only if they validate as `AgentResponse`;
+- invalid JSON, invalid contracts, HTTP errors, and timeouts raise controlled
+  client errors;
+- `HermesService` catches those errors and returns the existing safe fallback;
+- `backend/scripts/fake_hermes_server.py` provides a development-only compatible
+  endpoint for smoke testing real mode;
+- `/config/status` reports whether `HERMES_API_URL` and `HERMES_API_KEY` are
+  configured without exposing their values.
+
+Recommended integration shape:
+
+- keep Hermes behind an HTTP boundary;
+- keep `ConversationService` as the orchestrator;
+- keep channel adapters independent of Hermes mode;
+- use `/messages/test`, evals, and replay tooling before connecting a real agent
+  to Telegram traffic.
+
+The full spike note is in `backend/docs/HERMES_REAL_SPIKE.md`.
+
+### Hermes Agent Wrapper Integration
+
+Implemented for Sprint 10B:
+
+- `backend/scripts/hermes_agent_server.py` exposes `POST /agent`;
+- the wrapper loads the current domain, intake, lifecycle, contract,
+  escalation, and safety skills;
+- `HERMES_AGENT_MODE=local` provides a deterministic local adapter because no
+  standalone Hermes runtime is present in the repository yet;
+- free-text or fenced JSON output can be parsed, but only valid
+  `AgentResponse` is returned;
+- invalid output causes HTTP `502`, which makes `HermesRealClient` and
+  `HermesService` use the existing safe fallback;
+- the wrapper has no persistence or Telegram delivery permissions.
+
+The full integration note is in `backend/docs/HERMES_AGENT_INTEGRATION.md`.
 
 ### Decision Records
 
@@ -317,6 +377,7 @@ Backend owns:
 Humans currently own:
 
 - reviewing incidents in the panel;
+- reviewing escalated and fallback cases in the human review queue;
 - changing basic operational status;
 - adding internal notes.
 
@@ -380,15 +441,29 @@ Every decision should be attributable to the versions active at the time.
 
 ### Human Review Queue
 
-Formalize a queue for:
+Implemented:
+
+- `HumanReviewItem` and controlled update schema;
+- `HumanReviewService`;
+- `human_review_items` persistence collection;
+- `GET /human-review`;
+- `GET /human-review/{item_id}`;
+- `PATCH /human-review/{item_id}`;
+- panel routes `/human-review` and `/human-review/:id`.
+
+Items are created automatically for:
 
 - fallback incidents;
-- low-confidence cases;
+- agent escalation;
 - urgent cases;
-- cases missing required fields;
-- operator overrides.
+- sensitive cases marked in response metadata.
 
-The current panel is the first step, but it is not yet a full queue.
+Current limitations:
+
+- no user identity beyond optional `assigned_to`;
+- no SLA or reminder logic;
+- no audit history of status changes yet;
+- no dedicated metrics dashboard for review backlog.
 
 ### Tool Permissions
 
@@ -469,7 +544,7 @@ Remaining:
 
 ### Stage 3: Evaluation Harness
 
-Status: pending.
+Status: partially implemented.
 
 - conversation test dataset;
 - expected-output cases;

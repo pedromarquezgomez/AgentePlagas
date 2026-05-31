@@ -5,7 +5,7 @@ import pytest
 
 from app.config.settings import Settings
 from app.schemas.incoming_message import IncomingMessage
-from app.services.hermes_clients import HermesRealClient
+from app.services.hermes_clients import HermesClientError, HermesRealClient
 from app.services.hermes_service import HermesService
 
 
@@ -87,6 +87,67 @@ async def test_hermes_mode_real_returns_valid_agent_response_from_http_client() 
     assert response.action.type == "collect_missing_data"
     assert captured_payload["response_contract"] == "AgentResponse"
     assert captured_payload["business_context"]["domain"] == "pest_control"
+    assert captured_payload["message"]["channel"] == "telegram"
+
+
+@pytest.mark.asyncio
+async def test_hermes_real_client_invalid_json_raises_controlled_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not-json")
+
+    settings = Settings(
+        hermes_mode="real",
+        hermes_api_url="https://hermes-agent.test/process",
+    )
+    client = HermesRealClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(HermesClientError, match="invalid JSON"):
+        await client.process_message(_incoming_message("Tengo cucarachas"))
+
+
+@pytest.mark.asyncio
+async def test_hermes_real_client_invalid_agent_response_raises_controlled_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"reply": "missing action"})
+
+    settings = Settings(
+        hermes_mode="real",
+        hermes_api_url="https://hermes-agent.test/process",
+    )
+    client = HermesRealClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(HermesClientError, match="response contract"):
+        await client.process_message(_incoming_message("Tengo cucarachas"))
+
+
+@pytest.mark.asyncio
+async def test_hermes_real_client_timeout_raises_controlled_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.TimeoutException("timeout", request=request)
+
+    settings = Settings(
+        hermes_mode="real",
+        hermes_api_url="https://hermes-agent.test/process",
+    )
+    client = HermesRealClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(HermesClientError, match="timed out"):
+        await client.process_message(_incoming_message("Tengo cucarachas"))
+
+
+@pytest.mark.asyncio
+async def test_hermes_real_client_http_error_raises_controlled_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "boom"})
+
+    settings = Settings(
+        hermes_mode="real",
+        hermes_api_url="https://hermes-agent.test/process",
+    )
+    client = HermesRealClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(HermesClientError, match="HTTP 500"):
+        await client.process_message(_incoming_message("Tengo cucarachas"))
 
 
 @pytest.mark.asyncio
@@ -126,3 +187,23 @@ async def test_hermes_mode_real_timeout_uses_safe_fallback() -> None:
 
     assert response.action.type == "escalate_to_human"
     assert response.reply.startswith("Ahora mismo no he podido procesar")
+
+
+@pytest.mark.asyncio
+async def test_hermes_mode_real_http_error_uses_safe_fallback() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502, json={"detail": "Agent output invalid."})
+
+    settings = Settings(
+        hermes_mode="real",
+        hermes_api_url="https://hermes-agent.test/process",
+    )
+    client = HermesRealClient(settings, transport=httpx.MockTransport(handler))
+    service = HermesService(settings, client=client)
+
+    response = await service.process_message(_incoming_message("Tengo cucarachas"))
+
+    assert response.action.type == "escalate_to_human"
+    assert response.incident is not None
+    assert response.incident.should_create is True
+    assert response.metadata["fallback_used"] is True

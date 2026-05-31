@@ -3,7 +3,15 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import audit, config_status, health, incidents, messages_test, telegram
+from app.routes import (
+    audit,
+    config_status,
+    health,
+    human_review,
+    incidents,
+    messages_test,
+    telegram,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,6 +38,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(config_status.router)
 app.include_router(audit.router)
+app.include_router(human_review.router)
 app.include_router(incidents.router)
 app.include_router(messages_test.router)
 app.include_router(telegram.router)

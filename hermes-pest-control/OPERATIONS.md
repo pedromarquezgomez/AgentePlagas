@@ -114,9 +114,15 @@ Example:
 {
   "app_env": "development",
   "hermes_mode": "mock",
+  "hermes_api_url_configured": false,
+  "hermes_api_key_configured": false,
+  "hermes_agent_mode": "local",
+  "hermes_skills_dir_configured": true,
   "telegram_configured": true,
   "firestore_mode": "mock",
   "firebase_project_id_configured": false,
+  "firebase_credentials_configured": false,
+  "firestore_emulator_enabled": false,
   "admin_auth_required": false,
   "admin_api_key_configured": false
 }
@@ -154,6 +160,9 @@ Protected endpoints:
 - `PATCH /incidents/{incident_id}`
 - `GET /audit/decisions`
 - `GET /audit/decisions/{decision_id}`
+- `GET /human-review`
+- `GET /human-review/{item_id}`
+- `PATCH /human-review/{item_id}`
 
 Public endpoints:
 
@@ -276,6 +285,70 @@ Decision records include traceability fields such as `trace_id`, `hermes_mode`,
 `response_contract_version`. They do not include Telegram tokens, Hermes API
 keys, Firebase credentials, or full request headers.
 
+## Human Review Queue
+
+Every message processed through `ConversationService` can create a human review
+item after the decision record is persisted.
+
+Items are created when:
+
+- `action.type=escalate_to_human`;
+- `fallback_used=true`;
+- incident priority is `urgent`;
+- response metadata marks `sensitive_case=true`.
+
+List review items:
+
+```bash
+curl http://127.0.0.1:8000/human-review \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Filter by status or priority:
+
+```bash
+curl "http://127.0.0.1:8000/human-review?status=open&priority=urgent" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Get one item:
+
+```bash
+curl http://127.0.0.1:8000/human-review/<item_id> \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Resolve or dismiss an item:
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/human-review/<item_id> \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>" \
+  -d '{
+    "status": "resolved",
+    "assigned_to": "operador",
+    "resolution_notes": "Caso revisado y resuelto por teléfono."
+  }'
+```
+
+PATCH only accepts:
+
+- `status`;
+- `assigned_to`;
+- `resolution_notes`.
+
+Allowed statuses:
+
+```text
+open
+in_review
+resolved
+dismissed
+```
+
+When status is `resolved` or `dismissed`, the backend sets `resolved_at`
+automatically.
+
 ## Incidents API
 
 List incidents:
@@ -383,6 +456,21 @@ Open one incident detail:
 http://127.0.0.1:5173/incidents/<incident_id>
 ```
 
+Open the human review queue:
+
+```text
+http://127.0.0.1:5173/human-review
+```
+
+Open one human review detail:
+
+```text
+http://127.0.0.1:5173/human-review/<item_id>
+```
+
+The review screen supports filters by status and priority. The detail screen
+allows the operator to change status, assign the item, and save resolution notes.
+
 If the backend has no incidents, the panel shows an empty state. If the backend
 is unavailable, it shows an error state.
 
@@ -441,6 +529,136 @@ uses the HTTP client prepared in `HermesRealClient`. If the real service fails,
 times out, returns invalid JSON, or violates `AgentResponse`, Hermes falls back
 to `escalate_to_human`.
 
+## Hermes Real Spike
+
+Sprint 10A adds a controlled development spike for real-mode Hermes without
+connecting Telegram to a production agent by default.
+
+The technical notes live in:
+
+```text
+backend/docs/HERMES_REAL_SPIKE.md
+```
+
+Start the fake compatible Hermes endpoint:
+
+```bash
+make fake-hermes
+```
+
+It listens on:
+
+```text
+http://127.0.0.1:9000/agent
+```
+
+In another terminal, start the backend in real Hermes mode:
+
+```bash
+cd backend
+source .venv/bin/activate
+HERMES_MODE=real \
+HERMES_API_URL=http://127.0.0.1:9000/agent \
+uvicorn app.main:app --reload
+```
+
+Then run the normalized message smoke test:
+
+```bash
+curl -X POST http://127.0.0.1:8000/messages/test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "telegram",
+    "external_user_id": "fake-hermes-user",
+    "external_chat_id": "fake-hermes-chat",
+    "message_type": "text",
+    "text": "Tengo cucarachas en la cocina en Torremolinos desde hace una semana",
+    "attachments": [],
+    "metadata": {}
+  }'
+```
+
+Expected result:
+
+- `HermesRealClient` sends a POST request to the fake endpoint.
+- The fake endpoint returns a valid `AgentResponse`.
+- `/messages/test` returns `action.type=create_incident`.
+- A decision record is created with `hermes_mode=real`.
+
+The fake endpoint also supports controlled failure cases by including these
+tokens in the message text:
+
+- `fake_invalid_json`
+- `fake_invalid_contract`
+- `fake_error`
+- `fake_timeout`
+
+Those cases should use the safe `escalate_to_human` fallback.
+
+Run the evaluation suite against real mode only when a compatible Hermes endpoint
+is configured:
+
+```bash
+HERMES_MODE=real HERMES_API_URL=http://127.0.0.1:9000/agent make evals-real
+```
+
+The default evaluation command remains mock mode:
+
+```bash
+make evals
+```
+
+## Hermes Agent Wrapper
+
+Sprint 10B adds a first Hermes Agent wrapper around the same HTTP contract:
+
+```text
+POST /agent -> AgentResponse
+```
+
+The detailed integration note is:
+
+```text
+backend/docs/HERMES_AGENT_INTEGRATION.md
+```
+
+Start the wrapper:
+
+```bash
+make hermes-agent-server
+```
+
+Default wrapper settings:
+
+```bash
+HERMES_AGENT_SERVER_PORT=9100
+HERMES_SKILLS_DIR=../hermes/skills
+HERMES_AGENT_MODE=local
+```
+
+The wrapper loads the relevant Markdown skills and validates every output as
+`AgentResponse`. In the current repository there is no standalone Hermes runtime
+or SDK, so `HERMES_AGENT_MODE=local` is a deterministic local adapter that
+exercises the same HTTP boundary safely.
+
+Run evaluations against the wrapper:
+
+```bash
+make evals-hermes-agent
+```
+
+Equivalent explicit command:
+
+```bash
+HERMES_MODE=real \
+HERMES_API_URL=http://127.0.0.1:9100/agent \
+make evals-real
+```
+
+This does not send Telegram messages. The wrapper cannot write directly to
+Firestore; only the main backend can persist incidents and decision records
+through `ConversationService`.
+
 ## Firestore Mode
 
 Mock persistence is used when:
@@ -466,6 +684,97 @@ FIREBASE_CREDENTIALS_JSON='{"type":"service_account", "...":"..."}'
 USE_FIRESTORE_EMULATOR=true
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 ```
+
+Production behavior:
+
+```bash
+APP_ENV=production
+```
+
+In production the backend must not silently fall back to mock persistence. If no
+Firestore credentials or emulator configuration are present, startup/checks fail
+with a clear configuration error.
+
+## Firestore Real Setup
+
+1. Create a Firebase project in Firebase Console.
+2. Enable Firestore.
+3. Open Project settings > Service accounts.
+4. Generate a service account key.
+5. Store the JSON outside this repository.
+6. Configure `backend/.env`.
+
+Using a local JSON key:
+
+```bash
+APP_ENV=development
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CREDENTIALS_PATH=/absolute/path/outside/repo/firebase-service-account.json
+```
+
+Using an environment JSON value:
+
+```bash
+APP_ENV=development
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CREDENTIALS_JSON='{"type":"service_account", "...":"..."}'
+```
+
+Run the safe Firestore check:
+
+```bash
+make firestore-check
+```
+
+The check prints only safe mode/configuration booleans. It never prints
+credential file contents, credential JSON, private keys, or tokens.
+
+In mock mode, `make firestore-check` validates the mock persistence path. In real
+mode, it creates, reads, updates, and reads a document in:
+
+```text
+system_checks
+```
+
+Application collections:
+
+```text
+conversations
+messages
+incidents
+decision_records
+human_review_items
+system_checks
+```
+
+With backend using real Firestore, smoke test persistence with:
+
+```bash
+curl -X POST http://127.0.0.1:8000/messages/test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "telegram",
+    "external_user_id": "firestore-real-smoke",
+    "external_chat_id": "firestore-real-smoke-chat",
+    "message_type": "text",
+    "text": "Tengo cucarachas en la cocina en Torremolinos desde hace una semana",
+    "attachments": [],
+    "metadata": {}
+  }'
+
+curl http://127.0.0.1:8000/incidents \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+
+curl http://127.0.0.1:8000/audit/decisions \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+
+curl http://127.0.0.1:8000/human-review \
+  -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Then confirm documents appear in Firebase Console under `conversations`,
+`messages`, `incidents`, `decision_records`, and `human_review_items` when the
+message requires human review.
 
 Never commit service account JSON files.
 
@@ -498,6 +807,12 @@ From project root:
 make dev
 make test
 make smoke
+make evals
+make evals-real
+make evals-hermes-agent
+make fake-hermes
+make hermes-agent-server
+make firestore-check
 make set-telegram-webhook
 make telegram-webhook-info
 make frontend-install
@@ -521,6 +836,8 @@ Hermes:
 ```text
 hermes_request_started hermes_mode=mock
 hermes_request_completed hermes_mode=mock action_type=create_incident
+hermes_request_started hermes_mode=real
+hermes_request_completed hermes_mode=real action_type=create_incident
 ```
 
 Fallback:

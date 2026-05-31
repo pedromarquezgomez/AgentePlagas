@@ -1,0 +1,91 @@
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.config.settings import Settings
+from scripts import hermes_agent_server
+
+
+def _payload(text: str) -> dict:
+    return {
+        "message": {
+            "channel": "telegram",
+            "external_user_id": "agent-test-user",
+            "external_chat_id": "agent-test-chat",
+            "message_type": "text",
+            "text": text,
+            "attachments": [],
+            "metadata": {},
+        },
+        "conversation_history": [],
+        "business_context": {"domain": "pest_control"},
+        "response_contract": "AgentResponse",
+    }
+
+
+def test_load_skills_prompt_uses_required_skill_files() -> None:
+    skills_dir = Path(__file__).resolve().parents[2] / "hermes" / "skills"
+
+    prompt = hermes_agent_server.load_skills_prompt(str(skills_dir))
+
+    assert "02 Pest Control Domain" in prompt
+    assert "05 Agent Response Contract" in prompt
+    assert "08 Safety And Compliance" in prompt
+
+
+def test_extract_json_object_from_fenced_agent_text() -> None:
+    raw_output = """
+    Claro. La salida estructurada es:
+
+    ```json
+    {
+      "reply": "Necesito la localidad.",
+      "action": {"type": "collect_missing_data", "missing_fields": ["location"]},
+      "incident": {"should_create": false}
+    }
+    ```
+    """
+
+    response = hermes_agent_server.parse_agent_output(raw_output)
+
+    assert response.action.type == "collect_missing_data"
+    assert response.action.missing_fields == ["location"]
+
+
+def test_process_agent_request_returns_valid_agent_response() -> None:
+    skills_dir = Path(__file__).resolve().parents[2] / "hermes" / "skills"
+    settings = Settings(hermes_agent_mode="local", hermes_skills_dir=str(skills_dir))
+
+    response = hermes_agent_server.process_agent_request(
+        _payload("Tengo cucarachas en la cocina en Torremolinos"),
+        settings,
+    )
+
+    assert response.action.type == "create_incident"
+    assert response.incident is not None
+    assert response.incident.should_create is True
+    assert response.incident.location == "Torremolinos"
+
+
+def test_process_agent_request_rejects_wrong_response_contract() -> None:
+    with pytest.raises(hermes_agent_server.HermesAgentServerError):
+        hermes_agent_server.process_agent_request(
+            {
+                **_payload("Tengo cucarachas"),
+                "response_contract": "OtherContract",
+            }
+        )
+
+
+def test_agent_endpoint_returns_502_for_invalid_runtime_output(monkeypatch) -> None:
+    def invalid_agent_output(*_args, **_kwargs) -> str:
+        return "no structured json here"
+
+    monkeypatch.setattr(hermes_agent_server, "run_agent", invalid_agent_output)
+    client = TestClient(hermes_agent_server.app)
+
+    response = client.post("/agent", json=_payload("Tengo cucarachas"))
+
+    assert response.status_code == 502
+    assert "valid JSON" in response.json()["detail"]

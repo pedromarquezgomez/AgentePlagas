@@ -11,15 +11,29 @@ For system boundaries and technical architecture, see
 [ARCHITECTURE.md](./ARCHITECTURE.md). For the Hermes agent harness definition
 and roadmap, including offline evaluations, see [HARNESS.md](./HARNESS.md).
 
-The first operations panel lives in [frontend](./frontend). It shows generated
-incidents at `/incidents` and supports basic status, priority, and internal
-notes updates from `/incidents/:id`.
+The operations panel lives in [frontend](./frontend). It shows generated
+incidents at `/incidents`, supports basic incident updates from `/incidents/:id`,
+and exposes the human review queue at `/human-review`.
 
 Offline Hermes evaluation cases live in [backend/evals](./backend/evals) and can
 be run with `make evals`.
 
+The first controlled real-mode Hermes spike is documented in
+[backend/docs/HERMES_REAL_SPIKE.md](./backend/docs/HERMES_REAL_SPIKE.md). It
+uses a local fake Hermes HTTP endpoint so `HERMES_MODE=real` can be tested
+without Telegram or a production agent.
+
+The first Hermes Agent wrapper integration is documented in
+[backend/docs/HERMES_AGENT_INTEGRATION.md](./backend/docs/HERMES_AGENT_INTEGRATION.md).
+It exposes `POST /agent` on port `9100`, loads the project skills, and returns
+validated `AgentResponse` JSON for `HermesRealClient`.
+
 Decision audit records are exposed through `GET /audit/decisions` and documented
 in [HARNESS.md](./HARNESS.md).
+
+Human review items are created automatically when Hermes escalates to a human,
+when safe fallback is used, or when a decision has urgent priority. They are
+available through `GET /human-review` and the panel route `/human-review`.
 
 The operations panel and operational API endpoints support a basic admin API key
 guard. Set `REQUIRE_ADMIN_AUTH=true` and `ADMIN_API_KEY` in `backend/.env`, then
@@ -148,6 +162,7 @@ The test suite covers:
 - Conversation ID generation.
 - Incident creation from an `IncidentDraft`.
 - Safe fallback behavior when Hermes returns an invalid response.
+- Human review queue creation for escalation, fallback, and urgent cases.
 
 ## Firebase / Firestore Setup
 
@@ -196,6 +211,29 @@ APP_ENV=test
 python -m pytest
 ```
 
+Verify the active persistence mode:
+
+```bash
+make firestore-check
+```
+
+The command uses `MockFirestoreService` when no development credentials are
+configured, and uses real Firestore when `FIREBASE_CREDENTIALS_PATH`,
+`FIREBASE_CREDENTIALS_JSON`, or the emulator is configured. In production,
+missing Firestore credentials fail clearly instead of silently falling back to
+mock.
+
+Runtime collections:
+
+```text
+conversations
+messages
+incidents
+decision_records
+human_review_items
+system_checks
+```
+
 Never commit Firebase credential JSON files. The repository ignores `.env`,
 `.env.*`, `*.json`, `firebase-service-account.json`, and `serviceAccountKey.json`.
 If a JSON example is ever needed, name it with `.example.json`.
@@ -219,6 +257,9 @@ HERMES_MODE=mock
 HERMES_API_URL=
 HERMES_API_KEY=
 HERMES_TIMEOUT_SECONDS=30
+HERMES_AGENT_SERVER_PORT=9100
+HERMES_SKILLS_DIR=../hermes/skills
+HERMES_AGENT_MODE=local
 ```
 
 Recommended request payload sent to Hermes Agent in real mode:
@@ -274,6 +315,38 @@ message text.
 Telegram works independently of Hermes mode: the same `/webhooks/telegram` route
 and `TelegramAdapter` are used whether Hermes is mocked or real.
 
+For the Sprint 10A real-mode spike, run the compatible fake endpoint:
+
+```bash
+make fake-hermes
+```
+
+Then start the backend with:
+
+```bash
+HERMES_MODE=real
+HERMES_API_URL=http://127.0.0.1:9000/agent
+```
+
+Use `/messages/test` to verify the HTTP boundary without sending Telegram
+messages. The default `make evals` command remains mock mode. Use
+`make evals-real` only when a compatible Hermes endpoint is configured.
+
+For the Sprint 10B Hermes Agent wrapper, run:
+
+```bash
+make hermes-agent-server
+```
+
+Then, in another terminal:
+
+```bash
+make evals-hermes-agent
+```
+
+This points `HermesRealClient` at `http://127.0.0.1:9100/agent`. It does not send
+Telegram messages and does not allow the wrapper to write directly to Firestore.
+
 ## Telegram Setup
 
 Telegram is integrated as a channel adapter. `TelegramAdapter` normalizes Telegram
@@ -315,7 +388,7 @@ uvicorn app.main:app --reload
 Expose local port `8000` with ngrok:
 
 ```bash
-ngrok http 8000
+ngrok http http://127.0.0.1:8000
 ```
 
 Or with Cloudflare Tunnel:

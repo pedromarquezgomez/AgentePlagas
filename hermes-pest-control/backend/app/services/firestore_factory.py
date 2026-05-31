@@ -5,6 +5,10 @@ from app.services.mock_firestore_service import MockFirestoreService
 _mock_firestore_service: MockFirestoreService | None = None
 
 
+class FirestoreConfigurationError(RuntimeError):
+    pass
+
+
 def get_firestore_service(
     settings: Settings | None = None,
 ) -> FirestoreService | MockFirestoreService:
@@ -13,20 +17,32 @@ def get_firestore_service(
     if current_settings.app_env == "test":
         return _get_mock_firestore_service()
 
-    has_explicit_firestore_config = any(
-        [
-            current_settings.use_firestore_emulator,
-            current_settings.firebase_credentials_path,
-            current_settings.firebase_credentials_json,
-        ]
-    )
-    if has_explicit_firestore_config:
+    if has_firestore_real_config(current_settings):
         return FirestoreService(current_settings)
 
     if current_settings.app_env == "development":
         return _get_mock_firestore_service()
 
+    if current_settings.app_env == "production":
+        raise FirestoreConfigurationError(
+            "Firestore credentials are required when APP_ENV=production. "
+            "Set FIREBASE_CREDENTIALS_PATH, FIREBASE_CREDENTIALS_JSON, or "
+            "USE_FIRESTORE_EMULATOR=true for non-production verification."
+        )
+
     return FirestoreService(current_settings)
+
+
+def has_firestore_real_config(settings: Settings) -> bool:
+    return bool(
+        settings.use_firestore_emulator
+        or settings.firebase_credentials_path
+        or settings.firebase_credentials_json
+    )
+
+
+def has_firestore_credentials(settings: Settings) -> bool:
+    return bool(settings.firebase_credentials_path or settings.firebase_credentials_json)
 
 
 def _get_mock_firestore_service() -> MockFirestoreService:

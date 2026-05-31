@@ -12,9 +12,11 @@ export const INCIDENT_STATUSES = [
 ] as const
 
 export const INCIDENT_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
+export const HUMAN_REVIEW_STATUSES = ['open', 'in_review', 'resolved', 'dismissed'] as const
 
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
 export type IncidentPriority = (typeof INCIDENT_PRIORITIES)[number]
+export type HumanReviewStatus = (typeof HUMAN_REVIEW_STATUSES)[number]
 
 export interface Incident {
   id: string
@@ -68,6 +70,37 @@ export interface DecisionRecordFilters {
   action_type?: string
   fallback_used?: boolean
   limit?: number
+}
+
+export interface HumanReviewItem {
+  id: string
+  trace_id: string
+  conversation_id: string
+  incident_id?: string | null
+  decision_record_id?: string | null
+  channel: string
+  reason: string
+  priority: IncidentPriority | string
+  status: HumanReviewStatus | string
+  summary?: string | null
+  created_at?: string
+  updated_at?: string
+  resolved_at?: string | null
+  assigned_to?: string | null
+  resolution_notes?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface HumanReviewFilters {
+  status?: string
+  priority?: string
+  limit?: number
+}
+
+export interface HumanReviewUpdate {
+  status?: HumanReviewStatus
+  assigned_to?: string | null
+  resolution_notes?: string | null
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
@@ -174,4 +207,50 @@ export async function fetchDecisionRecords(
   })
 
   return parseApiResponse<DecisionRecord[]>(response, 'No se pudo cargar la auditoría')
+}
+
+export async function fetchHumanReviewItems(
+  filters: HumanReviewFilters = {},
+): Promise<HumanReviewItem[]> {
+  const params = new URLSearchParams()
+  if (filters.status) params.set('status', filters.status)
+  if (filters.priority) params.set('priority', filters.priority)
+  if (filters.limit) params.set('limit', String(filters.limit))
+
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/human-review${query ? `?${query}` : ''}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<HumanReviewItem[]>(
+    response,
+    'No se pudo cargar la cola de revisión',
+  )
+}
+
+export async function fetchHumanReviewItem(itemId: string): Promise<HumanReviewItem> {
+  const response = await fetch(`${API_BASE_URL}/human-review/${encodeURIComponent(itemId)}`, {
+    headers: buildHeaders(),
+  })
+
+  return parseApiResponse<HumanReviewItem>(
+    response,
+    'No se pudo cargar el elemento de revisión',
+  )
+}
+
+export async function updateHumanReviewItem(
+  itemId: string,
+  update: HumanReviewUpdate,
+): Promise<HumanReviewItem> {
+  const response = await fetch(`${API_BASE_URL}/human-review/${encodeURIComponent(itemId)}`, {
+    method: 'PATCH',
+    headers: buildHeaders(true),
+    body: JSON.stringify(update),
+  })
+
+  return parseApiResponse<HumanReviewItem>(
+    response,
+    'No se pudo guardar el elemento de revisión',
+  )
 }
