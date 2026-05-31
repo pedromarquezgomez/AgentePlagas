@@ -28,6 +28,11 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "google_calendar_credentials_json",
         "secret-google-json",
     )
+    monkeypatch.setattr(config_status_route.settings, "whatsapp_enabled", True)
+    monkeypatch.setattr(config_status_route.settings, "whatsapp_provider", "meta")
+    monkeypatch.setattr(config_status_route.settings, "whatsapp_access_token", "secret-whatsapp-token")
+    monkeypatch.setattr(config_status_route.settings, "whatsapp_phone_number_id", "secret-phone-id")
+    monkeypatch.setattr(config_status_route.settings, "whatsapp_verify_token", "secret-verify-token")
 
     response = client.get("/config/status")
 
@@ -50,6 +55,11 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "google_calendar_enabled": True,
         "google_calendar_id_configured": True,
         "google_calendar_credentials_configured": True,
+        "whatsapp_enabled": True,
+        "whatsapp_provider": "meta",
+        "whatsapp_access_token_configured": True,
+        "whatsapp_phone_number_id_configured": True,
+        "whatsapp_verify_token_configured": True,
     }
     assert "telegram_bot_token" not in body
     assert "hermes_api_key" not in body
@@ -61,6 +71,9 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     assert "secret-json" not in response.text
     assert "secret-calendar-id" not in response.text
     assert "secret-google-json" not in response.text
+    assert "secret-whatsapp-token" not in response.text
+    assert "secret-phone-id" not in response.text
+    assert "secret-verify-token" not in response.text
 
 
 def test_config_status_reports_mock_firestore_in_test(monkeypatch) -> None:

@@ -31,6 +31,11 @@ async def config_status() -> dict[str, bool | str]:
             settings.google_calendar_credentials_path
             or settings.google_calendar_credentials_json
         ),
+        "whatsapp_enabled": settings.whatsapp_enabled,
+        "whatsapp_provider": settings.whatsapp_provider,
+        "whatsapp_access_token_configured": bool(settings.whatsapp_access_token),
+        "whatsapp_phone_number_id_configured": bool(settings.whatsapp_phone_number_id),
+        "whatsapp_verify_token_configured": bool(settings.whatsapp_verify_token),
     }
 
 

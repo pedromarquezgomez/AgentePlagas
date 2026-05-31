@@ -25,13 +25,19 @@ Implemented:
 
 - `BaseChannelAdapter`
 - `TelegramAdapter`
-- placeholder adapters for WhatsApp, webchat, and email
+- `WhatsAppAdapter`
+- placeholder adapters for webchat and email
 
 Role in the harness:
 
 - normalize external channel payloads;
 - hide transport-specific details;
 - send responses without business decisions.
+
+WhatsApp is treated as a second channel, not a separate business flow. Its
+adapter maps Meta webhook payloads into `IncomingMessage`, while
+`ConversationService`, Hermes validation, incident creation, decision records,
+and human review behavior stay shared with Telegram.
 
 ### Message Contracts
 
@@ -122,6 +128,7 @@ Role in the harness:
 Implemented:
 
 - Telegram webhook lifecycle logs;
+- WhatsApp webhook lifecycle logs;
 - normalized message metadata logs without full customer text;
 - Hermes request/fallback logs;
 - `/config/status` safe configuration endpoint;
@@ -142,6 +149,7 @@ Implemented:
 - schema tests;
 - service tests;
 - Telegram adapter/webhook tests;
+- WhatsApp adapter/webhook tests;
 - Hermes mode/fallback tests;
 - incident management tests.
 
@@ -549,6 +557,7 @@ Status: mostly implemented.
 Status: partially implemented.
 
 - real Telegram;
+- optional WhatsApp sandbox/Meta adapter;
 - persisted conversations/messages/incidents;
 - config status;
 - operational panel;

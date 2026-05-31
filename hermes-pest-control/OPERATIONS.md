@@ -1,7 +1,7 @@
 # Operations
 
-Operational runbook for local development, Telegram E2E testing, configuration
-diagnostics, and safe mode switching.
+Operational runbook for local development, Telegram and WhatsApp channel
+testing, configuration diagnostics, and safe mode switching.
 
 ## Local Backend
 
@@ -86,6 +86,73 @@ curl http://127.0.0.1:8000/telegram/webhook-info
 If ngrok restarts with a different URL, update `TELEGRAM_WEBHOOK_URL` and run
 `set_telegram_webhook.py` again.
 
+## WhatsApp Webhook
+
+WhatsApp is optional and disabled by default. It uses the same normalized
+message flow as Telegram:
+
+```text
+Meta WhatsApp payload -> WhatsAppAdapter -> ConversationService -> HermesService
+```
+
+Local sandbox mode does not call Meta:
+
+```bash
+WHATSAPP_ENABLED=true
+WHATSAPP_PROVIDER=mock
+```
+
+Run the backend, then execute:
+
+```bash
+cd backend
+source .venv/bin/activate
+scripts/smoke_whatsapp_payload.sh
+```
+
+The script posts a simulated WhatsApp Cloud API payload to
+`POST /webhooks/whatsapp`. In mock provider mode, outbound sending is simulated
+and no WhatsApp token is required. The expected result is:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+For Meta WhatsApp Cloud API, configure:
+
+```bash
+WHATSAPP_ENABLED=true
+WHATSAPP_PROVIDER=meta
+WHATSAPP_VERIFY_TOKEN=choose-a-webhook-verify-token
+WHATSAPP_ACCESS_TOKEN=<meta-access-token>
+WHATSAPP_PHONE_NUMBER_ID=<phone-number-id>
+WHATSAPP_WEBHOOK_SECRET=
+WHATSAPP_GRAPH_API_VERSION=v20.0
+```
+
+Meta webhook verification uses:
+
+```text
+GET /webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=<token>&hub.challenge=<challenge>
+```
+
+Inbound messages use:
+
+```text
+POST /webhooks/whatsapp
+```
+
+If `WHATSAPP_WEBHOOK_SECRET` is configured, requests must include:
+
+```text
+X-Whatsapp-Webhook-Secret: <WHATSAPP_WEBHOOK_SECRET>
+```
+
+Do not commit access tokens or service credentials. `/config/status` only
+reports whether WhatsApp values are configured.
+
 ## Health Check
 
 Local:
@@ -124,7 +191,12 @@ Example:
   "firebase_credentials_configured": false,
   "firestore_emulator_enabled": false,
   "admin_auth_required": false,
-  "admin_api_key_configured": false
+  "admin_api_key_configured": false,
+  "whatsapp_enabled": false,
+  "whatsapp_provider": "meta",
+  "whatsapp_access_token_configured": false,
+  "whatsapp_phone_number_id_configured": false,
+  "whatsapp_verify_token_configured": false
 }
 ```
 
@@ -186,6 +258,8 @@ Public endpoints:
 - `GET /health`
 - `GET /config/status`
 - `POST /webhooks/telegram`
+- `GET /webhooks/whatsapp`
+- `POST /webhooks/whatsapp`
 
 `POST /messages/test` remains open for development. Disable or protect it before
 production exposure.
@@ -1108,6 +1182,15 @@ ConversationService completed channel=telegram external_user_id=... conversation
 Telegram response sent channel=telegram external_user_id=... conversation_id=telegram:...
 ```
 
+WhatsApp webhook:
+
+```text
+WhatsApp webhook received
+IncomingMessage normalized channel=whatsapp external_user_id=... conversation_id=whatsapp:...
+ConversationService completed channel=whatsapp external_user_id=... conversation_id=whatsapp:... action_type=create_incident incident_should_create=True
+WhatsApp response sent channel=whatsapp external_user_id=... conversation_id=whatsapp:...
+```
+
 Hermes:
 
 ```text
@@ -1124,8 +1207,8 @@ hermes_response_invalid hermes_mode=real
 hermes_fallback_used hermes_mode=real
 ```
 
-Logs must not contain Telegram tokens, Hermes API keys, Firebase credentials,
-full headers, or unnecessary customer text.
+Logs must not contain Telegram tokens, WhatsApp access tokens, Hermes API keys,
+Firebase credentials, full headers, or unnecessary customer text.
 
 ## Common Diagnostics
 

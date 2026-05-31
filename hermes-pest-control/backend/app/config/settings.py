@@ -21,10 +21,19 @@ class Settings(BaseSettings):
     hermes_agent_mode: str = "local"
     admin_api_key: str = ""
     require_admin_auth: bool = False
+    auth_mode: str = "api_key"
+    firebase_auth_enabled: bool = False
     google_calendar_enabled: bool = False
     google_calendar_id: str = ""
     google_calendar_credentials_path: str = ""
     google_calendar_credentials_json: str = ""
+    whatsapp_enabled: bool = False
+    whatsapp_provider: str = "meta"
+    whatsapp_verify_token: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_webhook_secret: str = ""
+    whatsapp_graph_api_version: str = "v20.0"
 
     model_config = SettingsConfigDict(
         env_file=".env",

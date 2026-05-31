@@ -16,6 +16,7 @@ from app.routes import (
     technicians,
     telegram,
     visits,
+    whatsapp,
 )
 
 logging.basicConfig(
@@ -52,3 +53,4 @@ app.include_router(technicians.router)
 app.include_router(visits.router)
 app.include_router(messages_test.router)
 app.include_router(telegram.router)
+app.include_router(whatsapp.router)

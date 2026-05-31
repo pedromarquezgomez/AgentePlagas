@@ -10,6 +10,7 @@ conversation data, and exposes incidents to a minimal operations panel.
 The current product surface is intentionally small:
 
 - Telegram webhook integration.
+- Optional WhatsApp webhook integration.
 - Mock or real-ready Hermes service.
 - Mock or Firestore-ready persistence.
 - Incidents API.
@@ -33,9 +34,9 @@ The current product surface is intentionally small:
 ## Runtime Flow
 
 ```text
-Telegram Bot API
-  -> POST /webhooks/telegram
-  -> TelegramAdapter.parse_incoming
+External channel API (Telegram or WhatsApp)
+  -> POST /webhooks/{channel}
+  -> ChannelAdapter.parse_incoming
   -> IncomingMessage
   -> ConversationService.handle_incoming_message
   -> HermesService.process_message
@@ -44,8 +45,8 @@ Telegram Bot API
   -> DecisionAuditService.create_decision_record
   -> FirestoreService or MockFirestoreService
   -> OutgoingMessage
-  -> TelegramAdapter.send_message
-  -> Telegram Bot API
+  -> ChannelAdapter.send_message
+  -> External channel API
 ```
 
 The local test endpoint follows the same internal flow after constructing an
@@ -80,8 +81,10 @@ Location: `backend/app/adapters/`
 
 Adapters convert external payloads into internal messages and send outbound
 responses. `TelegramAdapter` currently supports text, captions, chat/user ids,
-message metadata, and photo attachments. It does not decide whether an incident
-should be created.
+message metadata, and photo attachments. `WhatsAppAdapter` supports Meta
+WhatsApp text payloads, phone/user ids, message metadata, and basic media
+attachment metadata. Adapters do not decide whether an incident should be
+created.
 
 ### Schemas
 
@@ -341,6 +344,8 @@ Current operational routes:
 - `POST /visits/{visit_id}/generate-technician-brief`
 - `POST /messages/test`
 - `POST /webhooks/telegram`
+- `GET /webhooks/whatsapp`
+- `POST /webhooks/whatsapp`
 - `POST /telegram/set-webhook`
 - `GET /telegram/webhook-info`
 - `GET /incidents`
@@ -382,10 +387,12 @@ Current screens:
 
 Current safeguards:
 
-- Telegram bot token, webhook secret, Hermes API key, and Firebase credentials
-  are read from environment settings.
+- Telegram bot token, WhatsApp access token, webhook secrets, Hermes API key,
+  and Firebase credentials are read from environment settings.
 - `/config/status` reports booleans and modes, not secret values.
 - Telegram webhook secret is validated when configured.
+- WhatsApp verification and optional webhook secret are validated when
+  configured.
 - Logs avoid full headers, tokens, API keys, and full customer text.
 - CORS is restricted to local Vite origins for development.
 - PATCH routes use Pydantic schemas with `extra="forbid"`.

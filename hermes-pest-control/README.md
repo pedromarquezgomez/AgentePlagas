@@ -1,8 +1,9 @@
 # Hermes Pest Control System
 
-Hermes Pest Control System is a channel-agnostic backend for pest control operations.
-The first planned channel is Telegram, but Telegram is only an adapter. Business logic
-works with normalized messages and does not depend on Telegram payloads.
+Hermes Pest Control System is a channel-agnostic backend for pest control
+operations. Telegram is available as the first real channel, and WhatsApp is
+available as an optional second adapter. Business logic works with normalized
+messages and does not depend on Telegram or WhatsApp payloads.
 
 For daily local usage, diagnostics, Telegram E2E testing, and mode switching, see
 [OPERATIONS.md](./OPERATIONS.md).
@@ -64,7 +65,8 @@ Core principles:
 - Hermes Agent proposes actions, but backend services execute them.
 - Channel adapters normalize transport-specific payloads.
 - Telegram, WhatsApp, webchat, email, and SMS should all converge on the same internal schemas.
-- No business workflow belongs inside `TelegramAdapter`.
+- No business workflow belongs inside channel adapters such as
+  `TelegramAdapter` or `WhatsAppAdapter`.
 
 ## Project Layout
 
@@ -177,6 +179,8 @@ The test suite covers:
 - Optional Google Calendar sync state for visits. Tests use mocks and never call
   Google Calendar.
 - Protected operational document CRUD and deterministic document generation.
+- WhatsApp adapter parsing, disabled-mode webhook behavior, mock sending, and
+  channel-agnostic persistence/audit behavior.
 
 ## Firebase / Firestore Setup
 
@@ -502,6 +506,73 @@ For local tests, no Telegram token is required. Without `TELEGRAM_BOT_TOKEN`, th
 application still starts, but real Telegram send/configuration calls return a
 clear configuration error.
 
+## WhatsApp Setup
+
+WhatsApp is integrated as an optional channel adapter. `WhatsAppAdapter`
+normalizes Meta WhatsApp webhook payloads into `IncomingMessage` and can send
+`OutgoingMessage` responses through the WhatsApp Cloud API when enabled.
+Business logic remains in `ConversationService`.
+
+By default WhatsApp is disabled:
+
+```bash
+WHATSAPP_ENABLED=false
+WHATSAPP_PROVIDER=meta
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_WEBHOOK_SECRET=
+WHATSAPP_GRAPH_API_VERSION=v20.0
+```
+
+For local sandbox testing without calling Meta, use mock provider mode:
+
+```bash
+WHATSAPP_ENABLED=true
+WHATSAPP_PROVIDER=mock
+```
+
+Then run a simulated payload:
+
+```bash
+cd hermes-pest-control/backend
+source .venv/bin/activate
+scripts/smoke_whatsapp_payload.sh
+```
+
+The script posts a Meta-like update to `POST /webhooks/whatsapp`. In mock mode
+the outbound WhatsApp send is simulated, but the message still goes through
+`WhatsAppAdapter`, `ConversationService`, incident creation, decision audit, and
+human review rules.
+
+For Meta WhatsApp Cloud API, configure:
+
+```bash
+WHATSAPP_ENABLED=true
+WHATSAPP_PROVIDER=meta
+WHATSAPP_VERIFY_TOKEN=choose-a-webhook-verify-token
+WHATSAPP_ACCESS_TOKEN=<meta-access-token>
+WHATSAPP_PHONE_NUMBER_ID=<phone-number-id>
+WHATSAPP_WEBHOOK_SECRET=
+WHATSAPP_GRAPH_API_VERSION=v20.0
+```
+
+Webhook verification is available at:
+
+```text
+GET /webhooks/whatsapp
+```
+
+Inbound messages use:
+
+```text
+POST /webhooks/whatsapp
+```
+
+Current limitations: text and basic media metadata are supported; no WhatsApp
+template-message lifecycle, delivery receipts, OAuth setup, or production
+message-status handling is implemented yet.
+
 ## Manual Telegram E2E Test
 
 This test keeps `HermesService` mocked. If no Firebase credentials are configured
@@ -578,8 +649,9 @@ docker run --rm -p 8000:8000 hermes-pest-control-backend
 
 Recommended next steps:
 
-1. Validate the Telegram webhook against a staging bot and public HTTPS tunnel.
+1. Validate Telegram and WhatsApp webhooks against staging channels and a public
+   HTTPS tunnel.
 2. Replace the mock `HermesService` with a real Hermes integration behind the same service contract.
 3. Add persisted clients and richer incident lifecycle transitions.
-4. Add WhatsApp, webchat, email, or SMS adapters behind the existing channel contract.
+4. Add webchat, email, or SMS adapters behind the existing channel contract.
 5. Expand operational monitoring, retries, and alerting for failed outbound messages.
