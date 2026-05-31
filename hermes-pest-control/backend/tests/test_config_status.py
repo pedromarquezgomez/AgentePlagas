@@ -21,6 +21,8 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     monkeypatch.setattr(config_status_route.settings, "hermes_skills_dir", "../hermes/skills")
     monkeypatch.setattr(config_status_route.settings, "admin_api_key", "secret-admin-key")
     monkeypatch.setattr(config_status_route.settings, "require_admin_auth", True)
+    monkeypatch.setattr(config_status_route.settings, "auth_mode", "firebase")
+    monkeypatch.setattr(config_status_route.settings, "firebase_auth_enabled", True)
     monkeypatch.setattr(config_status_route.settings, "google_calendar_enabled", True)
     monkeypatch.setattr(config_status_route.settings, "google_calendar_id", "secret-calendar-id")
     monkeypatch.setattr(
@@ -50,6 +52,8 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "firebase_project_id_configured": False,
         "firebase_credentials_configured": True,
         "firestore_emulator_enabled": False,
+        "auth_mode": "firebase",
+        "firebase_auth_enabled": True,
         "admin_auth_required": True,
         "admin_api_key_configured": True,
         "google_calendar_enabled": True,

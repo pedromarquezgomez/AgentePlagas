@@ -14,21 +14,25 @@ import TechnicianTable from './components/TechnicianTable.vue'
 import VisitDetail from './components/VisitDetail.vue'
 import VisitTable from './components/VisitTable.vue'
 import {
-  clearStoredAdminApiKey,
+  AUTH_MODE,
   fetchDashboardSummary,
   fetchDocuments,
   fetchHumanReviewItems,
   fetchIncidents,
   fetchTechnicians,
   fetchVisits,
-  getStoredAdminApiKey,
+  getStoredAuthIndicator,
   HUMAN_REVIEW_STATUSES,
   INCIDENT_PRIORITIES,
   INCIDENT_STATUSES,
   isUnauthorizedError,
+  loginWithCredentials,
+  logoutCurrentUser,
+  observeAuthState,
   REQUIRE_LOGIN,
   setStoredAdminApiKey,
   type DashboardSummary,
+  type LoginPayload,
   type OperationalDocument,
   type HumanReviewItem,
   type Incident,
@@ -55,8 +59,9 @@ const visitTechnicianFilter = ref('')
 const documentStatusFilter = ref('')
 const documentTypeFilter = ref('')
 const currentPath = ref(window.location.pathname)
-const adminApiKey = ref(getStoredAdminApiKey())
+const adminApiKey = ref(getStoredAuthIndicator())
 const authMessage = ref<string | null>(null)
+let stopAuthObserver: (() => void) | null = null
 
 const hasFilters = computed(() => Boolean(statusFilter.value || priorityFilter.value))
 const hasReviewFilters = computed(() => Boolean(reviewStatusFilter.value || reviewPriorityFilter.value))
@@ -355,16 +360,23 @@ function handleVisitCreated(visitId: string): void {
   currentPath.value = window.location.pathname
 }
 
-function handleLogin(apiKey: string): void {
-  setStoredAdminApiKey(apiKey)
-  adminApiKey.value = apiKey
-  authMessage.value = null
-  navigate('/dashboard')
-  void loadDashboardSummary()
+async function handleLogin(payload: LoginPayload): Promise<void> {
+  try {
+    const authIndicator = await loginWithCredentials(payload)
+    if (AUTH_MODE === 'api_key' && payload.apiKey) {
+      setStoredAdminApiKey(payload.apiKey)
+    }
+    adminApiKey.value = authIndicator
+    authMessage.value = null
+    navigate('/dashboard')
+    void loadDashboardSummary()
+  } catch (err) {
+    authMessage.value = err instanceof Error ? err.message : 'No se pudo iniciar sesión'
+  }
 }
 
 function handleLogout(): void {
-  clearStoredAdminApiKey()
+  void logoutCurrentUser()
   adminApiKey.value = ''
   dashboardSummary.value = null
   incidents.value = []
@@ -377,7 +389,7 @@ function handleLogout(): void {
 }
 
 function handleUnauthorized(): void {
-  clearStoredAdminApiKey()
+  void logoutCurrentUser()
   adminApiKey.value = ''
   dashboardSummary.value = null
   incidents.value = []
@@ -385,7 +397,7 @@ function handleUnauthorized(): void {
   technicians.value = []
   visits.value = []
   documents.value = []
-  authMessage.value = 'No autorizado. Revisa la API key e inténtalo de nuevo.'
+  authMessage.value = 'No autorizado. Revisa las credenciales e inténtalo de nuevo.'
   navigate('/login')
 }
 
@@ -406,6 +418,11 @@ function enforceRouteProtection(): void {
 
 onMounted(() => {
   window.addEventListener('popstate', syncPath)
+  stopAuthObserver = observeAuthState((hasAuthAccess) => {
+    if (AUTH_MODE !== 'firebase') return
+    adminApiKey.value = hasAuthAccess ? getStoredAuthIndicator() : ''
+    enforceRouteProtection()
+  })
   enforceRouteProtection()
   if (hasAccess.value && isDashboardPath.value) {
     void loadDashboardSummary()
@@ -437,12 +454,14 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('popstate', syncPath)
+  if (stopAuthObserver) stopAuthObserver()
 })
 </script>
 
 <template>
   <LoginPanel
     v-if="REQUIRE_LOGIN && isLoginPath"
+    :auth-mode="AUTH_MODE"
     :message="authMessage"
     @login="handleLogin"
   />

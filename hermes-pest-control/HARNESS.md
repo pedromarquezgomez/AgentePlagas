@@ -361,7 +361,8 @@ Current limitations:
 - audit records are append-only by convention, not yet enforced by permissions;
 - no panel screen exists yet for audit review;
 - prompt and skill versions are static placeholders;
-- no operator identity is recorded because login does not exist yet.
+- Firebase Auth can identify an operator at the request boundary, but operator
+  activity is not yet written into domain audit records.
 
 ## Current Harness Boundaries
 
@@ -561,6 +562,7 @@ Status: partially implemented.
 - persisted conversations/messages/incidents;
 - config status;
 - operational panel;
+- API-key or Firebase Auth protection for operational endpoints;
 - incident status updates;
 - local scripts and smoke tests.
 

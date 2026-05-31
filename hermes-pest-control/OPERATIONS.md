@@ -190,6 +190,8 @@ Example:
   "firebase_project_id_configured": false,
   "firebase_credentials_configured": false,
   "firestore_emulator_enabled": false,
+  "auth_mode": "api_key",
+  "firebase_auth_enabled": false,
   "admin_auth_required": false,
   "admin_api_key_configured": false,
   "whatsapp_enabled": false,
@@ -205,25 +207,54 @@ secrets.
 
 ## Admin Auth
 
-Development mode can run without admin authentication:
+The backend supports three operator-auth modes for operational endpoints:
+
+- `AUTH_MODE=api_key`: keeps the existing internal API-key guard.
+- `AUTH_MODE=firebase`: requires a Firebase ID token in the `Authorization`
+  header.
+- `AUTH_MODE=disabled`: local development only; rejected in production.
+
+API-key development mode can run without enforcement:
 
 ```bash
+AUTH_MODE=api_key
 REQUIRE_ADMIN_AUTH=false
 ADMIN_API_KEY=
 ```
 
-Protected mode requires an internal API key for operational endpoints:
+API-key protected mode:
 
 ```bash
+AUTH_MODE=api_key
 REQUIRE_ADMIN_AUTH=true
 ADMIN_API_KEY=change-this-long-random-value
 ```
 
-When enabled, these endpoints require:
+API-key requests require:
 
 ```text
 X-Admin-API-Key: <ADMIN_API_KEY>
 ```
+
+Firebase Auth mode:
+
+```bash
+AUTH_MODE=firebase
+FIREBASE_AUTH_ENABLED=true
+FIREBASE_PROJECT_ID=<firebase-project-id>
+FIREBASE_CREDENTIALS_PATH=/absolute/path/to/firebase-service-account.json
+```
+
+Firebase requests require:
+
+```text
+Authorization: Bearer <Firebase ID token>
+```
+
+Create the first operator manually in Firebase Console > Authentication > Users
+with email/password. The frontend login uses that email/password and sends the
+Firebase ID token to the backend. No roles or multi-company claims are enforced
+yet.
 
 Protected endpoints:
 
@@ -269,6 +300,13 @@ Example protected request:
 ```bash
 curl http://127.0.0.1:8000/incidents \
   -H "X-Admin-API-Key: <ADMIN_API_KEY>"
+```
+
+Firebase protected request:
+
+```bash
+curl http://127.0.0.1:8000/incidents \
+  -H "Authorization: Bearer <FIREBASE_ID_TOKEN>"
 ```
 
 ## Dashboard Summary
@@ -738,12 +776,25 @@ Default API URL:
 ```bash
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_REQUIRE_LOGIN=true
+VITE_AUTH_MODE=api_key
 ```
 
-If `VITE_REQUIRE_LOGIN=true`, open `/login`, enter `ADMIN_API_KEY`, and the
-frontend stores it in localStorage. Requests to dashboard, calendar, incidents,
-human review, technicians, visits, and future audit views send
-`X-Admin-API-Key`. Use the `Salir` button to clear localStorage.
+For API-key mode, open `/login`, enter `ADMIN_API_KEY`, and the frontend stores
+it in localStorage. Requests to dashboard, calendar, incidents, human review,
+technicians, visits, documents, and future audit views send `X-Admin-API-Key`.
+
+For Firebase Auth mode, configure:
+
+```bash
+VITE_AUTH_MODE=firebase
+VITE_FIREBASE_API_KEY=<web-api-key>
+VITE_FIREBASE_AUTH_DOMAIN=<project-id>.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=<project-id>
+```
+
+Then open `/login` and sign in with a Firebase email/password user created in
+Firebase Console. Requests send `Authorization: Bearer <Firebase ID token>`.
+Use the `Salir` button to clear the API key or Firebase session.
 
 Open:
 

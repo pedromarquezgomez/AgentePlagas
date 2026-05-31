@@ -23,6 +23,8 @@ async def config_status() -> dict[str, bool | str]:
         "firebase_project_id_configured": bool(settings.firebase_project_id),
         "firebase_credentials_configured": has_firestore_credentials(settings),
         "firestore_emulator_enabled": settings.use_firestore_emulator,
+        "auth_mode": settings.auth_mode,
+        "firebase_auth_enabled": settings.firebase_auth_enabled,
         "admin_auth_required": settings.require_admin_auth,
         "admin_api_key_configured": bool(settings.admin_api_key),
         "google_calendar_enabled": settings.google_calendar_enabled,

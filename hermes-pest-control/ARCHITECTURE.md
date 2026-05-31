@@ -396,21 +396,23 @@ Current safeguards:
 - Logs avoid full headers, tokens, API keys, and full customer text.
 - CORS is restricted to local Vite origins for development.
 - PATCH routes use Pydantic schemas with `extra="forbid"`.
-- Operational incident and audit endpoints can be protected with
-  `REQUIRE_ADMIN_AUTH=true` and `X-Admin-API-Key`.
-- Human review queue endpoints use the same admin API-key protection.
-- Technician and visit endpoints use the same admin API-key protection.
+- Operational endpoints can be protected with `AUTH_MODE=api_key` plus
+  `REQUIRE_ADMIN_AUTH=true`, or with `AUTH_MODE=firebase` and Firebase ID-token
+  verification.
+- `AUTH_MODE=disabled` is allowed only outside production.
+- Human review, technician, visit, calendar, dashboard, audit, document, and
+  incident endpoints share the same admin-user dependency.
 - Google Calendar sync is disabled by default and uses service-account
   credentials only when explicitly configured.
 - Hermes cannot directly assign technicians, create visits, or update agenda
   records, cannot invoke Google Calendar sync directly, and cannot create
   operational documents directly.
-- The frontend has a minimal API-key login screen prepared to evolve toward
-  Firebase Auth.
+- The frontend supports API-key login and Firebase email/password login.
 
 Known limitations:
 
-- The current panel login is a simple shared API-key guard, not user-level auth.
+- Firebase Auth currently identifies users but does not enforce roles or
+  multi-company permissions.
 - CORS settings are development-oriented.
 - Internal notes are plain text and should be treated as sensitive operational
   data once real users are added.

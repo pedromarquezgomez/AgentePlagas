@@ -43,9 +43,10 @@ Human review items are created automatically when Hermes escalates to a human,
 when safe fallback is used, or when a decision has urgent priority. They are
 available through `GET /human-review` and the panel route `/human-review`.
 
-The operations panel and operational API endpoints support a basic admin API key
-guard. Set `REQUIRE_ADMIN_AUTH=true` and `ADMIN_API_KEY` in `backend/.env`, then
-log in at `/login` in the frontend.
+The operations panel and operational API endpoints support `AUTH_MODE=api_key`,
+`AUTH_MODE=firebase`, or `AUTH_MODE=disabled` for local development. Telegram
+and WhatsApp webhooks stay public channel endpoints and are not protected by
+operator login.
 
 ## Architecture
 
@@ -152,6 +153,43 @@ Expected behavior:
 - `incident.location` is `Torremolinos`.
 - `incident.affected_area` is `cocina`.
 - `incident.status` is `pending_review`.
+
+## Admin Authentication
+
+Operational endpoints can run in three modes:
+
+```bash
+AUTH_MODE=api_key
+REQUIRE_ADMIN_AUTH=true
+ADMIN_API_KEY=change-this-long-random-value
+```
+
+`AUTH_MODE=api_key` preserves the current API-key behavior. When
+`REQUIRE_ADMIN_AUTH=true`, protected backend requests must include:
+
+```text
+X-Admin-API-Key: <ADMIN_API_KEY>
+```
+
+Firebase Auth is available as an optional real-login mode:
+
+```bash
+AUTH_MODE=firebase
+FIREBASE_AUTH_ENABLED=true
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CREDENTIALS_PATH=/absolute/path/to/firebase-service-account.json
+```
+
+In this mode protected requests must include:
+
+```text
+Authorization: Bearer <Firebase ID token>
+```
+
+`AUTH_MODE=disabled` is only for local development and is rejected in
+production. `GET /health`, `GET /config/status`, Telegram webhooks, and
+WhatsApp webhooks remain public. `POST /messages/test` is a development helper
+and should be protected or removed before production exposure.
 
 ## Running Tests
 

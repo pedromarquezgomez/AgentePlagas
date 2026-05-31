@@ -18,17 +18,28 @@ cp .env.example .env
 ```bash
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_REQUIRE_LOGIN=true
+VITE_AUTH_MODE=api_key
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
 ```
 
-When `VITE_REQUIRE_LOGIN=true`, the app shows `/login` before the operations
+When `VITE_AUTH_MODE=api_key`, the app shows `/login` before the operations
 panel. The API key is stored in localStorage and sent as:
 
 ```text
 X-Admin-API-Key: <API key>
 ```
 
-Use `VITE_REQUIRE_LOGIN=false` only for local development when the backend has
-`REQUIRE_ADMIN_AUTH=false`.
+When `VITE_AUTH_MODE=firebase`, `/login` uses Firebase email/password auth and
+API requests send:
+
+```text
+Authorization: Bearer <Firebase ID token>
+```
+
+Use `VITE_AUTH_MODE=disabled` or `VITE_REQUIRE_LOGIN=false` only for local
+development when the backend is also running with local auth disabled.
 
 ## Run
 
@@ -71,7 +82,8 @@ npm run build
 1. Start the FastAPI backend.
 2. Create at least one incident through `/messages/test` or Telegram.
 3. Start the frontend with `npm run dev`.
-4. Open `/login`, enter `ADMIN_API_KEY`, and verify redirect to `/dashboard`.
+4. Open `/login`, enter `ADMIN_API_KEY` in API-key mode or Firebase
+   email/password in Firebase mode, and verify redirect to `/dashboard`.
 5. Open `/dashboard` and verify the summary cards link to each section, including calendar cards.
 6. Open `/incidents` and verify the table, filters, empty state, and error state.
 7. Click `Abrir` on one row.
@@ -92,4 +104,5 @@ npm run build
 22. Open a document detail, edit title/content/status, and save.
 23. Open an incident detail and create a visit from `Visitas asociadas`.
 24. Refresh the detail page and verify the saved values are still present.
-25. Click `Salir` and verify localStorage is cleared and `/login` is shown.
+25. Click `Salir` and verify localStorage or the Firebase session is cleared and
+    `/login` is shown.

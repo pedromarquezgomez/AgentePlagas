@@ -1,3 +1,6 @@
+import { getApps, initializeApp } from 'firebase/app'
+import { getAuth, getIdToken, onAuthStateChanged, signInWithEmailAndPassword, signOut, type Auth } from 'firebase/auth'
+
 export const INCIDENT_STATUSES = [
   'new',
   'pending_review',
@@ -272,8 +275,19 @@ export interface OperationalDocumentUpdate {
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
-export const REQUIRE_LOGIN = (import.meta.env.VITE_REQUIRE_LOGIN ?? 'true') !== 'false'
+export type AuthMode = 'api_key' | 'firebase' | 'disabled'
+export const AUTH_MODE = (
+  import.meta.env.VITE_AUTH_MODE ??
+  ((import.meta.env.VITE_REQUIRE_LOGIN ?? 'true') === 'false' ? 'disabled' : 'api_key')
+) as AuthMode
+export const REQUIRE_LOGIN = AUTH_MODE !== 'disabled' && (import.meta.env.VITE_REQUIRE_LOGIN ?? 'true') !== 'false'
 const ADMIN_API_KEY_STORAGE_KEY = 'hermes_admin_api_key'
+
+export interface LoginPayload {
+  apiKey?: string
+  email?: string
+  password?: string
+}
 
 export class ApiError extends Error {
   status: number
@@ -298,19 +312,85 @@ export function clearStoredAdminApiKey(): void {
   window.localStorage.removeItem(ADMIN_API_KEY_STORAGE_KEY)
 }
 
+let firebaseAuth: Auth | null = null
+
+function getFirebaseAuth(): Auth {
+  if (firebaseAuth) return firebaseAuth
+
+  const app = getApps()[0] ?? initializeApp({
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? '',
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? '',
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? '',
+  })
+  firebaseAuth = getAuth(app)
+  return firebaseAuth
+}
+
+export function getStoredAuthIndicator(): string {
+  if (AUTH_MODE === 'disabled') return 'disabled'
+  if (AUTH_MODE === 'api_key') return getStoredAdminApiKey()
+  return getFirebaseAuth().currentUser?.uid ?? ''
+}
+
+export function observeAuthState(callback: (hasAccess: boolean) => void): () => void {
+  if (AUTH_MODE !== 'firebase') {
+    callback(!REQUIRE_LOGIN || Boolean(getStoredAdminApiKey()))
+    return () => {}
+  }
+
+  return onAuthStateChanged(getFirebaseAuth(), (user) => {
+    callback(Boolean(user))
+  })
+}
+
+export async function loginWithCredentials(payload: LoginPayload): Promise<string> {
+  if (AUTH_MODE === 'api_key') {
+    const apiKey = payload.apiKey?.trim() ?? ''
+    if (!apiKey) throw new Error('API key requerida')
+    setStoredAdminApiKey(apiKey)
+    return apiKey
+  }
+
+  if (AUTH_MODE === 'firebase') {
+    const email = payload.email?.trim() ?? ''
+    const password = payload.password ?? ''
+    if (!email || !password) throw new Error('Email y contraseña requeridos')
+    const credential = await signInWithEmailAndPassword(getFirebaseAuth(), email, password)
+    return credential.user.uid
+  }
+
+  return 'disabled'
+}
+
+export async function logoutCurrentUser(): Promise<void> {
+  clearStoredAdminApiKey()
+  if (AUTH_MODE === 'firebase') {
+    await signOut(getFirebaseAuth())
+  }
+}
+
 export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401
 }
 
-function buildHeaders(includeJson = false): HeadersInit {
+async function buildHeaders(includeJson = false): Promise<HeadersInit> {
   const headers: Record<string, string> = {}
   if (includeJson) {
     headers['Content-Type'] = 'application/json'
   }
 
-  const adminApiKey = getStoredAdminApiKey()
-  if (adminApiKey) {
-    headers['X-Admin-API-Key'] = adminApiKey
+  if (AUTH_MODE === 'api_key') {
+    const adminApiKey = getStoredAdminApiKey()
+    if (adminApiKey) {
+      headers['X-Admin-API-Key'] = adminApiKey
+    }
+  }
+
+  if (AUTH_MODE === 'firebase') {
+    const user = getFirebaseAuth().currentUser
+    if (user) {
+      headers.Authorization = `Bearer ${await getIdToken(user)}`
+    }
   }
 
   return headers
@@ -327,7 +407,7 @@ async function parseApiResponse<T>(response: Response, errorMessage: string): Pr
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
   const response = await fetch(`${API_BASE_URL}/dashboard/summary`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<DashboardSummary>(response, 'No se pudo cargar el dashboard')
@@ -341,7 +421,7 @@ export async function fetchIncidents(filters: IncidentFilters = {}): Promise<Inc
 
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/incidents${query ? `?${query}` : ''}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<Incident[]>(response, 'No se pudieron cargar las incidencias')
@@ -349,7 +429,7 @@ export async function fetchIncidents(filters: IncidentFilters = {}): Promise<Inc
 
 export async function fetchIncident(incidentId: string): Promise<Incident> {
   const response = await fetch(`${API_BASE_URL}/incidents/${encodeURIComponent(incidentId)}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<Incident>(response, 'No se pudo cargar la incidencia')
@@ -361,7 +441,7 @@ export async function updateIncident(
 ): Promise<Incident> {
   const response = await fetch(`${API_BASE_URL}/incidents/${encodeURIComponent(incidentId)}`, {
     method: 'PATCH',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(update),
   })
 
@@ -379,7 +459,7 @@ export async function fetchDecisionRecords(
 
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/audit/decisions${query ? `?${query}` : ''}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<DecisionRecord[]>(response, 'No se pudo cargar la auditoría')
@@ -395,7 +475,7 @@ export async function fetchHumanReviewItems(
 
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/human-review${query ? `?${query}` : ''}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<HumanReviewItem[]>(
@@ -406,7 +486,7 @@ export async function fetchHumanReviewItems(
 
 export async function fetchHumanReviewItem(itemId: string): Promise<HumanReviewItem> {
   const response = await fetch(`${API_BASE_URL}/human-review/${encodeURIComponent(itemId)}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<HumanReviewItem>(
@@ -421,7 +501,7 @@ export async function updateHumanReviewItem(
 ): Promise<HumanReviewItem> {
   const response = await fetch(`${API_BASE_URL}/human-review/${encodeURIComponent(itemId)}`, {
     method: 'PATCH',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(update),
   })
 
@@ -440,7 +520,7 @@ export async function fetchTechnicians(
 
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/technicians${query ? `?${query}` : ''}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<Technician[]>(response, 'No se pudieron cargar los técnicos')
@@ -451,7 +531,7 @@ export async function createTechnician(
 ): Promise<Technician> {
   const response = await fetch(`${API_BASE_URL}/technicians`, {
     method: 'POST',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(technician),
   })
 
@@ -460,7 +540,7 @@ export async function createTechnician(
 
 export async function fetchTechnician(technicianId: string): Promise<Technician> {
   const response = await fetch(`${API_BASE_URL}/technicians/${encodeURIComponent(technicianId)}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<Technician>(response, 'No se pudo cargar el técnico')
@@ -472,7 +552,7 @@ export async function updateTechnician(
 ): Promise<Technician> {
   const response = await fetch(`${API_BASE_URL}/technicians/${encodeURIComponent(technicianId)}`, {
     method: 'PATCH',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(update),
   })
 
@@ -488,7 +568,7 @@ export async function fetchVisits(filters: VisitFilters = {}): Promise<Visit[]> 
 
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/visits${query ? `?${query}` : ''}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<Visit[]>(response, 'No se pudieron cargar las visitas')
@@ -502,7 +582,7 @@ export async function listCalendarVisits(filters: CalendarVisitFilters): Promise
   if (filters.status) params.set('status', filters.status)
 
   const response = await fetch(`${API_BASE_URL}/calendar/visits?${params.toString()}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<Visit[]>(response, 'No se pudo cargar el calendario')
@@ -511,7 +591,7 @@ export async function listCalendarVisits(filters: CalendarVisitFilters): Promise
 export async function createVisit(visit: VisitCreate): Promise<Visit> {
   const response = await fetch(`${API_BASE_URL}/visits`, {
     method: 'POST',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(visit),
   })
 
@@ -520,7 +600,7 @@ export async function createVisit(visit: VisitCreate): Promise<Visit> {
 
 export async function fetchVisit(visitId: string): Promise<Visit> {
   const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<Visit>(response, 'No se pudo cargar la visita')
@@ -532,7 +612,7 @@ export async function updateVisit(
 ): Promise<Visit> {
   const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}`, {
     method: 'PATCH',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(update),
   })
 
@@ -542,7 +622,7 @@ export async function updateVisit(
 export async function syncVisitCalendar(visitId: string): Promise<VisitCalendarSyncResponse> {
   const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}/sync-calendar`, {
     method: 'POST',
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<VisitCalendarSyncResponse>(
@@ -563,7 +643,7 @@ export async function fetchDocuments(
 
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/documents${query ? `?${query}` : ''}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<OperationalDocument[]>(response, 'No se pudieron cargar los documentos')
@@ -574,7 +654,7 @@ export async function createDocument(
 ): Promise<OperationalDocument> {
   const response = await fetch(`${API_BASE_URL}/documents`, {
     method: 'POST',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(document),
   })
 
@@ -583,7 +663,7 @@ export async function createDocument(
 
 export async function fetchDocument(documentId: string): Promise<OperationalDocument> {
   const response = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<OperationalDocument>(response, 'No se pudo cargar el documento')
@@ -595,7 +675,7 @@ export async function updateDocument(
 ): Promise<OperationalDocument> {
   const response = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
     method: 'PATCH',
-    headers: buildHeaders(true),
+    headers: await buildHeaders(true),
     body: JSON.stringify(update),
   })
 
@@ -607,7 +687,7 @@ export async function generateIncidentSummaryDocument(
 ): Promise<OperationalDocument> {
   const response = await fetch(`${API_BASE_URL}/incidents/${encodeURIComponent(incidentId)}/generate-summary-document`, {
     method: 'POST',
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<OperationalDocument>(response, 'No se pudo generar el resumen')
@@ -618,7 +698,7 @@ export async function generateTechnicianBriefDocument(
 ): Promise<OperationalDocument> {
   const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}/generate-technician-brief`, {
     method: 'POST',
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
   })
 
   return parseApiResponse<OperationalDocument>(response, 'No se pudo generar el brief')
