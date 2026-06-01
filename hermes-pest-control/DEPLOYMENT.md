@@ -26,6 +26,32 @@ Hosting URL: https://control-plagas-ai.web.app
 Default hosting site: control-plagas-ai
 ```
 
+## Production Pilot Status
+
+V1 is deployed and operating as a production pilot.
+
+Production URLs:
+
+```text
+Frontend: https://control-plagas-ai.web.app
+Backend:  https://hermes-pest-control-backend-601698914613.europe-west1.run.app
+Telegram webhook: https://hermes-pest-control-backend-601698914613.europe-west1.run.app/webhooks/telegram
+```
+
+Validated production state:
+
+- Firebase Auth login works.
+- Frontend sends Firebase Bearer ID tokens.
+- Backend validates Firebase Auth.
+- Firestore real is operational.
+- Telegram real creates incidents.
+- The panel shows incidents created from Telegram.
+- CORS allows `https://control-plagas-ai.web.app`.
+- `HERMES_MODE=mock` remains active for V1.
+
+See [V1_PRODUCTION_PILOT.md](./V1_PRODUCTION_PILOT.md) for the closure report,
+manual validation checklist, risks, and next recommended phase.
+
 ## Prerequisites
 
 - Google Cloud project with billing enabled.
@@ -86,6 +112,9 @@ Security rules:
 - Do not use Firestore mock in production.
 - Do not use wildcard CORS origins in production.
 - Keep `/messages/test` unavailable in production.
+- Keep `HERMES_MODE=mock` for the V1 production pilot. Do not enable the LLM
+  agent in production until controlled evals, `/messages/test`, DecisionRecords,
+  fallback, and HumanReview behavior have been reviewed.
 
 ## Backend Deploy
 
@@ -184,7 +213,7 @@ Roles and multi-company permissions are not implemented yet.
 Telegram production webhook:
 
 ```text
-https://<cloud-run-url>/webhooks/telegram
+https://hermes-pest-control-backend-601698914613.europe-west1.run.app/webhooks/telegram
 ```
 
 Configure with:
@@ -192,7 +221,7 @@ Configure with:
 ```bash
 export TELEGRAM_BOT_TOKEN=<token>
 export TELEGRAM_WEBHOOK_SECRET=<optional-secret>
-export CLOUD_RUN_URL=https://<cloud-run-url>
+export CLOUD_RUN_URL=https://hermes-pest-control-backend-601698914613.europe-west1.run.app
 scripts/set_production_telegram_webhook.sh
 ```
 

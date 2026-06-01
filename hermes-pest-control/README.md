@@ -14,6 +14,20 @@ and roadmap, including offline evaluations, see [HARNESS.md](./HARNESS.md).
 For production deployment on Cloud Run and Firebase Hosting, see
 [DEPLOYMENT.md](./DEPLOYMENT.md).
 
+## Production Pilot Status
+
+V1 is deployed as a production pilot.
+
+- Frontend: https://control-plagas-ai.web.app
+- Backend: https://hermes-pest-control-backend-601698914613.europe-west1.run.app
+- Auth: Firebase Auth.
+- Database: Firestore real.
+- Active real channel: Telegram.
+- Hermes mode: `mock`.
+
+Production validation and closure notes are documented in
+[V1_PRODUCTION_PILOT.md](./V1_PRODUCTION_PILOT.md).
+
 The operations panel lives in [frontend](./frontend). It opens at `/dashboard`,
 shows operational counters, links into generated incidents at `/incidents`,
 supports basic incident updates from `/incidents/:id`, exposes the human review
@@ -37,6 +51,11 @@ The first Hermes Agent wrapper integration is documented in
 [backend/docs/HERMES_AGENT_INTEGRATION.md](./backend/docs/HERMES_AGENT_INTEGRATION.md).
 It exposes `POST /agent` on port `9100`, loads the project skills, and returns
 validated `AgentResponse` JSON for `HermesRealClient`.
+
+The controlled LLM-backed agent mode is documented in
+[backend/docs/HERMES_LLM_AGENT.md](./backend/docs/HERMES_LLM_AGENT.md). It runs
+behind the same `/agent` HTTP wrapper and must be evaluated before any
+production activation.
 
 Decision audit records are exposed through `GET /audit/decisions` and documented
 in [HARNESS.md](./HARNESS.md).

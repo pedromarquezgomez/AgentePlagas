@@ -1,5 +1,7 @@
 from pathlib import Path
+import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -66,6 +68,79 @@ def test_process_agent_request_returns_valid_agent_response() -> None:
     assert response.incident is not None
     assert response.incident.should_create is True
     assert response.incident.location == "Torremolinos"
+
+
+def test_llm_agent_mode_with_mock_openai_response_returns_valid_agent_response() -> None:
+    captured_request = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = json.loads(request.read())
+        assert request.headers["Authorization"] == "Bearer test-openai-key"
+        return httpx.Response(
+            200,
+            json={
+                "output_text": json.dumps(
+                    {
+                        "reply": "Necesito la localidad.",
+                        "action": {
+                            "type": "collect_missing_data",
+                            "missing_fields": ["location"],
+                        },
+                        "incident": {"should_create": False},
+                    }
+                )
+            },
+        )
+
+    settings = Settings(
+        hermes_agent_mode="llm",
+        llm_provider="openai",
+        openai_api_key="test-openai-key",
+        openai_model="test-model",
+    )
+
+    raw_output = hermes_agent_server.run_llm_agent(
+        "Return AgentResponse JSON.",
+        settings,
+        transport=httpx.MockTransport(handler),
+    )
+    response = hermes_agent_server.parse_agent_output(raw_output)
+
+    assert response.action.type == "collect_missing_data"
+    assert response.action.missing_fields == ["location"]
+    assert captured_request["model"] == "test-model"
+    assert captured_request["text"]["format"]["type"] == "json_schema"
+    assert captured_request["text"]["format"]["strict"] is True
+    assert captured_request["temperature"] == 0
+
+
+def test_llm_agent_mode_invalid_output_raises_controlled_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"output_text": "not structured json"})
+
+    settings = Settings(
+        hermes_agent_mode="llm",
+        llm_provider="openai",
+        openai_api_key="test-openai-key",
+        openai_model="test-model",
+    )
+
+    raw_output = hermes_agent_server.run_llm_agent(
+        "Return AgentResponse JSON.",
+        settings,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(hermes_agent_server.HermesAgentServerError):
+        hermes_agent_server.parse_agent_output(raw_output)
+
+
+def test_llm_agent_mode_requires_openai_configuration() -> None:
+    settings = Settings(hermes_agent_mode="llm", llm_provider="openai")
+
+    with pytest.raises(hermes_agent_server.HermesAgentConfigurationError):
+        hermes_agent_server.run_llm_agent("Return AgentResponse JSON.", settings)
 
 
 def test_process_agent_request_rejects_wrong_response_contract() -> None:

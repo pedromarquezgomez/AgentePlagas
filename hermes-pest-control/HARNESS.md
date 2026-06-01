@@ -257,6 +257,16 @@ Hermes Agent wrapper:
 - it validates all outputs as `AgentResponse`;
 - `make evals-hermes-agent` runs the evaluation harness against this wrapper.
 
+LLM Agent mode:
+
+- `HERMES_AGENT_MODE=llm` keeps the LLM behind the same `/agent` HTTP wrapper;
+- `ConversationService`, channel adapters, Firestore services, and Telegram do
+  not call the LLM directly;
+- `make hermes-agent-llm` starts the wrapper in LLM mode;
+- `make evals-agent-llm` runs dry-run evals through `HermesRealClient` without
+  sending channel messages;
+- outputs must validate as `AgentResponse` or the backend falls back safely.
+
 Next steps:
 
 - add multi-turn conversation cases;
@@ -307,6 +317,35 @@ Implemented for Sprint 10B:
 - the wrapper has no persistence or Telegram delivery permissions.
 
 The full integration note is in `backend/docs/HERMES_AGENT_INTEGRATION.md`.
+
+### LLM Agent Mode
+
+Implemented for Sprint 18:
+
+- `HERMES_AGENT_MODE=fake|local|llm` selects the wrapper runtime;
+- `LLM_PROVIDER=openai` is supported through the wrapper only;
+- OpenAI credentials and model selection are read from environment variables and
+  are not exposed through logs or `/config/status`;
+- the wrapper builds the prompt from the system prompt, selected skills,
+  `IncomingMessage`, conversation history, business context, response contract,
+  and safety rules;
+- the wrapper requests strict JSON compatible with `AgentResponse`;
+- model output is parsed and validated with Pydantic before it reaches
+  `HermesRealClient`;
+- invalid model output, timeout, or provider HTTP error returns controlled
+  failure so `HermesService` uses safe fallback;
+- DecisionRecords and HumanReview continue to work because execution still goes
+  through `ConversationService`.
+
+Required production discipline:
+
+- keep production V1 in `HERMES_MODE=mock` until real-mode evals are reviewed;
+- run `make evals-agent-llm` before any staging/prod activation;
+- test with `/messages/test` or an isolated backend before Telegram traffic;
+- review DecisionRecords for traceability and action quality;
+- keep fallback and HumanReview active for all real-agent tests.
+
+The full LLM mode note is in `backend/docs/HERMES_LLM_AGENT.md`.
 
 ### Decision Records
 

@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     hermes_agent_server_port: int = 9100
     hermes_skills_dir: str = "../hermes/skills"
     hermes_agent_mode: str = "local"
+    llm_provider: str = "openai"
+    openai_api_key: str = ""
+    openai_model: str = ""
+    openai_timeout_seconds: float = 30.0
+    agent_max_output_tokens: int = 1200
+    agent_temperature: float = 0.0
     admin_api_key: str = ""
     require_admin_auth: bool = False
     auth_mode: str = "api_key"

@@ -6,6 +6,34 @@ testing, configuration diagnostics, and safe mode switching.
 For production deployment on Google Cloud Run and Firebase Hosting, see
 [DEPLOYMENT.md](./DEPLOYMENT.md).
 
+## Production Pilot Status
+
+V1 is currently running as a production pilot:
+
+- Frontend: https://control-plagas-ai.web.app
+- Backend: https://hermes-pest-control-backend-601698914613.europe-west1.run.app
+- Telegram webhook: https://hermes-pest-control-backend-601698914613.europe-west1.run.app/webhooks/telegram
+- Runtime auth: Firebase Auth with Bearer ID tokens.
+- Persistence: Firestore real.
+- Hermes: `HERMES_MODE=mock`.
+
+Production pilot validation and closure notes live in
+[V1_PRODUCTION_PILOT.md](./V1_PRODUCTION_PILOT.md).
+
+Quick production health checks:
+
+```bash
+curl https://hermes-pest-control-backend-601698914613.europe-west1.run.app/health
+curl https://hermes-pest-control-backend-601698914613.europe-west1.run.app/ready
+```
+
+Telegram production webhook is configured with:
+
+```bash
+export CLOUD_RUN_URL=https://hermes-pest-control-backend-601698914613.europe-west1.run.app
+scripts/set_production_telegram_webhook.sh
+```
+
 ## Local Backend
 
 From the project root:
@@ -1072,6 +1100,34 @@ make evals-real
 This does not send Telegram messages. The wrapper cannot write directly to
 Firestore; only the main backend can persist incidents and decision records
 through `ConversationService`.
+
+## Hermes LLM Agent Mode
+
+Sprint 18 adds controlled LLM mode behind the same wrapper boundary. It is
+documented in:
+
+```text
+backend/docs/HERMES_LLM_AGENT.md
+```
+
+Start the wrapper in LLM mode:
+
+```bash
+export OPENAI_API_KEY=<secret>
+export OPENAI_MODEL=<chosen-model>
+make hermes-agent-llm
+```
+
+Run dry-run evals against it:
+
+```bash
+HERMES_MODE=real \
+HERMES_API_URL=http://127.0.0.1:9100/agent \
+make evals-agent-llm
+```
+
+Do not switch production Telegram to LLM mode until evals, `/messages/test`,
+DecisionRecords, fallback, and HumanReview have been reviewed.
 
 ## Firestore Mode
 

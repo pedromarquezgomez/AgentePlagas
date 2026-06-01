@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
@@ -41,6 +42,10 @@ class HermesAgentServerError(RuntimeError):
     pass
 
 
+class HermesAgentConfigurationError(HermesAgentServerError):
+    pass
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "mode": settings.hermes_agent_mode}
@@ -70,10 +75,18 @@ def process_agent_request(
     if payload.get("response_contract") != "AgentResponse":
         raise HermesAgentServerError("Unsupported response_contract.")
 
+    system_prompt = load_system_prompt()
     skills_prompt = load_skills_prompt(runtime_settings.hermes_skills_dir)
-    prompt = build_agent_prompt(payload, skills_prompt)
+    prompt = build_agent_prompt(payload, system_prompt, skills_prompt)
     raw_output = run_agent(prompt, payload, runtime_settings)
     return parse_agent_output(raw_output)
+
+
+def load_system_prompt() -> str:
+    prompt_path = BACKEND_DIR / "app" / "prompts" / "hermes_system_prompt.md"
+    if not prompt_path.exists():
+        raise HermesAgentServerError("Hermes system prompt is missing.")
+    return prompt_path.read_text(encoding="utf-8")
 
 
 def load_skills_prompt(skills_dir: str) -> str:
@@ -119,7 +132,11 @@ def resolve_skills_dir(skills_dir: str) -> Path:
     return candidates[1].resolve()
 
 
-def build_agent_prompt(payload: dict[str, Any], skills_prompt: str) -> str:
+def build_agent_prompt(
+    payload: dict[str, Any],
+    system_prompt: str,
+    skills_prompt: str,
+) -> str:
     safe_payload = {
         "message": payload.get("message") or {},
         "conversation_history": payload.get("conversation_history") or [],
@@ -128,10 +145,21 @@ def build_agent_prompt(payload: dict[str, Any], skills_prompt: str) -> str:
     }
     return "\n\n".join(
         [
-            "You are Hermes Agent for pest-control intake.",
+            "# System Prompt",
+            system_prompt,
+            "# Skills",
             skills_prompt,
-            "Return only JSON compatible with AgentResponse. Do not write to "
-            "databases, do not call Telegram, and do not perform side effects.",
+            "# Response Contract And Safety Rules",
+            (
+                "Return only strict JSON compatible with AgentResponse. Do not "
+                "wrap the JSON in markdown. Do not write to databases, do not "
+                "call Telegram or WhatsApp, do not schedule visits, and do not "
+                "perform side effects. If the case involves safety, legal, "
+                "medical, food-business risk, guarantees, pricing certainty, "
+                "or unclear operational risk, use action.type="
+                "escalate_to_human."
+            ),
+            "# Runtime Payload",
             json.dumps(safe_payload, ensure_ascii=False, indent=2),
         ]
     )
@@ -143,12 +171,207 @@ def run_agent(
     runtime_settings: Settings,
 ) -> str:
     mode = runtime_settings.hermes_agent_mode.casefold()
-    if mode == "local":
+    if mode in {"local", "fake"}:
         return run_local_skill_agent(payload, prompt)
+    if mode == "llm":
+        return run_llm_agent(prompt, runtime_settings)
 
     raise HermesAgentServerError(
         f"Unsupported HERMES_AGENT_MODE={runtime_settings.hermes_agent_mode!r}."
     )
+
+
+def run_llm_agent(
+    prompt: str,
+    runtime_settings: Settings,
+    transport: httpx.BaseTransport | None = None,
+) -> str:
+    if runtime_settings.llm_provider.casefold() != "openai":
+        raise HermesAgentConfigurationError(
+            f"Unsupported LLM_PROVIDER={runtime_settings.llm_provider!r}."
+        )
+
+    client = OpenAIResponsesClient(runtime_settings, transport=transport)
+    return client.generate(prompt)
+
+
+class OpenAIResponsesClient:
+    endpoint = "https://api.openai.com/v1/responses"
+
+    def __init__(
+        self,
+        settings: Settings,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        self.settings = settings
+        self.transport = transport
+
+    def generate(self, prompt: str) -> str:
+        if not self.settings.openai_api_key:
+            raise HermesAgentConfigurationError("OPENAI_API_KEY is not configured.")
+        if not self.settings.openai_model:
+            raise HermesAgentConfigurationError("OPENAI_MODEL is not configured.")
+
+        logger.info(
+            "hermes_llm_request_started provider=%s model_configured=%s "
+            "max_output_tokens=%s temperature=%s",
+            self.settings.llm_provider,
+            bool(self.settings.openai_model),
+            self.settings.agent_max_output_tokens,
+            self.settings.agent_temperature,
+        )
+
+        request_payload = {
+            "model": self.settings.openai_model,
+            "input": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a controlled business agent. Return only JSON "
+                        "compatible with the provided AgentResponse contract. "
+                        "Do not call tools, databases, Telegram, WhatsApp, or "
+                        "any external system."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "AgentResponse",
+                    "strict": True,
+                    "schema": agent_response_json_schema(),
+                }
+            },
+            "max_output_tokens": self.settings.agent_max_output_tokens,
+            "temperature": self.settings.agent_temperature,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.settings.openai_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            with httpx.Client(
+                timeout=self.settings.openai_timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = client.post(
+                    self.endpoint,
+                    json=request_payload,
+                    headers=headers,
+                )
+        except httpx.TimeoutException as exc:
+            raise HermesAgentServerError("LLM request timed out.") from exc
+        except httpx.HTTPError as exc:
+            raise HermesAgentServerError("LLM request failed.") from exc
+
+        if response.status_code >= 400:
+            raise HermesAgentServerError(f"LLM returned HTTP {response.status_code}.")
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise HermesAgentServerError("LLM returned invalid JSON envelope.") from exc
+
+        text = extract_openai_response_text(data)
+        logger.info("hermes_llm_request_completed provider=%s", self.settings.llm_provider)
+        return text
+
+
+def agent_response_json_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["reply", "action", "incident", "metadata"],
+        "properties": {
+            "reply": {"type": "string"},
+            "action": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["type", "missing_fields"],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "collect_missing_data",
+                            "create_incident",
+                            "escalate_to_human",
+                        ],
+                    },
+                    "missing_fields": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+            },
+            "incident": {
+                "anyOf": [
+                    {"type": "null"},
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "should_create",
+                            "pest_type",
+                            "location",
+                            "affected_area",
+                            "priority",
+                            "summary",
+                            "id",
+                            "conversation_id",
+                            "status",
+                        ],
+                        "properties": {
+                            "should_create": {"type": "boolean"},
+                            "pest_type": {"type": ["string", "null"]},
+                            "location": {"type": ["string", "null"]},
+                            "affected_area": {"type": ["string", "null"]},
+                            "priority": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "urgent"],
+                            },
+                            "summary": {"type": ["string", "null"]},
+                            "id": {"type": ["string", "null"]},
+                            "conversation_id": {"type": ["string", "null"]},
+                            "status": {"type": ["string", "null"]},
+                        },
+                    },
+                ]
+            },
+            "metadata": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {},
+            },
+        },
+    }
+
+
+def extract_openai_response_text(response_data: dict[str, Any]) -> str:
+    output_text = response_data.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text
+
+    output = response_data.get("output")
+    if isinstance(output, list):
+        text_parts: list[str] = []
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for content_item in content:
+                if not isinstance(content_item, dict):
+                    continue
+                text = content_item.get("text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+        if text_parts:
+            return "\n".join(text_parts)
+
+    raise HermesAgentServerError("LLM response did not include output text.")
 
 
 def run_local_skill_agent(payload: dict[str, Any], prompt: str) -> str:

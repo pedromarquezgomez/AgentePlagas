@@ -21,6 +21,10 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     monkeypatch.setattr(config_status_route.settings, "hermes_api_url", "https://secret-hermes.test/agent")
     monkeypatch.setattr(config_status_route.settings, "hermes_agent_mode", "local")
     monkeypatch.setattr(config_status_route.settings, "hermes_skills_dir", "../hermes/skills")
+    monkeypatch.setattr(config_status_route.settings, "llm_provider", "openai")
+    monkeypatch.setattr(config_status_route.settings, "openai_api_key", "secret-openai-key")
+    monkeypatch.setattr(config_status_route.settings, "openai_model", "secret-model")
+    monkeypatch.setattr(config_status_route.settings, "agent_max_output_tokens", 1200)
     monkeypatch.setattr(config_status_route.settings, "admin_api_key", "secret-admin-key")
     monkeypatch.setattr(config_status_route.settings, "require_admin_auth", True)
     monkeypatch.setattr(config_status_route.settings, "auth_mode", "firebase")
@@ -51,6 +55,10 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "hermes_api_key_configured": True,
         "hermes_agent_mode": "local",
         "hermes_skills_dir_configured": True,
+        "llm_provider": "openai",
+        "openai_api_key_configured": True,
+        "openai_model_configured": True,
+        "agent_max_output_tokens_configured": True,
         "telegram_configured": True,
         "firestore_mode": "real",
         "firebase_project_id_configured": False,
@@ -73,6 +81,10 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     assert "hermes_api_key" not in body
     assert "hermes_api_url" not in body
     assert "secret-hermes" not in response.text
+    assert "openai_api_key" not in body
+    assert "openai_model" not in body
+    assert "secret-openai-key" not in response.text
+    assert "secret-model" not in response.text
     assert "admin_api_key" not in body
     assert "secret-admin-key" not in response.text
     assert "firebase_credentials_json" not in body
