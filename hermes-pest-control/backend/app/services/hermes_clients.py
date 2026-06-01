@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import httpx
@@ -7,9 +8,28 @@ from app.config.settings import Settings
 from app.schemas.agent_response import AgentResponse
 from app.schemas.incoming_message import IncomingMessage
 
+logger = logging.getLogger(__name__)
+
 
 class HermesClientError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_type: str,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_type = error_type
+        self.status_code = status_code
+
+    @property
+    def normalized_error(self) -> str:
+        if self.error_type.startswith("http_"):
+            return f"HermesClientError:{self.error_type}"
+        if self.status_code is not None:
+            return f"HermesClientError:{self.error_type}_{self.status_code}"
+        return f"HermesClientError:{self.error_type}"
 
 
 class HermesMockClient:
@@ -232,17 +252,27 @@ class HermesRealClient:
         business_context: dict[str, Any] | None = None,
     ) -> AgentResponse:
         if not self.settings.hermes_api_url:
-            raise HermesClientError("HERMES_API_URL is not configured.")
+            raise HermesClientError(
+                "HERMES_API_URL is not configured.",
+                error_type="not_configured",
+            )
+
+        business_context = business_context or default_business_context()
+        trace_id = business_context.get("trace_id")
 
         payload = {
             "message": incoming_message.model_dump(mode="json"),
             "conversation_history": conversation_history or [],
-            "business_context": business_context or default_business_context(),
+            "business_context": business_context,
             "response_contract": "AgentResponse",
         }
         headers = {"Content-Type": "application/json"}
         if self.settings.hermes_api_key:
             headers["Authorization"] = f"Bearer {self.settings.hermes_api_key}"
+        if self.settings.hermes_shadow_api_key:
+            headers["X-Hermes-Agent-Key"] = self.settings.hermes_shadow_api_key
+        if trace_id:
+            headers["X-Hermes-Trace-Id"] = str(trace_id)
 
         try:
             async with httpx.AsyncClient(
@@ -255,24 +285,94 @@ class HermesRealClient:
                     headers=headers,
                 )
         except httpx.TimeoutException as exc:
-            raise HermesClientError("Hermes Agent request timed out.") from exc
+            self._log_failure(
+                trace_id=trace_id,
+                error_type="timeout",
+                error_class=exc.__class__.__name__,
+            )
+            raise HermesClientError(
+                "Hermes Agent request timed out.",
+                error_type="timeout",
+            ) from exc
+        except httpx.ConnectError as exc:
+            self._log_failure(
+                trace_id=trace_id,
+                error_type="connection_error",
+                error_class=exc.__class__.__name__,
+            )
+            raise HermesClientError(
+                "Hermes Agent connection failed.",
+                error_type="connection_error",
+            ) from exc
         except httpx.HTTPError as exc:
-            raise HermesClientError("Hermes Agent request failed.") from exc
+            self._log_failure(
+                trace_id=trace_id,
+                error_type="request_failed",
+                error_class=exc.__class__.__name__,
+            )
+            raise HermesClientError(
+                "Hermes Agent request failed.",
+                error_type="request_failed",
+            ) from exc
 
         if response.status_code >= 400:
+            error_type = f"http_{response.status_code}"
+            self._log_failure(
+                trace_id=trace_id,
+                error_type=error_type,
+                error_class="HTTPStatusError",
+                status_code=response.status_code,
+            )
             raise HermesClientError(
-                f"Hermes Agent returned HTTP {response.status_code}."
+                f"Hermes Agent returned HTTP {response.status_code}.",
+                error_type=error_type,
+                status_code=response.status_code,
             )
 
         try:
             data = response.json()
         except ValueError as exc:
-            raise HermesClientError("Hermes Agent returned invalid JSON.") from exc
+            self._log_failure(
+                trace_id=trace_id,
+                error_type="invalid_json",
+                error_class=exc.__class__.__name__,
+                status_code=response.status_code,
+            )
+            raise HermesClientError(
+                "Hermes Agent returned invalid JSON.",
+                error_type="invalid_json",
+            ) from exc
 
         try:
             return AgentResponse.model_validate(data)
         except ValidationError as exc:
-            raise HermesClientError("Hermes Agent response contract is invalid.") from exc
+            self._log_failure(
+                trace_id=trace_id,
+                error_type="invalid_contract",
+                error_class=exc.__class__.__name__,
+                status_code=response.status_code,
+            )
+            raise HermesClientError(
+                "Hermes Agent response contract is invalid.",
+                error_type="invalid_contract",
+            ) from exc
+
+    def _log_failure(
+        self,
+        *,
+        trace_id: Any,
+        error_type: str,
+        error_class: str,
+        status_code: int | None = None,
+    ) -> None:
+        logger.warning(
+            "hermes_real_client_error trace_id=%s hermes_mode=real "
+            "error_type=%s error_class=%s status_code=%s",
+            trace_id,
+            error_type,
+            error_class,
+            status_code,
+        )
 
 
 def default_business_context(conversation_id: str | None = None) -> dict[str, Any]:

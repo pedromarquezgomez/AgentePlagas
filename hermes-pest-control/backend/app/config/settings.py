@@ -18,9 +18,15 @@ class Settings(BaseSettings):
     hermes_api_url: str = ""
     hermes_api_key: str = ""
     hermes_timeout_seconds: float = 30.0
+    hermes_shadow_mode: bool = False
+    hermes_shadow_api_url: str = ""
+    hermes_shadow_api_key: str = ""
+    hermes_shadow_sample_rate: float = 1.0
+    hermes_shadow_timeout_seconds: float = 20.0
     hermes_agent_server_port: int = 9100
     hermes_skills_dir: str = "../hermes/skills"
     hermes_agent_mode: str = "local"
+    hermes_agent_api_key: str = ""
     llm_provider: str = "openai"
     openai_api_key: str = ""
     openai_model: str = ""

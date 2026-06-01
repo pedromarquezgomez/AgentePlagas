@@ -68,6 +68,8 @@ Available paths:
 /calendar
 /documents
 /documents/:id
+/audit/shadow-decisions
+/audit/shadow-decisions/:id
 /login
 ```
 
@@ -103,6 +105,8 @@ npm run build
 21. Open a visit detail and click `Generar brief para técnico`.
 22. Open a document detail, edit title/content/status, and save.
 23. Open an incident detail and create a visit from `Visitas asociadas`.
-24. Refresh the detail page and verify the saved values are still present.
-25. Click `Salir` and verify localStorage or the Firebase session is cleared and
+24. Open `/audit/shadow-decisions` and verify the read-only LLM comparison table.
+25. Open one shadow decision detail and verify differences/metadata render as JSON.
+26. Refresh the detail page and verify the saved values are still present.
+27. Click `Salir` and verify localStorage or the Firebase session is cleared and
     `/login` is shown.

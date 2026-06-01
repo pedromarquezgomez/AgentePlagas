@@ -235,6 +235,113 @@ Configure this URL in Meta Developer Console. Use
 `WHATSAPP_VERIFY_TOKEN` for webhook verification and `WHATSAPP_WEBHOOK_SECRET`
 for the optional internal header check if your gateway supports it.
 
+## Hermes Agent LLM Cloud Run Service
+
+The LLM wrapper can be deployed as a separate Cloud Run service:
+
+```text
+Service: hermes-agent-llm
+Region: europe-west1
+Project: control-plagas-ai
+URL: https://hermes-agent-llm-601698914613.europe-west1.run.app
+```
+
+Deploy:
+
+```bash
+export GOOGLE_CLOUD_PROJECT=control-plagas-ai
+export REGION=europe-west1
+export CLOUD_RUN_SERVICE=hermes-agent-llm
+scripts/deploy_hermes_agent_llm_cloud_run.sh
+```
+
+The script builds `backend/Dockerfile.agent` and deploys only the wrapper. It
+does not enable shadow mode in the main backend.
+
+Required wrapper configuration:
+
+```bash
+HERMES_AGENT_MODE=llm
+LLM_PROVIDER=openai
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_TIMEOUT_SECONDS=30
+AGENT_MAX_OUTPUT_TOKENS=800
+AGENT_TEMPERATURE=0
+HERMES_SKILLS_DIR=/app/hermes/skills
+```
+
+Secrets should be provided through Secret Manager:
+
+```text
+OPENAI_API_KEY
+HERMES_AGENT_API_KEY
+```
+
+Default Secret Manager names used by the deploy script:
+
+```text
+openai-api-key
+hermes-agent-api-key
+```
+
+Create them without printing values:
+
+```bash
+printf '%s' '<openai-api-key>' \
+  | gcloud secrets create openai-api-key \
+      --project control-plagas-ai \
+      --data-file=-
+
+openssl rand -base64 32 \
+  | gcloud secrets create hermes-agent-api-key \
+      --project control-plagas-ai \
+      --data-file=-
+```
+
+Grant the Cloud Run runtime service account access only to those secrets:
+
+```bash
+PROJECT_NUMBER="$(gcloud projects describe control-plagas-ai --format='value(projectNumber)')"
+SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+gcloud secrets add-iam-policy-binding openai-api-key \
+  --project control-plagas-ai \
+  --member "serviceAccount:${SERVICE_ACCOUNT}" \
+  --role roles/secretmanager.secretAccessor
+
+gcloud secrets add-iam-policy-binding hermes-agent-api-key \
+  --project control-plagas-ai \
+  --member "serviceAccount:${SERVICE_ACCOUNT}" \
+  --role roles/secretmanager.secretAccessor
+```
+
+The wrapper accepts:
+
+```text
+GET /health
+POST /agent
+```
+
+If `HERMES_AGENT_API_KEY` is configured, `POST /agent` requires:
+
+```text
+X-Hermes-Agent-Key: <secret>
+```
+
+The main backend can later be configured manually with:
+
+```bash
+HERMES_MODE=mock
+HERMES_SHADOW_MODE=true
+HERMES_SHADOW_API_URL=https://<hermes-agent-llm-url>/agent
+HERMES_SHADOW_API_KEY=<secret>
+HERMES_SHADOW_SAMPLE_RATE=0.1
+HERMES_SHADOW_TIMEOUT_SECONDS=20
+```
+
+Do not apply those main-backend variables until the controlled shadow pilot is
+approved.
+
 ## Readiness
 
 Public safe probes:
@@ -297,3 +404,7 @@ firebase hosting:rollback
 - Google Calendar sync is optional and manual.
 - WhatsApp production behavior depends on Meta app review and webhook settings.
 - Hermes real mode should be rolled out behind evaluation and fallback checks.
+- Hermes shadow mode is disabled by default. If enabled for a controlled pilot,
+  confirm `HERMES_SHADOW_API_URL`, sample rate, and logs before routing any
+  meaningful traffic. Shadow decisions must remain audit-only and must not
+  affect customer replies or business writes.

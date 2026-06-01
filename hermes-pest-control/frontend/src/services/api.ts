@@ -94,6 +94,36 @@ export interface DecisionRecordFilters {
   limit?: number
 }
 
+export interface ShadowDecisionRecord {
+  id: string
+  trace_id: string
+  conversation_id: string
+  channel: string
+  primary_hermes_mode: string
+  shadow_hermes_mode: string
+  primary_action_type: string
+  shadow_action_type?: string | null
+  primary_priority?: string | null
+  shadow_priority?: string | null
+  primary_pest_type?: string | null
+  shadow_pest_type?: string | null
+  primary_should_create: boolean
+  shadow_should_create?: boolean | null
+  agreement_summary: string
+  differences: Record<string, unknown>
+  shadow_fallback_used: boolean
+  shadow_error?: string | null
+  created_at?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface ShadowDecisionRecordFilters {
+  conversation_id?: string
+  channel?: string
+  shadow_action_type?: string
+  limit?: number
+}
+
 export interface HumanReviewItem {
   id: string
   trace_id: string
@@ -497,6 +527,33 @@ export async function fetchDecisionRecords(
     `/audit/decisions${query ? `?${query}` : ''}`,
     {},
     'No se pudo cargar la auditoría',
+  )
+}
+
+export async function listShadowDecisionRecords(
+  filters: ShadowDecisionRecordFilters = {},
+): Promise<ShadowDecisionRecord[]> {
+  const params = new URLSearchParams()
+  if (filters.conversation_id) params.set('conversation_id', filters.conversation_id)
+  if (filters.channel) params.set('channel', filters.channel)
+  if (filters.shadow_action_type) params.set('shadow_action_type', filters.shadow_action_type)
+  if (filters.limit) params.set('limit', String(filters.limit))
+
+  const query = params.toString()
+  return apiFetch<ShadowDecisionRecord[]>(
+    `/audit/shadow-decisions${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar las decisiones shadow',
+  )
+}
+
+export async function getShadowDecisionRecord(
+  decisionId: string,
+): Promise<ShadowDecisionRecord> {
+  return apiFetch<ShadowDecisionRecord>(
+    `/audit/shadow-decisions/${encodeURIComponent(decisionId)}`,
+    {},
+    'No se pudo cargar la decisión shadow',
   )
 }
 

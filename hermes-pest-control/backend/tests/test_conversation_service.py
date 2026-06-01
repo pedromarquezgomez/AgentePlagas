@@ -1,6 +1,7 @@
 import pytest
 
 from app.schemas.incoming_message import IncomingMessage
+from app.config.settings import Settings
 from app.services.conversation_service import ConversationService
 from app.services.mock_firestore_service import MockFirestoreService
 
@@ -66,6 +67,43 @@ class UrgentIncidentHermesService:
                 "affected_area": "garaje",
                 "priority": "urgent",
                 "summary": "Aviso urgente por posible riesgo.",
+            },
+        }
+
+
+class FailingShadowHermesService:
+    hermes_mode = "real"
+
+    async def process_message(self, *_args, **_kwargs) -> dict:
+        raise RuntimeError("shadow unavailable")
+
+
+class DifferentShadowHermesService:
+    hermes_mode = "real"
+
+    async def process_message(self, *_args, **_kwargs) -> dict:
+        return {
+            "reply": "Para registrar el aviso necesito saber la localidad.",
+            "action": {"type": "collect_missing_data", "missing_fields": ["location"]},
+            "incident": {"should_create": False},
+        }
+
+
+class FallbackShadowHermesService:
+    hermes_mode = "real"
+
+    async def process_message(self, *_args, **_kwargs) -> dict:
+        return {
+            "reply": "Fallback seguro.",
+            "action": {"type": "escalate_to_human", "missing_fields": []},
+            "incident": {
+                "should_create": True,
+                "priority": "medium",
+                "summary": "Error procesando respuesta del agente.",
+            },
+            "metadata": {
+                "fallback_used": True,
+                "fallback_reason": "HermesClientError:connection_error",
             },
         }
 
@@ -249,3 +287,150 @@ async def test_conversation_service_creates_review_item_for_urgent_priority() ->
     assert len(review_items) == 1
     assert review_items[0]["reason"] == "urgent_priority"
     assert review_items[0]["priority"] == "urgent"
+
+
+@pytest.mark.asyncio
+async def test_shadow_disabled_does_not_create_shadow_record() -> None:
+    firestore_service = MockFirestoreService()
+    service = ConversationService(
+        firestore_service=firestore_service,
+        shadow_hermes_service=FailingShadowHermesService(),
+        settings=Settings(hermes_shadow_mode=False),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="shadow-disabled",
+        external_chat_id="shadow-disabled-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    shadow_records = await firestore_service.list_documents("shadow_decision_records")
+    assert response.action.type == "create_incident"
+    assert shadow_records == []
+
+
+@pytest.mark.asyncio
+async def test_shadow_enabled_without_api_url_does_not_call_shadow() -> None:
+    firestore_service = MockFirestoreService()
+    service = ConversationService(
+        firestore_service=firestore_service,
+        settings=Settings(hermes_shadow_mode=True, hermes_shadow_api_url=""),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="shadow-no-url",
+        external_chat_id="shadow-no-url-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    shadow_records = await firestore_service.list_documents("shadow_decision_records")
+    assert response.action.type == "create_incident"
+    assert shadow_records == []
+
+
+@pytest.mark.asyncio
+async def test_shadow_enabled_creates_shadow_record_with_differences() -> None:
+    firestore_service = MockFirestoreService()
+    service = ConversationService(
+        firestore_service=firestore_service,
+        shadow_hermes_service=DifferentShadowHermesService(),
+        settings=Settings(hermes_shadow_mode=True, hermes_shadow_sample_rate=1.0),
+        random_func=lambda: 0.0,
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="shadow-enabled",
+        external_chat_id="shadow-enabled-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    incidents = await firestore_service.list_documents(
+        "incidents",
+        filters={"conversation_id": "telegram:shadow-enabled"},
+    )
+    shadow_records = await firestore_service.list_documents(
+        "shadow_decision_records",
+        filters={"conversation_id": "telegram:shadow-enabled"},
+    )
+    assert response.action.type == "create_incident"
+    assert len(incidents) == 1
+    assert len(shadow_records) == 1
+    assert shadow_records[0]["primary_action_type"] == "create_incident"
+    assert shadow_records[0]["shadow_action_type"] == "collect_missing_data"
+    assert shadow_records[0]["primary_should_create"] is True
+    assert shadow_records[0]["shadow_should_create"] is False
+    assert shadow_records[0]["agreement_summary"] == "differences_detected"
+    assert "action_type" in shadow_records[0]["differences"]
+
+
+@pytest.mark.asyncio
+async def test_shadow_error_does_not_break_primary_flow() -> None:
+    firestore_service = MockFirestoreService()
+    service = ConversationService(
+        firestore_service=firestore_service,
+        shadow_hermes_service=FailingShadowHermesService(),
+        settings=Settings(hermes_shadow_mode=True, hermes_shadow_sample_rate=1.0),
+        random_func=lambda: 0.0,
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="shadow-error",
+        external_chat_id="shadow-error-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    shadow_records = await firestore_service.list_documents(
+        "shadow_decision_records",
+        filters={"conversation_id": "telegram:shadow-error"},
+    )
+    assert response.action.type == "create_incident"
+    assert len(shadow_records) == 1
+    assert shadow_records[0]["shadow_action_type"] is None
+    assert shadow_records[0]["shadow_error"] == "UnexpectedError:RuntimeError"
+    assert shadow_records[0]["agreement_summary"] == "shadow_error"
+
+
+@pytest.mark.asyncio
+async def test_shadow_fallback_reason_is_stored_as_shadow_error() -> None:
+    firestore_service = MockFirestoreService()
+    service = ConversationService(
+        firestore_service=firestore_service,
+        shadow_hermes_service=FallbackShadowHermesService(),
+        settings=Settings(hermes_shadow_mode=True, hermes_shadow_sample_rate=1.0),
+        random_func=lambda: 0.0,
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="shadow-fallback",
+        external_chat_id="shadow-fallback-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    shadow_records = await firestore_service.list_documents(
+        "shadow_decision_records",
+        filters={"conversation_id": "telegram:shadow-fallback"},
+    )
+    assert response.action.type == "create_incident"
+    assert len(shadow_records) == 1
+    assert shadow_records[0]["shadow_action_type"] == "escalate_to_human"
+    assert shadow_records[0]["shadow_fallback_used"] is True
+    assert shadow_records[0]["shadow_error"] == "HermesClientError:connection_error"
+    assert (
+        shadow_records[0]["metadata"]["shadow_fallback_reason"]
+        == "HermesClientError:connection_error"
+    )

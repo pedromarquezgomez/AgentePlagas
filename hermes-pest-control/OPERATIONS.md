@@ -1330,8 +1330,107 @@ hermes_response_invalid hermes_mode=real
 hermes_fallback_used hermes_mode=real
 ```
 
+Shadow mode:
+
+```text
+hermes_shadow_record_created trace_id=... conversation_id=... primary_action=... shadow_action=...
+hermes_shadow_error trace_id=... conversation_id=... error=...
+hermes_real_client_error trace_id=... hermes_mode=real error_type=... error_class=... status_code=...
+hermes_agent_request_started trace_id=... agent_mode=...
+hermes_agent_response_valid trace_id=... response_valid=true action_type=...
+hermes_agent_response_invalid trace_id=... response_valid=false error_type=...
+```
+
 Logs must not contain Telegram tokens, WhatsApp access tokens, Hermes API keys,
 Firebase credentials, full headers, or unnecessary customer text.
+
+## Hermes LLM Shadow Mode
+
+Shadow mode is for controlled comparison only. It must not be enabled by
+default in production.
+
+Detailed runbook:
+
+```text
+backend/docs/SHADOW_MODE_RUNBOOK.md
+```
+
+Configuration:
+
+```bash
+HERMES_SHADOW_MODE=false
+HERMES_SHADOW_API_URL=
+HERMES_SHADOW_API_KEY=
+HERMES_SHADOW_SAMPLE_RATE=1.0
+HERMES_SHADOW_TIMEOUT_SECONDS=20
+```
+
+Local lab example, with the LLM wrapper already running:
+
+```bash
+HERMES_SHADOW_MODE=true
+HERMES_SHADOW_API_URL=http://127.0.0.1:9100/agent
+HERMES_SHADOW_SAMPLE_RATE=1.0
+```
+
+The primary Hermes response still controls the user reply and all business
+actions. The shadow response only creates audit records.
+
+For Cloud Run shadow pilots, deploy the LLM wrapper as a separate service first:
+
+```bash
+scripts/deploy_hermes_agent_llm_cloud_run.sh
+```
+
+Prepared wrapper URL:
+
+```text
+https://hermes-agent-llm-601698914613.europe-west1.run.app
+```
+
+The wrapper should use `HERMES_AGENT_API_KEY`; the main backend sends the same
+secret as `HERMES_SHADOW_API_KEY` through the `X-Hermes-Agent-Key` header.
+
+Query shadow records:
+
+```bash
+curl -H "X-Admin-API-Key: <admin-key>" \
+  "http://127.0.0.1:8000/audit/shadow-decisions?limit=20"
+```
+
+Panel review paths:
+
+```text
+/audit/shadow-decisions
+/audit/shadow-decisions/:id
+```
+
+The panel view is read-only. It shows primary/shadow action, priority, pest
+type, `should_create`, differences, fallback state, and shadow errors.
+
+Normalized shadow errors:
+
+```text
+HermesClientError:timeout
+HermesClientError:connection_error
+HermesClientError:request_failed
+HermesClientError:http_401
+HermesClientError:http_500
+HermesClientError:invalid_json
+HermesClientError:invalid_contract
+UnexpectedError:<ExceptionClass>
+```
+
+Use `trace_id` to correlate backend logs with the separate LLM wrapper logs. A
+backend `hermes_real_client_error` without a matching wrapper
+`hermes_agent_request_started` means the request failed before reaching the
+wrapper.
+
+Local smoke helper:
+
+```bash
+backend/scripts/run_shadow_smoke_local.sh
+```
 
 ## Common Diagnostics
 

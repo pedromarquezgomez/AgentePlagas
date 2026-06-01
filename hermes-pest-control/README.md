@@ -699,6 +699,31 @@ The structured log fields should show:
 Logs intentionally do not include Telegram tokens, Firebase credentials, full
 headers, or unnecessary personal data.
 
+## Shadow Mode Review
+
+Hermes LLM Shadow Mode can compare the active Hermes decision against a shadow
+LLM endpoint without changing the customer reply or business actions.
+
+Protected backend endpoints:
+
+```text
+GET /audit/shadow-decisions
+GET /audit/shadow-decisions/{id}
+```
+
+Panel paths:
+
+```text
+/audit/shadow-decisions
+/audit/shadow-decisions/:id
+```
+
+Shadow mode is disabled by default. See:
+
+```text
+backend/docs/SHADOW_MODE_RUNBOOK.md
+```
+
 ## Docker
 
 ```bash

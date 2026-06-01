@@ -84,6 +84,48 @@ export OPENAI_MODEL=<chosen-model>
 make hermes-agent-llm
 ```
 
+### One-command local evaluation
+
+For unattended local lab runs, create a local-only file:
+
+```bash
+cd backend
+cat > .env.llm.local <<'EOF'
+OPENAI_API_KEY=<secret>
+OPENAI_MODEL=gpt-4.1-mini
+HERMES_AGENT_MODE=llm
+LLM_PROVIDER=openai
+OPENAI_TIMEOUT_SECONDS=30
+AGENT_MAX_OUTPUT_TOKENS=800
+AGENT_TEMPERATURE=0
+EOF
+chmod 600 .env.llm.local
+```
+
+`backend/.env.llm.local` is ignored by Git and must never be committed.
+
+Then run from the repository root:
+
+```bash
+backend/scripts/run_llm_eval_local.sh
+```
+
+The script:
+
+- loads `backend/.env.llm.local`;
+- starts `make hermes-agent-llm` in the background;
+- waits for `http://127.0.0.1:9100/health`;
+- runs `make evals-agent-llm`;
+- stops the local agent process;
+- exits with the same status code as the eval command.
+
+It does not print `OPENAI_API_KEY`. If the agent fails, inspect only the safe
+runtime log:
+
+```bash
+tail -n 80 /tmp/hermes-agent-llm.log
+```
+
 Terminal 2:
 
 ```bash

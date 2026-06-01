@@ -1,17 +1,22 @@
 import logging
+import random
+from typing import Callable
 from uuid import uuid4
 
+from app.config.settings import Settings
 from app.schemas.agent_response import AgentResponse
 from app.schemas.decision_record import DecisionRecordCreate
 from app.schemas.human_review import HumanReviewItemCreate
 from app.schemas.incoming_message import IncomingMessage
 from app.schemas.incident import IncidentDraft
+from app.schemas.shadow_decision_record import ShadowDecisionRecordCreate
 from app.services.decision_audit_service import DecisionAuditService
 from app.services.firestore_factory import get_firestore_service
 from app.services.hermes_clients import default_business_context
 from app.services.hermes_service import HermesService
 from app.services.human_review_service import HumanReviewService
 from app.services.incident_service import IncidentService
+from app.services.shadow_decision_service import ShadowDecisionService
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +28,13 @@ class ConversationService:
         incident_service: IncidentService | None = None,
         decision_audit_service: DecisionAuditService | None = None,
         human_review_service: HumanReviewService | None = None,
+        shadow_decision_service: ShadowDecisionService | None = None,
+        shadow_hermes_service: HermesService | None = None,
         firestore_service=None,
+        settings: Settings | None = None,
+        random_func: Callable[[], float] | None = None,
     ) -> None:
+        self.settings = settings or Settings()
         self.hermes_service = hermes_service or HermesService()
         self.firestore_service = (
             firestore_service
@@ -38,6 +48,11 @@ class ConversationService:
         self.human_review_service = human_review_service or HumanReviewService(
             self.firestore_service
         )
+        self.shadow_decision_service = shadow_decision_service or ShadowDecisionService(
+            self.firestore_service
+        )
+        self.shadow_hermes_service = shadow_hermes_service
+        self.random_func = random_func or random.random
 
     async def handle_incoming_message(self, message: IncomingMessage) -> AgentResponse:
         trace_id = self.build_trace_id()
@@ -82,6 +97,12 @@ class ConversationService:
             incident_id=incident_id,
             decision_record_id=decision_record.id,
             response=response,
+        )
+        await self._run_shadow_if_enabled(
+            message=message,
+            conversation_id=conversation_id,
+            trace_id=trace_id,
+            primary_response=response,
         )
         await self._store_outbound_message(message, conversation_id, trace_id, response)
         logger.info(
@@ -351,3 +372,205 @@ class ConversationService:
             reasons.append("sensitive_case")
 
         return reasons
+
+    async def _run_shadow_if_enabled(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+        primary_response: AgentResponse,
+    ) -> None:
+        if not self.settings.hermes_shadow_mode:
+            return
+        if self.shadow_hermes_service is None and not self.settings.hermes_shadow_api_url:
+            logger.warning(
+                "hermes_shadow_skipped trace_id=%s conversation_id=%s "
+                "reason=missing_shadow_api_url",
+                trace_id,
+                conversation_id,
+            )
+            return
+        if not self._should_sample_shadow():
+            logger.info(
+                "hermes_shadow_skipped trace_id=%s conversation_id=%s reason=sample_rate",
+                trace_id,
+                conversation_id,
+            )
+            return
+
+        shadow_service = self.shadow_hermes_service or self._build_shadow_hermes_service()
+        business_context = default_business_context(conversation_id)
+        business_context["trace_id"] = trace_id
+        business_context["shadow_mode"] = True
+
+        shadow_response: AgentResponse | None = None
+        shadow_error: str | None = None
+        shadow_fallback_reason: str | None = None
+
+        try:
+            raw_shadow_response = await shadow_service.process_message(
+                message,
+                conversation_history=[],
+                business_context=business_context,
+            )
+            shadow_response = (
+                raw_shadow_response
+                if isinstance(raw_shadow_response, AgentResponse)
+                else AgentResponse.model_validate(raw_shadow_response)
+            )
+            if bool(shadow_response.metadata.get("fallback_used", False)):
+                shadow_fallback_reason = str(
+                    shadow_response.metadata.get("fallback_reason")
+                    or "HermesClientError:unknown"
+                )
+                shadow_error = shadow_fallback_reason
+        except Exception as exc:
+            shadow_error = f"UnexpectedError:{exc.__class__.__name__}"
+            logger.warning(
+                "hermes_shadow_error trace_id=%s conversation_id=%s error=%s",
+                trace_id,
+                conversation_id,
+                shadow_error,
+            )
+
+        await self.shadow_decision_service.create_shadow_record(
+            self._build_shadow_record(
+                message=message,
+                conversation_id=conversation_id,
+                trace_id=trace_id,
+                primary_response=primary_response,
+                shadow_response=shadow_response,
+                shadow_error=shadow_error,
+                shadow_fallback_reason=shadow_fallback_reason,
+                shadow_hermes_mode=getattr(shadow_service, "hermes_mode", "real"),
+            )
+        )
+        logger.info(
+            "hermes_shadow_record_created trace_id=%s conversation_id=%s "
+            "primary_action=%s shadow_action=%s shadow_error=%s",
+            trace_id,
+            conversation_id,
+            primary_response.action.type,
+            shadow_response.action.type if shadow_response else None,
+            shadow_error,
+        )
+
+    def _should_sample_shadow(self) -> bool:
+        sample_rate = max(0.0, min(1.0, self.settings.hermes_shadow_sample_rate))
+        return self.random_func() < sample_rate
+
+    def _build_shadow_hermes_service(self) -> HermesService:
+        shadow_settings = Settings(
+            hermes_mode="real",
+            hermes_api_url=self.settings.hermes_shadow_api_url,
+            hermes_shadow_api_key=self.settings.hermes_shadow_api_key,
+            hermes_timeout_seconds=self.settings.hermes_shadow_timeout_seconds,
+        )
+        return HermesService(settings=shadow_settings)
+
+    def _build_shadow_record(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+        primary_response: AgentResponse,
+        shadow_response: AgentResponse | None,
+        shadow_error: str | None,
+        shadow_fallback_reason: str | None,
+        shadow_hermes_mode: str,
+    ) -> ShadowDecisionRecordCreate:
+        differences = self._compare_shadow_response(primary_response, shadow_response)
+        return ShadowDecisionRecordCreate(
+            trace_id=trace_id,
+            conversation_id=conversation_id,
+            channel=message.channel,
+            primary_hermes_mode=getattr(self.hermes_service, "hermes_mode", "unknown"),
+            shadow_hermes_mode=shadow_hermes_mode,
+            primary_action_type=primary_response.action.type,
+            shadow_action_type=shadow_response.action.type if shadow_response else None,
+            primary_priority=(
+                primary_response.incident.priority if primary_response.incident else None
+            ),
+            shadow_priority=(
+                shadow_response.incident.priority
+                if shadow_response and shadow_response.incident
+                else None
+            ),
+            primary_pest_type=(
+                primary_response.incident.pest_type if primary_response.incident else None
+            ),
+            shadow_pest_type=(
+                shadow_response.incident.pest_type
+                if shadow_response and shadow_response.incident
+                else None
+            ),
+            primary_should_create=(
+                primary_response.incident.should_create
+                if primary_response.incident
+                else False
+            ),
+            shadow_should_create=(
+                shadow_response.incident.should_create
+                if shadow_response and shadow_response.incident
+                else None
+            ),
+            agreement_summary=self._agreement_summary(differences, shadow_error),
+            differences=differences,
+            shadow_fallback_used=(
+                bool(shadow_response.metadata.get("fallback_used", False))
+                if shadow_response
+                else False
+            ),
+            shadow_error=shadow_error,
+            metadata={
+                "message_type": message.message_type,
+                "primary_missing_fields": primary_response.action.missing_fields,
+                "shadow_missing_fields": (
+                    shadow_response.action.missing_fields if shadow_response else []
+                ),
+                "shadow_fallback_reason": shadow_fallback_reason,
+            },
+        )
+
+    def _compare_shadow_response(
+        self,
+        primary_response: AgentResponse,
+        shadow_response: AgentResponse | None,
+    ) -> dict:
+        if shadow_response is None:
+            return {"shadow_response": {"primary": "present", "shadow": None}}
+
+        comparisons = {
+            "action_type": (
+                primary_response.action.type,
+                shadow_response.action.type,
+            ),
+            "priority": (
+                primary_response.incident.priority if primary_response.incident else None,
+                shadow_response.incident.priority if shadow_response.incident else None,
+            ),
+            "pest_type": (
+                primary_response.incident.pest_type if primary_response.incident else None,
+                shadow_response.incident.pest_type if shadow_response.incident else None,
+            ),
+            "should_create": (
+                primary_response.incident.should_create
+                if primary_response.incident
+                else False,
+                shadow_response.incident.should_create
+                if shadow_response.incident
+                else False,
+            ),
+        }
+        return {
+            field: {"primary": primary, "shadow": shadow}
+            for field, (primary, shadow) in comparisons.items()
+            if primary != shadow
+        }
+
+    def _agreement_summary(self, differences: dict, shadow_error: str | None) -> str:
+        if shadow_error:
+            return "shadow_error"
+        if not differences:
+            return "full_agreement"
+        return "differences_detected"

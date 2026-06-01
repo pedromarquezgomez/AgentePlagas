@@ -16,9 +16,11 @@ evals-real:
 	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; python -m evals.run_evals --hermes-mode real
 
 evals-hermes-agent:
+	@curl -fsS $${HERMES_AGENT_HEALTH_URL:-http://127.0.0.1:9100/health} >/dev/null || (echo "Hermes Agent server is not reachable. Start it first with: make hermes-agent-server" && exit 1)
 	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; HERMES_API_URL=$${HERMES_API_URL:-http://127.0.0.1:9100/agent} python -m evals.run_evals --hermes-mode real
 
 evals-agent-llm:
+	@curl -fsS $${HERMES_AGENT_HEALTH_URL:-http://127.0.0.1:9100/health} >/dev/null || (echo "Hermes LLM agent is not reachable. Start it first in another terminal with: make hermes-agent-llm" && exit 1)
 	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; HERMES_API_URL=$${HERMES_API_URL:-http://127.0.0.1:9100/agent} python -m evals.run_evals --hermes-mode real
 
 fake-hermes:

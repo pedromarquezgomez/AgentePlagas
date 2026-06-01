@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sys
+from hmac import compare_digest
 from pathlib import Path
 from typing import Any
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, status
 from pydantic import ValidationError
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -52,33 +54,72 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/agent")
-async def agent(payload: dict[str, Any]) -> dict[str, Any]:
+async def agent(
+    payload: dict[str, Any],
+    x_hermes_agent_key: str | None = Header(default=None),
+    x_hermes_trace_id: str | None = Header(default=None),
+) -> dict[str, Any]:
+    validate_agent_api_key(settings, x_hermes_agent_key)
+    logger.info(
+        "hermes_agent_request_started trace_id=%s agent_mode=%s",
+        x_hermes_trace_id,
+        settings.hermes_agent_mode,
+    )
     try:
-        response = process_agent_request(payload, settings)
+        response = process_agent_request(payload, settings, trace_id=x_hermes_trace_id)
     except HermesAgentServerError as exc:
-        logger.warning("hermes_agent_response_invalid error=%s", exc)
+        logger.warning(
+            "hermes_agent_response_invalid trace_id=%s agent_mode=%s "
+            "response_valid=false error_type=%s error=%s",
+            x_hermes_trace_id,
+            settings.hermes_agent_mode,
+            exc.__class__.__name__,
+            exc,
+        )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     logger.info(
-        "hermes_agent_response_valid action_type=%s incident_should_create=%s",
+        "hermes_agent_response_valid trace_id=%s agent_mode=%s "
+        "response_valid=true action_type=%s incident_should_create=%s",
+        x_hermes_trace_id,
+        settings.hermes_agent_mode,
         response.action.type,
         response.incident.should_create if response.incident else False,
     )
     return response.model_dump(mode="json")
 
 
+def validate_agent_api_key(
+    runtime_settings: Settings,
+    provided_key: str | None,
+) -> None:
+    expected_key = runtime_settings.hermes_agent_api_key
+    if not expected_key:
+        return
+    normalized_expected_key = expected_key.strip()
+    normalized_provided_key = provided_key.strip() if provided_key else ""
+    if not normalized_provided_key or not compare_digest(
+        normalized_provided_key, normalized_expected_key
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized.",
+        )
+
+
 def process_agent_request(
     payload: dict[str, Any],
     runtime_settings: Settings | None = None,
+    trace_id: str | None = None,
 ) -> AgentResponse:
     runtime_settings = runtime_settings or Settings()
     if payload.get("response_contract") != "AgentResponse":
         raise HermesAgentServerError("Unsupported response_contract.")
 
     system_prompt = load_system_prompt()
-    skills_prompt = load_skills_prompt(runtime_settings.hermes_skills_dir)
+    skills_prompt = load_skills_prompt(runtime_settings.hermes_skills_dir, trace_id=trace_id)
     prompt = build_agent_prompt(payload, system_prompt, skills_prompt)
-    raw_output = run_agent(prompt, payload, runtime_settings)
+    raw_output = run_agent(prompt, payload, runtime_settings, trace_id=trace_id)
     return parse_agent_output(raw_output)
 
 
@@ -89,7 +130,7 @@ def load_system_prompt() -> str:
     return prompt_path.read_text(encoding="utf-8")
 
 
-def load_skills_prompt(skills_dir: str) -> str:
+def load_skills_prompt(skills_dir: str, trace_id: str | None = None) -> str:
     resolved_dir = resolve_skills_dir(skills_dir)
     sections = []
     missing = []
@@ -107,7 +148,8 @@ def load_skills_prompt(skills_dir: str) -> str:
         )
 
     logger.info(
-        "hermes_agent_skills_loaded skills_count=%s skills_dir=%s",
+        "hermes_agent_skills_loaded trace_id=%s skills_count=%s skills_dir=%s",
+        trace_id,
         len(sections),
         resolved_dir,
     )
@@ -169,12 +211,13 @@ def run_agent(
     prompt: str,
     payload: dict[str, Any],
     runtime_settings: Settings,
+    trace_id: str | None = None,
 ) -> str:
     mode = runtime_settings.hermes_agent_mode.casefold()
     if mode in {"local", "fake"}:
         return run_local_skill_agent(payload, prompt)
     if mode == "llm":
-        return run_llm_agent(prompt, runtime_settings)
+        return run_llm_agent(prompt, runtime_settings, trace_id=trace_id)
 
     raise HermesAgentServerError(
         f"Unsupported HERMES_AGENT_MODE={runtime_settings.hermes_agent_mode!r}."
@@ -185,6 +228,7 @@ def run_llm_agent(
     prompt: str,
     runtime_settings: Settings,
     transport: httpx.BaseTransport | None = None,
+    trace_id: str | None = None,
 ) -> str:
     if runtime_settings.llm_provider.casefold() != "openai":
         raise HermesAgentConfigurationError(
@@ -192,7 +236,7 @@ def run_llm_agent(
         )
 
     client = OpenAIResponsesClient(runtime_settings, transport=transport)
-    return client.generate(prompt)
+    return client.generate(prompt, trace_id=trace_id)
 
 
 class OpenAIResponsesClient:
@@ -206,15 +250,16 @@ class OpenAIResponsesClient:
         self.settings = settings
         self.transport = transport
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, trace_id: str | None = None) -> str:
         if not self.settings.openai_api_key:
             raise HermesAgentConfigurationError("OPENAI_API_KEY is not configured.")
         if not self.settings.openai_model:
             raise HermesAgentConfigurationError("OPENAI_MODEL is not configured.")
 
         logger.info(
-            "hermes_llm_request_started provider=%s model_configured=%s "
+            "hermes_llm_request_started trace_id=%s provider=%s model_configured=%s "
             "max_output_tokens=%s temperature=%s",
+            trace_id,
             self.settings.llm_provider,
             bool(self.settings.openai_model),
             self.settings.agent_max_output_tokens,
@@ -262,20 +307,50 @@ class OpenAIResponsesClient:
                     headers=headers,
                 )
         except httpx.TimeoutException as exc:
+            logger.warning(
+                "hermes_llm_request_failed trace_id=%s error_type=timeout "
+                "error_class=%s",
+                trace_id,
+                exc.__class__.__name__,
+            )
             raise HermesAgentServerError("LLM request timed out.") from exc
         except httpx.HTTPError as exc:
+            logger.warning(
+                "hermes_llm_request_failed trace_id=%s error_type=request_failed "
+                "error_class=%s",
+                trace_id,
+                exc.__class__.__name__,
+            )
             raise HermesAgentServerError("LLM request failed.") from exc
 
         if response.status_code >= 400:
+            logger.warning(
+                "hermes_llm_request_failed trace_id=%s error_type=http_%s "
+                "status_code=%s",
+                trace_id,
+                response.status_code,
+                response.status_code,
+            )
             raise HermesAgentServerError(f"LLM returned HTTP {response.status_code}.")
 
         try:
             data = response.json()
         except ValueError as exc:
+            logger.warning(
+                "hermes_llm_request_failed trace_id=%s error_type=invalid_json "
+                "error_class=%s status_code=%s",
+                trace_id,
+                exc.__class__.__name__,
+                response.status_code,
+            )
             raise HermesAgentServerError("LLM returned invalid JSON envelope.") from exc
 
         text = extract_openai_response_text(data)
-        logger.info("hermes_llm_request_completed provider=%s", self.settings.llm_provider)
+        logger.info(
+            "hermes_llm_request_completed trace_id=%s provider=%s",
+            trace_id,
+            self.settings.llm_provider,
+        )
         return text
 
 
@@ -623,4 +698,6 @@ def _build_missing_data_reply(missing_fields: list[str]) -> str:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    uvicorn.run(app, host="127.0.0.1", port=settings.hermes_agent_server_port)
+    port = int(os.getenv("PORT", str(settings.hermes_agent_server_port)))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run(app, host=host, port=port)

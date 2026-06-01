@@ -57,18 +57,23 @@ class HermesService:
             return response
         except HermesClientError as exc:
             logger.warning(
-                "hermes_response_invalid hermes_mode=%s error=%s",
+                "hermes_response_invalid hermes_mode=%s error_type=%s "
+                "status_code=%s error=%s",
                 self.hermes_mode,
+                exc.error_type,
+                exc.status_code,
                 exc,
             )
-            return self._safe_fallback_response()
+            return self._safe_fallback_response(exc.normalized_error)
         except Exception as exc:
             logger.warning(
                 "hermes_response_invalid hermes_mode=%s error=%s",
                 self.hermes_mode,
                 exc.__class__.__name__,
             )
-            return self._safe_fallback_response()
+            return self._safe_fallback_response(
+                f"UnexpectedError:{exc.__class__.__name__}"
+            )
 
     def _build_client(self) -> HermesMockClient | HermesRealClient:
         if self.hermes_mode == "real":
@@ -87,7 +92,7 @@ class HermesService:
             business_context or default_business_context(),
         )
 
-    def _safe_fallback_response(self) -> AgentResponse:
+    def _safe_fallback_response(self, fallback_reason: str = "hermes_service_error") -> AgentResponse:
         logger.info("hermes_fallback_used hermes_mode=%s", self.hermes_mode)
         return AgentResponse(
             reply=(
@@ -108,6 +113,6 @@ class HermesService:
             },
             metadata={
                 "fallback_used": True,
-                "fallback_reason": "hermes_service_error",
+                "fallback_reason": fallback_reason,
             },
         )

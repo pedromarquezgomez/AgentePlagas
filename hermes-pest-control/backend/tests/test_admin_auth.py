@@ -104,6 +104,32 @@ def test_audit_endpoint_accepts_correct_admin_api_key(monkeypatch) -> None:
     assert response.status_code == 200
 
 
+def test_shadow_audit_endpoint_is_protected_when_admin_auth_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(admin_auth.settings, "auth_mode", "api_key")
+    monkeypatch.setattr(admin_auth.settings, "require_admin_auth", True)
+    monkeypatch.setattr(admin_auth.settings, "admin_api_key", "test-admin-key")
+
+    response = client.get("/audit/shadow-decisions")
+
+    assert response.status_code == 401
+
+
+def test_shadow_audit_endpoint_accepts_correct_admin_api_key(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = DecisionAuditService(firestore_service)
+    monkeypatch.setattr(audit_route, "decision_audit_service", service)
+    monkeypatch.setattr(admin_auth.settings, "auth_mode", "api_key")
+    monkeypatch.setattr(admin_auth.settings, "require_admin_auth", True)
+    monkeypatch.setattr(admin_auth.settings, "admin_api_key", "test-admin-key")
+
+    response = client.get(
+        "/audit/shadow-decisions",
+        headers={"X-Admin-API-Key": "test-admin-key"},
+    )
+
+    assert response.status_code == 200
+
+
 def test_firebase_auth_accepts_verified_bearer_token(monkeypatch) -> None:
     firestore_service = MockFirestoreService()
     service = IncidentService(firestore_service)

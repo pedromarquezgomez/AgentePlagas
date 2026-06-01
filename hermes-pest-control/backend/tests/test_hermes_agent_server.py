@@ -164,3 +164,60 @@ def test_agent_endpoint_returns_502_for_invalid_runtime_output(monkeypatch) -> N
 
     assert response.status_code == 502
     assert "valid JSON" in response.json()["detail"]
+
+
+def test_agent_endpoint_requires_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setattr(hermes_agent_server.settings, "hermes_agent_api_key", "agent-key")
+    client = TestClient(hermes_agent_server.app)
+
+    response = client.post("/agent", json=_payload("Tengo cucarachas"))
+
+    assert response.status_code == 401
+    assert "agent-key" not in response.text
+
+
+def test_agent_endpoint_accepts_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setattr(hermes_agent_server.settings, "hermes_agent_api_key", "agent-key")
+    monkeypatch.setattr(hermes_agent_server.settings, "hermes_agent_mode", "local")
+    client = TestClient(hermes_agent_server.app)
+
+    response = client.post(
+        "/agent",
+        json=_payload("Tengo cucarachas en la cocina en Torremolinos"),
+        headers={"X-Hermes-Agent-Key": "agent-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"]["type"] == "create_incident"
+
+
+def test_agent_endpoint_propagates_trace_id_to_processor(monkeypatch) -> None:
+    captured_trace_id = None
+
+    def fake_process_agent_request(payload, runtime_settings=None, trace_id=None):
+        nonlocal captured_trace_id
+        captured_trace_id = trace_id
+        return hermes_agent_server.AgentResponse.model_validate(
+            {
+                "reply": "Respuesta trazada.",
+                "action": {"type": "collect_missing_data", "missing_fields": ["location"]},
+                "incident": {"should_create": False},
+            }
+        )
+
+    monkeypatch.setattr(hermes_agent_server.settings, "hermes_agent_api_key", "")
+    monkeypatch.setattr(
+        hermes_agent_server,
+        "process_agent_request",
+        fake_process_agent_request,
+    )
+    client = TestClient(hermes_agent_server.app)
+
+    response = client.post(
+        "/agent",
+        json=_payload("Tengo cucarachas"),
+        headers={"X-Hermes-Trace-Id": "trace-wrapper-123"},
+    )
+
+    assert response.status_code == 200
+    assert captured_trace_id == "trace-wrapper-123"

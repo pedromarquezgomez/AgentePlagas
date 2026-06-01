@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+ENV HERMES_AGENT_SERVER_PORT=8080
+ENV HERMES_SKILLS_DIR=/app/hermes/skills
+
+WORKDIR /app
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/app ./app
+COPY backend/scripts/hermes_agent_server.py ./scripts/hermes_agent_server.py
+COPY hermes ./hermes
+
+EXPOSE 8080
+
+CMD ["python", "scripts/hermes_agent_server.py"]

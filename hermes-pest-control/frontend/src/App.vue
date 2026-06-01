@@ -9,6 +9,8 @@ import HumanReviewTable from './components/HumanReviewTable.vue'
 import IncidentDetail from './components/IncidentDetail.vue'
 import IncidentTable from './components/IncidentTable.vue'
 import LoginPanel from './components/LoginPanel.vue'
+import ShadowDecisionDetail from './components/ShadowDecisionDetail.vue'
+import ShadowDecisionTable from './components/ShadowDecisionTable.vue'
 import TechnicianDetail from './components/TechnicianDetail.vue'
 import TechnicianTable from './components/TechnicianTable.vue'
 import VisitDetail from './components/VisitDetail.vue'
@@ -19,6 +21,7 @@ import {
   fetchDocuments,
   fetchHumanReviewItems,
   fetchIncidents,
+  listShadowDecisionRecords,
   fetchTechnicians,
   fetchVisits,
   getStoredAuthIndicator,
@@ -37,6 +40,7 @@ import {
   type HumanReviewItem,
   type Incident,
   type Technician,
+  type ShadowDecisionRecord,
   type Visit,
   VISIT_STATUSES,
 } from './services/api'
@@ -47,6 +51,7 @@ const reviewItems = ref<HumanReviewItem[]>([])
 const technicians = ref<Technician[]>([])
 const visits = ref<Visit[]>([])
 const documents = ref<OperationalDocument[]>([])
+const shadowDecisionRecords = ref<ShadowDecisionRecord[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const statusFilter = ref('')
@@ -58,6 +63,9 @@ const visitStatusFilter = ref('')
 const visitTechnicianFilter = ref('')
 const documentStatusFilter = ref('')
 const documentTypeFilter = ref('')
+const shadowChannelFilter = ref('')
+const shadowActionFilter = ref('')
+const shadowLimitFilter = ref('100')
 const currentPath = ref(window.location.pathname)
 const adminApiKey = ref(getStoredAuthIndicator())
 const authMessage = ref<string | null>(null)
@@ -68,11 +76,13 @@ const hasReviewFilters = computed(() => Boolean(reviewStatusFilter.value || revi
 const hasTechnicianFilters = computed(() => Boolean(technicianActiveFilter.value))
 const hasVisitFilters = computed(() => Boolean(visitStatusFilter.value || visitTechnicianFilter.value))
 const hasDocumentFilters = computed(() => Boolean(documentStatusFilter.value || documentTypeFilter.value))
+const hasShadowFilters = computed(() => Boolean(shadowChannelFilter.value || shadowActionFilter.value || shadowLimitFilter.value !== '100'))
 const isLoginPath = computed(() => currentPath.value === '/login')
 const hasAccess = computed(() => !REQUIRE_LOGIN || Boolean(adminApiKey.value))
 const isDashboardPath = computed(() => currentPath.value === '/dashboard' || currentPath.value === '/')
 const isCalendarPath = computed(() => currentPath.value === '/calendar')
 const isDocumentListPath = computed(() => currentPath.value === '/documents')
+const isShadowDecisionListPath = computed(() => currentPath.value === '/audit/shadow-decisions')
 const isReviewListPath = computed(() => currentPath.value === '/human-review')
 const isTechnicianListPath = computed(() => currentPath.value === '/technicians')
 const isVisitListPath = computed(() => currentPath.value === '/visits')
@@ -95,6 +105,10 @@ const selectedVisitId = computed(() => {
 })
 const selectedDocumentId = computed(() => {
   const match = currentPath.value.match(/^\/documents\/([^/]+)$/)
+  return match ? decodeURIComponent(match[1]) : null
+})
+const selectedShadowDecisionId = computed(() => {
+  const match = currentPath.value.match(/^\/audit\/shadow-decisions\/([^/]+)$/)
   return match ? decodeURIComponent(match[1]) : null
 })
 
@@ -242,6 +256,30 @@ async function loadDocuments(): Promise<void> {
   }
 }
 
+async function loadShadowDecisionRecords(): Promise<void> {
+  if (!hasAccess.value) return
+
+  loading.value = true
+  error.value = null
+
+  try {
+    shadowDecisionRecords.value = await listShadowDecisionRecords({
+      channel: shadowChannelFilter.value || undefined,
+      shadow_action_type: shadowActionFilter.value || undefined,
+      limit: Number(shadowLimitFilter.value || '100'),
+    })
+  } catch (err) {
+    if (isUnauthorizedError(err)) {
+      handleUnauthorized()
+      return
+    }
+    error.value = err instanceof Error ? err.message : 'No se pudieron cargar las decisiones shadow'
+    shadowDecisionRecords.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
 function clearFilters(): void {
   statusFilter.value = ''
   priorityFilter.value = ''
@@ -271,6 +309,13 @@ function clearDocumentFilters(): void {
   void loadDocuments()
 }
 
+function clearShadowFilters(): void {
+  shadowChannelFilter.value = ''
+  shadowActionFilter.value = ''
+  shadowLimitFilter.value = '100'
+  void loadShadowDecisionRecords()
+}
+
 function syncPath(): void {
   currentPath.value = window.location.pathname
   enforceRouteProtection()
@@ -281,6 +326,7 @@ function syncPath(): void {
   if (isTechnicianListPath.value) void loadTechnicians()
   if (isVisitListPath.value) void loadVisits()
   if (isDocumentListPath.value) void loadDocuments()
+  if (isShadowDecisionListPath.value) void loadShadowDecisionRecords()
 }
 
 function navigate(path: string): void {
@@ -350,6 +396,15 @@ function openDocumentList(): void {
   void loadDocuments()
 }
 
+function openShadowDecision(recordId: string): void {
+  navigate(`/audit/shadow-decisions/${encodeURIComponent(recordId)}`)
+}
+
+function openShadowDecisionList(): void {
+  navigate('/audit/shadow-decisions')
+  void loadShadowDecisionRecords()
+}
+
 function handleTechnicianCreated(technicianId: string): void {
   window.history.replaceState({}, '', `/technicians/${encodeURIComponent(technicianId)}`)
   currentPath.value = window.location.pathname
@@ -384,6 +439,7 @@ function handleLogout(): void {
   technicians.value = []
   visits.value = []
   documents.value = []
+  shadowDecisionRecords.value = []
   authMessage.value = null
   navigate('/login')
 }
@@ -397,6 +453,7 @@ function handleUnauthorized(): void {
   technicians.value = []
   visits.value = []
   documents.value = []
+  shadowDecisionRecords.value = []
   authMessage.value = 'No autorizado. Revisa las credenciales e inténtalo de nuevo.'
   navigate('/login')
 }
@@ -445,6 +502,10 @@ onMounted(() => {
   }
   if (hasAccess.value && isDocumentListPath.value) {
     void loadDocuments()
+    return
+  }
+  if (hasAccess.value && isShadowDecisionListPath.value) {
+    void loadShadowDecisionRecords()
     return
   }
   if (hasAccess.value && isIncidentListPath.value) {
@@ -504,6 +565,13 @@ onUnmounted(() => {
       @unauthorized="handleUnauthorized"
     />
 
+    <ShadowDecisionDetail
+      v-else-if="selectedShadowDecisionId"
+      :record-id="selectedShadowDecisionId"
+      @back="openShadowDecisionList"
+      @unauthorized="handleUnauthorized"
+    />
+
     <template v-else-if="isDashboardPath">
       <header class="topBar">
         <div>
@@ -530,6 +598,9 @@ onUnmounted(() => {
             </button>
             <button class="secondaryButton" type="button" @click="openDocumentList">
               Documentos
+            </button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
+              Evaluación LLM
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadDashboardSummary">
@@ -582,6 +653,9 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openDocumentList">
               Documentos
             </button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
+              Evaluación LLM
+            </button>
           </nav>
           <button
             v-if="REQUIRE_LOGIN"
@@ -615,6 +689,7 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
             <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
             <button class="primaryButton" type="button" disabled>Documentos</button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación LLM</button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadDocuments">
             Actualizar
@@ -662,6 +737,84 @@ onUnmounted(() => {
       </section>
     </template>
 
+    <template v-else-if="isShadowDecisionListPath">
+      <header class="topBar">
+        <div>
+          <p class="eyebrow">Hermes Pest Control</p>
+          <h1>Evaluación LLM</h1>
+        </div>
+        <div class="topActions">
+          <nav class="sectionNav" aria-label="Navegación del panel">
+            <button class="secondaryButton" type="button" @click="openDashboard">Dashboard</button>
+            <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
+            <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
+            <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
+            <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
+            <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
+            <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
+            <button class="primaryButton" type="button" disabled>Evaluación LLM</button>
+          </nav>
+          <button class="primaryButton" type="button" :disabled="loading" @click="loadShadowDecisionRecords">
+            Actualizar
+          </button>
+          <button v-if="REQUIRE_LOGIN" class="secondaryButton" type="button" @click="handleLogout">
+            Salir
+          </button>
+        </div>
+      </header>
+
+      <section class="filters" aria-label="Filtros de evaluación LLM">
+        <label>
+          Canal
+          <select v-model="shadowChannelFilter" @change="loadShadowDecisionRecords">
+            <option value="">Todos</option>
+            <option value="telegram">telegram</option>
+            <option value="whatsapp">whatsapp</option>
+            <option value="webchat">webchat</option>
+            <option value="email">email</option>
+            <option value="sms">sms</option>
+          </select>
+        </label>
+
+        <label>
+          Acción shadow
+          <select v-model="shadowActionFilter" @change="loadShadowDecisionRecords">
+            <option value="">Todas</option>
+            <option value="create_incident">create_incident</option>
+            <option value="collect_missing_data">collect_missing_data</option>
+            <option value="escalate_to_human">escalate_to_human</option>
+          </select>
+        </label>
+
+        <label>
+          Límite
+          <select v-model="shadowLimitFilter" @change="loadShadowDecisionRecords">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </label>
+
+        <button class="secondaryButton" type="button" :disabled="!hasShadowFilters" @click="clearShadowFilters">
+          Limpiar
+        </button>
+      </section>
+
+      <section class="contentBand">
+        <div v-if="loading" class="stateMessage">Cargando decisiones shadow...</div>
+        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
+        <div v-else-if="shadowDecisionRecords.length === 0" class="stateMessage">
+          No hay decisiones shadow para los filtros seleccionados.
+        </div>
+        <ShadowDecisionTable
+          v-else
+          :records="shadowDecisionRecords"
+          @open="openShadowDecision"
+        />
+      </section>
+    </template>
+
     <template v-else-if="isReviewListPath">
       <header class="topBar">
         <div>
@@ -688,6 +841,9 @@ onUnmounted(() => {
             </button>
             <button class="secondaryButton" type="button" @click="openDocumentList">
               Documentos
+            </button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
+              Evaluación LLM
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadHumanReviewItems">
@@ -767,6 +923,9 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openDocumentList">
               Documentos
             </button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
+              Evaluación LLM
+            </button>
           </nav>
           <button class="primaryButton" type="button" @click="openNewTechnician">
             Nuevo técnico
@@ -836,6 +995,9 @@ onUnmounted(() => {
             </button>
             <button class="secondaryButton" type="button" @click="openDocumentList">
               Documentos
+            </button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
+              Evaluación LLM
             </button>
           </nav>
           <button class="primaryButton" type="button" @click="openNewVisit">
@@ -917,6 +1079,9 @@ onUnmounted(() => {
             </button>
             <button class="secondaryButton" type="button" @click="openDocumentList">
               Documentos
+            </button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
+              Evaluación LLM
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadIncidents">

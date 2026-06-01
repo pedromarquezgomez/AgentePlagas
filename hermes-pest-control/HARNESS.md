@@ -620,6 +620,57 @@ Status: partially implemented.
 - replay runner;
 - quality metrics;
 - prompt/schema version comparisons.
+- optional Hermes LLM shadow mode for live comparison without side effects.
+
+## Shadow Mode
+
+Hermes Shadow Mode lets the system compare the active Hermes decision against a
+secondary Hermes endpoint, usually the LLM wrapper, without changing customer
+behavior.
+
+When `HERMES_SHADOW_MODE=false`, nothing changes.
+
+When enabled:
+
+- `ConversationService` still uses the primary `HermesService` response for the
+  customer reply and business actions.
+- The shadow Hermes endpoint is called after the primary decision.
+- The shadow response is never sent to Telegram, WhatsApp, or any user-facing
+  channel.
+- The shadow response never creates incidents, visits, documents, or calendar
+  events.
+- A `ShadowDecisionRecord` is written to `shadow_decision_records` for
+  comparison.
+
+Stored comparison fields include:
+
+- trace ID;
+- conversation ID;
+- channel;
+- primary/shadow action type;
+- primary/shadow priority;
+- primary/shadow pest type;
+- primary/shadow `should_create`;
+- differences;
+- shadow fallback/error state.
+
+Shadow records can be queried through protected endpoints:
+
+```text
+GET /audit/shadow-decisions
+GET /audit/shadow-decisions/{id}
+```
+
+The operations panel also includes an `Evaluación LLM` section:
+
+```text
+/audit/shadow-decisions
+/audit/shadow-decisions/:id
+```
+
+This UI is read-only and uses the same admin authentication as the rest of the
+panel. It is for comparing primary vs shadow decisions, not for approving agent
+actions.
 
 ### Stage 4: Tool Harness
 
