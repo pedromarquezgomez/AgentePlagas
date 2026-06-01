@@ -268,9 +268,9 @@ class HermesRealClient:
         }
         headers = {"Content-Type": "application/json"}
         if self.settings.hermes_api_key:
-            headers["Authorization"] = f"Bearer {self.settings.hermes_api_key}"
+            headers["Authorization"] = f"Bearer {self.settings.hermes_api_key.strip()}"
         if self.settings.hermes_shadow_api_key:
-            headers["X-Hermes-Agent-Key"] = self.settings.hermes_shadow_api_key
+            headers["X-Hermes-Agent-Key"] = self.settings.hermes_shadow_api_key.strip()
         if trace_id:
             headers["X-Hermes-Trace-Id"] = str(trace_id)
 

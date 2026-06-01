@@ -654,6 +654,20 @@ Stored comparison fields include:
 - differences;
 - shadow fallback/error state.
 
+The backend sends `X-Hermes-Trace-Id` to the shadow endpoint so backend logs,
+wrapper logs, OpenAI calls, `DecisionRecord`, and `ShadowDecisionRecord` can be
+correlated without logging prompts or secrets.
+
+Shadow failures are normalized for audit, for example:
+
+```text
+HermesClientError:timeout
+HermesClientError:connection_error
+HermesClientError:http_401
+HermesClientError:invalid_contract
+UnexpectedError:<ExceptionClass>
+```
+
 Shadow records can be queried through protected endpoints:
 
 ```text

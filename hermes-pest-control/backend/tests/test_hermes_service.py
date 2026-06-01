@@ -127,6 +127,35 @@ async def test_hermes_real_client_sends_shadow_agent_key_header() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hermes_real_client_strips_shadow_agent_key_header() -> None:
+    captured_headers = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_headers
+        captured_headers = dict(request.headers)
+        return httpx.Response(
+            200,
+            json={
+                "reply": "Respuesta shadow validada.",
+                "action": {"type": "collect_missing_data", "missing_fields": ["location"]},
+                "incident": {"should_create": False},
+            },
+        )
+
+    settings = Settings(
+        hermes_mode="real",
+        hermes_api_url="https://hermes-agent.test/agent",
+        hermes_shadow_api_key="shadow-agent-key\n",
+    )
+    client = HermesRealClient(settings, transport=httpx.MockTransport(handler))
+
+    response = await client.process_message(_incoming_message("Tengo cucarachas"))
+
+    assert response.action.type == "collect_missing_data"
+    assert captured_headers["x-hermes-agent-key"] == "shadow-agent-key"
+
+
+@pytest.mark.asyncio
 async def test_hermes_real_client_sends_trace_id_header() -> None:
     captured_headers = {}
 
