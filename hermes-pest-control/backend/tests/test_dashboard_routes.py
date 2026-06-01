@@ -95,21 +95,21 @@ async def _seed_dashboard_data(
         VisitCreate(
             incident_id=pending.id or "incident-1",
             status="scheduled",
-            scheduled_start="2026-06-01T09:00:00+02:00",
+            scheduled_start="2030-01-01T09:00:00+02:00",
         )
     )
     await visit_service.create_visit(
         VisitCreate(
             incident_id=ready.id or "incident-2",
             status="in_progress",
-            scheduled_start="2026-06-02T09:00:00+02:00",
+            scheduled_start="2030-01-02T09:00:00+02:00",
         )
     )
     await visit_service.create_visit(
         VisitCreate(
             incident_id=ready.id or "incident-2",
             status="completed",
-            scheduled_start="2026-06-03T09:00:00+02:00",
+            scheduled_start="2030-01-03T09:00:00+02:00",
         )
     )
 

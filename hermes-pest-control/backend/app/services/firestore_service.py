@@ -37,7 +37,7 @@ class FirestoreService:
             payload.setdefault("created_at", firestore.SERVER_TIMESTAMP)
             payload.setdefault("updated_at", firestore.SERVER_TIMESTAMP)
             document_ref.set(payload)
-            return payload
+            return self._snapshot_to_document(document_ref.get())
         except Exception as exc:
             raise FirestoreServiceError(
                 f"Could not create document in collection '{collection}'."
@@ -53,9 +53,7 @@ class FirestoreService:
             if not snapshot.exists:
                 return None
 
-            document = snapshot.to_dict() or {}
-            document["id"] = snapshot.id
-            return document
+            return self._snapshot_to_document(snapshot)
         except Exception as exc:
             raise FirestoreServiceError(
                 f"Could not get document '{document_id}' from collection '{collection}'."
@@ -77,7 +75,8 @@ class FirestoreService:
                 payload,
                 merge=True,
             )
-            return payload
+            snapshot = self.client.collection(collection).document(str(document_id)).get()
+            return self._snapshot_to_document(snapshot)
         except Exception as exc:
             raise FirestoreServiceError(
                 f"Could not update document '{document_id}' in collection '{collection}'."
@@ -104,9 +103,7 @@ class FirestoreService:
 
             documents = []
             for snapshot in query.stream():
-                document = snapshot.to_dict() or {}
-                document["id"] = snapshot.id
-                documents.append(document)
+                documents.append(self._snapshot_to_document(snapshot))
             return documents
         except Exception as exc:
             raise FirestoreServiceError(
@@ -133,7 +130,7 @@ class FirestoreService:
             payload["id"] = document_ref.id
             payload.setdefault("created_at", firestore.SERVER_TIMESTAMP)
             document_ref.set(payload)
-            return payload
+            return self._snapshot_to_document(document_ref.get())
         except Exception as exc:
             raise FirestoreServiceError(
                 "Could not append document to subcollection "
@@ -196,3 +193,8 @@ class FirestoreService:
         raise FirestoreServiceError(
             f"Firestore data must be a dict or Pydantic model, got {type(data)!r}."
         )
+
+    def _snapshot_to_document(self, snapshot: Any) -> dict[str, Any]:
+        document = snapshot.to_dict() or {}
+        document["id"] = snapshot.id
+        return document

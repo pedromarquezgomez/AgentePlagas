@@ -1,7 +1,8 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config.cors import get_cors_allowed_origins
 from app.config.settings import settings
@@ -39,6 +40,24 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logging.getLogger("app.errors").exception(
+        "Unhandled request error path=%s method=%s",
+        request.url.path,
+        request.method,
+    )
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error."},
+    )
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") in get_cors_allowed_origins(settings):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    return response
 
 app.include_router(health.router)
 app.include_router(config_status.router)
