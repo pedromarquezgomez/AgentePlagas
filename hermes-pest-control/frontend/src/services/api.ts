@@ -1,5 +1,13 @@
 import { getApps, initializeApp } from 'firebase/app'
-import { getAuth, getIdToken, onAuthStateChanged, signInWithEmailAndPassword, signOut, type Auth } from 'firebase/auth'
+import {
+  getAuth,
+  getIdToken,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  type Auth,
+  type User,
+} from 'firebase/auth'
 
 export const INCIDENT_STATUSES = [
   'new',
@@ -373,7 +381,19 @@ export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401
 }
 
-async function buildHeaders(includeJson = false): Promise<HeadersInit> {
+async function getCurrentFirebaseUser() {
+  const auth = getFirebaseAuth()
+  if (auth.currentUser) return auth.currentUser
+
+  return new Promise<User | null>((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe()
+      resolve(user)
+    })
+  })
+}
+
+async function getAuthHeaders(includeJson = false): Promise<Record<string, string>> {
   const headers: Record<string, string> = {}
   if (includeJson) {
     headers['Content-Type'] = 'application/json'
@@ -387,13 +407,34 @@ async function buildHeaders(includeJson = false): Promise<HeadersInit> {
   }
 
   if (AUTH_MODE === 'firebase') {
-    const user = getFirebaseAuth().currentUser
-    if (user) {
-      headers.Authorization = `Bearer ${await getIdToken(user)}`
+    const user = await getCurrentFirebaseUser()
+    if (!user) {
+      throw new ApiError('No autorizado', 401)
     }
+    headers.Authorization = `Bearer ${await getIdToken(user)}`
   }
 
   return headers
+}
+
+async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+  errorMessage: string,
+): Promise<T> {
+  const method = options.method?.toUpperCase()
+  const includeJson = Boolean(options.body) && method !== 'GET'
+  const authHeaders = await getAuthHeaders(includeJson)
+  const headers = {
+    ...authHeaders,
+    ...(options.headers as Record<string, string> | undefined),
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  })
+
+  return parseApiResponse<T>(response, errorMessage)
 }
 
 async function parseApiResponse<T>(response: Response, errorMessage: string): Promise<T> {
@@ -406,11 +447,7 @@ async function parseApiResponse<T>(response: Response, errorMessage: string): Pr
 }
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  const response = await fetch(`${API_BASE_URL}/dashboard/summary`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<DashboardSummary>(response, 'No se pudo cargar el dashboard')
+  return apiFetch<DashboardSummary>('/dashboard/summary', {}, 'No se pudo cargar el dashboard')
 }
 
 export async function fetchIncidents(filters: IncidentFilters = {}): Promise<Incident[]> {
@@ -420,32 +457,30 @@ export async function fetchIncidents(filters: IncidentFilters = {}): Promise<Inc
   if (filters.limit) params.set('limit', String(filters.limit))
 
   const query = params.toString()
-  const response = await fetch(`${API_BASE_URL}/incidents${query ? `?${query}` : ''}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<Incident[]>(response, 'No se pudieron cargar las incidencias')
+  return apiFetch<Incident[]>(
+    `/incidents${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar las incidencias',
+  )
 }
 
 export async function fetchIncident(incidentId: string): Promise<Incident> {
-  const response = await fetch(`${API_BASE_URL}/incidents/${encodeURIComponent(incidentId)}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<Incident>(response, 'No se pudo cargar la incidencia')
+  return apiFetch<Incident>(
+    `/incidents/${encodeURIComponent(incidentId)}`,
+    {},
+    'No se pudo cargar la incidencia',
+  )
 }
 
 export async function updateIncident(
   incidentId: string,
   update: IncidentUpdate,
 ): Promise<Incident> {
-  const response = await fetch(`${API_BASE_URL}/incidents/${encodeURIComponent(incidentId)}`, {
-    method: 'PATCH',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(update),
-  })
-
-  return parseApiResponse<Incident>(response, 'No se pudo guardar la incidencia')
+  return apiFetch<Incident>(
+    `/incidents/${encodeURIComponent(incidentId)}`,
+    { method: 'PATCH', body: JSON.stringify(update) },
+    'No se pudo guardar la incidencia',
+  )
 }
 
 export async function fetchDecisionRecords(
@@ -458,11 +493,11 @@ export async function fetchDecisionRecords(
   if (filters.limit) params.set('limit', String(filters.limit))
 
   const query = params.toString()
-  const response = await fetch(`${API_BASE_URL}/audit/decisions${query ? `?${query}` : ''}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<DecisionRecord[]>(response, 'No se pudo cargar la auditoría')
+  return apiFetch<DecisionRecord[]>(
+    `/audit/decisions${query ? `?${query}` : ''}`,
+    {},
+    'No se pudo cargar la auditoría',
+  )
 }
 
 export async function fetchHumanReviewItems(
@@ -474,23 +509,17 @@ export async function fetchHumanReviewItems(
   if (filters.limit) params.set('limit', String(filters.limit))
 
   const query = params.toString()
-  const response = await fetch(`${API_BASE_URL}/human-review${query ? `?${query}` : ''}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<HumanReviewItem[]>(
-    response,
+  return apiFetch<HumanReviewItem[]>(
+    `/human-review${query ? `?${query}` : ''}`,
+    {},
     'No se pudo cargar la cola de revisión',
   )
 }
 
 export async function fetchHumanReviewItem(itemId: string): Promise<HumanReviewItem> {
-  const response = await fetch(`${API_BASE_URL}/human-review/${encodeURIComponent(itemId)}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<HumanReviewItem>(
-    response,
+  return apiFetch<HumanReviewItem>(
+    `/human-review/${encodeURIComponent(itemId)}`,
+    {},
     'No se pudo cargar el elemento de revisión',
   )
 }
@@ -499,14 +528,9 @@ export async function updateHumanReviewItem(
   itemId: string,
   update: HumanReviewUpdate,
 ): Promise<HumanReviewItem> {
-  const response = await fetch(`${API_BASE_URL}/human-review/${encodeURIComponent(itemId)}`, {
-    method: 'PATCH',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(update),
-  })
-
-  return parseApiResponse<HumanReviewItem>(
-    response,
+  return apiFetch<HumanReviewItem>(
+    `/human-review/${encodeURIComponent(itemId)}`,
+    { method: 'PATCH', body: JSON.stringify(update) },
     'No se pudo guardar el elemento de revisión',
   )
 }
@@ -519,44 +543,40 @@ export async function fetchTechnicians(
   if (filters.limit) params.set('limit', String(filters.limit))
 
   const query = params.toString()
-  const response = await fetch(`${API_BASE_URL}/technicians${query ? `?${query}` : ''}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<Technician[]>(response, 'No se pudieron cargar los técnicos')
+  return apiFetch<Technician[]>(
+    `/technicians${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar los técnicos',
+  )
 }
 
 export async function createTechnician(
   technician: TechnicianCreate,
 ): Promise<Technician> {
-  const response = await fetch(`${API_BASE_URL}/technicians`, {
-    method: 'POST',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(technician),
-  })
-
-  return parseApiResponse<Technician>(response, 'No se pudo crear el técnico')
+  return apiFetch<Technician>(
+    '/technicians',
+    { method: 'POST', body: JSON.stringify(technician) },
+    'No se pudo crear el técnico',
+  )
 }
 
 export async function fetchTechnician(technicianId: string): Promise<Technician> {
-  const response = await fetch(`${API_BASE_URL}/technicians/${encodeURIComponent(technicianId)}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<Technician>(response, 'No se pudo cargar el técnico')
+  return apiFetch<Technician>(
+    `/technicians/${encodeURIComponent(technicianId)}`,
+    {},
+    'No se pudo cargar el técnico',
+  )
 }
 
 export async function updateTechnician(
   technicianId: string,
   update: TechnicianUpdate,
 ): Promise<Technician> {
-  const response = await fetch(`${API_BASE_URL}/technicians/${encodeURIComponent(technicianId)}`, {
-    method: 'PATCH',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(update),
-  })
-
-  return parseApiResponse<Technician>(response, 'No se pudo guardar el técnico')
+  return apiFetch<Technician>(
+    `/technicians/${encodeURIComponent(technicianId)}`,
+    { method: 'PATCH', body: JSON.stringify(update) },
+    'No se pudo guardar el técnico',
+  )
 }
 
 export async function fetchVisits(filters: VisitFilters = {}): Promise<Visit[]> {
@@ -567,11 +587,11 @@ export async function fetchVisits(filters: VisitFilters = {}): Promise<Visit[]> 
   if (filters.limit) params.set('limit', String(filters.limit))
 
   const query = params.toString()
-  const response = await fetch(`${API_BASE_URL}/visits${query ? `?${query}` : ''}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<Visit[]>(response, 'No se pudieron cargar las visitas')
+  return apiFetch<Visit[]>(
+    `/visits${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar las visitas',
+  )
 }
 
 export async function listCalendarVisits(filters: CalendarVisitFilters): Promise<Visit[]> {
@@ -581,52 +601,44 @@ export async function listCalendarVisits(filters: CalendarVisitFilters): Promise
   if (filters.technician_id) params.set('technician_id', filters.technician_id)
   if (filters.status) params.set('status', filters.status)
 
-  const response = await fetch(`${API_BASE_URL}/calendar/visits?${params.toString()}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<Visit[]>(response, 'No se pudo cargar el calendario')
+  return apiFetch<Visit[]>(
+    `/calendar/visits?${params.toString()}`,
+    {},
+    'No se pudo cargar el calendario',
+  )
 }
 
 export async function createVisit(visit: VisitCreate): Promise<Visit> {
-  const response = await fetch(`${API_BASE_URL}/visits`, {
-    method: 'POST',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(visit),
-  })
-
-  return parseApiResponse<Visit>(response, 'No se pudo crear la visita')
+  return apiFetch<Visit>(
+    '/visits',
+    { method: 'POST', body: JSON.stringify(visit) },
+    'No se pudo crear la visita',
+  )
 }
 
 export async function fetchVisit(visitId: string): Promise<Visit> {
-  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<Visit>(response, 'No se pudo cargar la visita')
+  return apiFetch<Visit>(
+    `/visits/${encodeURIComponent(visitId)}`,
+    {},
+    'No se pudo cargar la visita',
+  )
 }
 
 export async function updateVisit(
   visitId: string,
   update: VisitUpdate,
 ): Promise<Visit> {
-  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}`, {
-    method: 'PATCH',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(update),
-  })
-
-  return parseApiResponse<Visit>(response, 'No se pudo guardar la visita')
+  return apiFetch<Visit>(
+    `/visits/${encodeURIComponent(visitId)}`,
+    { method: 'PATCH', body: JSON.stringify(update) },
+    'No se pudo guardar la visita',
+  )
 }
 
 export async function syncVisitCalendar(visitId: string): Promise<VisitCalendarSyncResponse> {
-  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}/sync-calendar`, {
-    method: 'POST',
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<VisitCalendarSyncResponse>(
-    response,
+  return apiFetch<VisitCalendarSyncResponse>(
+    `/visits/${encodeURIComponent(visitId)}/sync-calendar`,
+    { method: 'POST' },
     'No se pudo sincronizar el calendario',
   )
 }
@@ -642,64 +654,58 @@ export async function fetchDocuments(
   if (filters.limit) params.set('limit', String(filters.limit))
 
   const query = params.toString()
-  const response = await fetch(`${API_BASE_URL}/documents${query ? `?${query}` : ''}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<OperationalDocument[]>(response, 'No se pudieron cargar los documentos')
+  return apiFetch<OperationalDocument[]>(
+    `/documents${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar los documentos',
+  )
 }
 
 export async function createDocument(
   document: OperationalDocumentCreate,
 ): Promise<OperationalDocument> {
-  const response = await fetch(`${API_BASE_URL}/documents`, {
-    method: 'POST',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(document),
-  })
-
-  return parseApiResponse<OperationalDocument>(response, 'No se pudo crear el documento')
+  return apiFetch<OperationalDocument>(
+    '/documents',
+    { method: 'POST', body: JSON.stringify(document) },
+    'No se pudo crear el documento',
+  )
 }
 
 export async function fetchDocument(documentId: string): Promise<OperationalDocument> {
-  const response = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<OperationalDocument>(response, 'No se pudo cargar el documento')
+  return apiFetch<OperationalDocument>(
+    `/documents/${encodeURIComponent(documentId)}`,
+    {},
+    'No se pudo cargar el documento',
+  )
 }
 
 export async function updateDocument(
   documentId: string,
   update: OperationalDocumentUpdate,
 ): Promise<OperationalDocument> {
-  const response = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
-    method: 'PATCH',
-    headers: await buildHeaders(true),
-    body: JSON.stringify(update),
-  })
-
-  return parseApiResponse<OperationalDocument>(response, 'No se pudo guardar el documento')
+  return apiFetch<OperationalDocument>(
+    `/documents/${encodeURIComponent(documentId)}`,
+    { method: 'PATCH', body: JSON.stringify(update) },
+    'No se pudo guardar el documento',
+  )
 }
 
 export async function generateIncidentSummaryDocument(
   incidentId: string,
 ): Promise<OperationalDocument> {
-  const response = await fetch(`${API_BASE_URL}/incidents/${encodeURIComponent(incidentId)}/generate-summary-document`, {
-    method: 'POST',
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<OperationalDocument>(response, 'No se pudo generar el resumen')
+  return apiFetch<OperationalDocument>(
+    `/incidents/${encodeURIComponent(incidentId)}/generate-summary-document`,
+    { method: 'POST' },
+    'No se pudo generar el resumen',
+  )
 }
 
 export async function generateTechnicianBriefDocument(
   visitId: string,
 ): Promise<OperationalDocument> {
-  const response = await fetch(`${API_BASE_URL}/visits/${encodeURIComponent(visitId)}/generate-technician-brief`, {
-    method: 'POST',
-    headers: await buildHeaders(),
-  })
-
-  return parseApiResponse<OperationalDocument>(response, 'No se pudo generar el brief')
+  return apiFetch<OperationalDocument>(
+    `/visits/${encodeURIComponent(visitId)}/generate-technician-brief`,
+    { method: 'POST' },
+    'No se pudo generar el brief',
+  )
 }

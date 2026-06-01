@@ -17,6 +17,15 @@ Telegram / WhatsApp
 
 Region preference: `europe-west1`.
 
+Current Firebase project:
+
+```text
+Project ID: control-plagas-ai
+Project number: 601698914613
+Hosting URL: https://control-plagas-ai.web.app
+Default hosting site: control-plagas-ai
+```
+
 ## Prerequisites
 
 - Google Cloud project with billing enabled.
@@ -38,9 +47,9 @@ Minimum production configuration:
 APP_ENV=production
 AUTH_MODE=firebase
 FIREBASE_AUTH_ENABLED=true
-FIREBASE_PROJECT_ID=<project-id>
-CORS_ALLOWED_ORIGINS=https://<firebase-hosting-domain>
-FRONTEND_PUBLIC_URL=https://<firebase-hosting-domain>
+FIREBASE_PROJECT_ID=control-plagas-ai
+CORS_ALLOWED_ORIGINS=https://control-plagas-ai.web.app
+FRONTEND_PUBLIC_URL=https://control-plagas-ai.web.app
 HERMES_MODE=mock
 ```
 
@@ -92,6 +101,15 @@ export REGION=europe-west1
 scripts/deploy_backend_cloud_run.sh
 ```
 
+For this project:
+
+```bash
+export GOOGLE_CLOUD_PROJECT=control-plagas-ai
+export CLOUD_RUN_SERVICE=hermes-pest-control-backend
+export REGION=europe-west1
+scripts/deploy_backend_cloud_run.sh
+```
+
 The script builds and deploys the container, but production environment
 variables should be configured separately with `gcloud run services update`,
 Cloud Run UI, or Secret Manager.
@@ -109,7 +127,7 @@ Example Cloud Run env update:
 ```bash
 gcloud run services update hermes-pest-control-backend \
   --region europe-west1 \
-  --set-env-vars APP_ENV=production,AUTH_MODE=firebase,FIREBASE_AUTH_ENABLED=true,FIREBASE_PROJECT_ID=<project-id>,CORS_ALLOWED_ORIGINS=https://<hosting-domain>,FRONTEND_PUBLIC_URL=https://<hosting-domain>,HERMES_MODE=mock
+  --set-env-vars APP_ENV=production,AUTH_MODE=firebase,FIREBASE_AUTH_ENABLED=true,FIREBASE_PROJECT_ID=control-plagas-ai,CORS_ALLOWED_ORIGINS=https://control-plagas-ai.web.app,FRONTEND_PUBLIC_URL=https://control-plagas-ai.web.app,HERMES_MODE=mock,WHATSAPP_ENABLED=false,GOOGLE_CALENDAR_ENABLED=false
 ```
 
 Use Secret Manager for channel tokens and API keys.
@@ -129,8 +147,8 @@ Set:
 VITE_API_BASE_URL=https://<cloud-run-url>
 VITE_AUTH_MODE=firebase
 VITE_FIREBASE_API_KEY=<firebase-web-api-key>
-VITE_FIREBASE_AUTH_DOMAIN=<project-id>.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=<project-id>
+VITE_FIREBASE_AUTH_DOMAIN=control-plagas-ai.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=control-plagas-ai
 ```
 
 Build and deploy:
@@ -143,7 +161,7 @@ firebase deploy --only hosting
 Or from the repository root:
 
 ```bash
-export FIREBASE_PROJECT_ID=<project-id>
+export FIREBASE_PROJECT_ID=control-plagas-ai
 scripts/deploy_frontend_firebase.sh
 ```
 

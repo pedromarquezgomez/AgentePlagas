@@ -12,6 +12,7 @@ backend/evals/results/
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.json
 !firebase.json
 !package.json
