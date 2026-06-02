@@ -56,13 +56,11 @@ function submitLogin(): void {
         </label>
 
         <template v-if="authMode === 'firebase'">
-          <label>
-            Email
-            <input
+          <label>Correo electrónico<input
               v-model="email"
               autocomplete="email"
               autofocus
-              placeholder="admin@empresa.com"
+              placeholder="admin.com"
               type="email"
             />
           </label>

@@ -97,6 +97,27 @@ Complete ordinary case:
 }
 ```
 
+Complete chinches bedroom case without vulnerable-person or bite signal:
+
+```json
+{
+  "reply": "Gracias por la información. He registrado el aviso para que el equipo lo revise.",
+  "action": {"type": "create_incident", "missing_fields": []},
+  "incident": {
+    "should_create": true,
+    "pest_type": "chinches",
+    "location": "Málaga",
+    "affected_area": "dormitorio",
+    "priority": "high",
+    "summary": "Cliente informa de presencia de chinches en dormitorio en Málaga.",
+    "id": null,
+    "conversation_id": null,
+    "status": null
+  },
+  "metadata": {}
+}
+```
+
 Missing locality:
 
 ```json

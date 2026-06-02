@@ -26,6 +26,7 @@ class EvaluationCase:
     expected: dict[str, Any]
     must_include_in_reply: list[str] = field(default_factory=list)
     must_not_include_in_reply: list[str] = field(default_factory=list)
+    hermes_modes: list[str] = field(default_factory=lambda: ["mock", "real"])
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "EvaluationCase":
@@ -36,7 +37,11 @@ class EvaluationCase:
             expected=data.get("expected", {}),
             must_include_in_reply=list(data.get("must_include_in_reply", [])),
             must_not_include_in_reply=list(data.get("must_not_include_in_reply", [])),
+            hermes_modes=list(data.get("hermes_modes", ["mock", "real"])),
         )
+
+    def supports_mode(self, hermes_mode: str) -> bool:
+        return hermes_mode in self.hermes_modes
 
 
 @dataclass
@@ -247,7 +252,11 @@ async def run_evaluations(
     output_path: Path | None = None,
     hermes_mode: str = "mock",
 ) -> EvaluationSummary:
-    cases = load_cases(cases_dir)
+    cases = [
+        evaluation_case
+        for evaluation_case in load_cases(cases_dir)
+        if evaluation_case.supports_mode(hermes_mode)
+    ]
     summary = await EvaluationRunner(hermes_mode=hermes_mode).run_cases(cases)
     print_summary(summary)
 

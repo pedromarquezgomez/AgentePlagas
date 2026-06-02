@@ -22,10 +22,10 @@ function formatValue(value: string | null | undefined): string {
           <th>Acción</th>
           <th>Nombre</th>
           <th>Teléfono</th>
-          <th>Email</th>
+          <th>Correo electrónico</th>
           <th>Activo</th>
           <th>Zona</th>
-          <th>Skills</th>
+          <th>Especialidades</th>
         </tr>
       </thead>
       <tbody>

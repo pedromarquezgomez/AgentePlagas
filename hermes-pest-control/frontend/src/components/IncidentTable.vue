@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Incident } from '../services/api'
+import { formatChannel, formatPriority, formatStatus } from '../utils/labels'
 
 defineProps<{
   incidents: Incident[]
@@ -52,13 +53,13 @@ function formatDate(value: string | undefined): string {
           <td>{{ formatValue(incident.affected_area) }}</td>
           <td>
             <span class="badge" :class="`priority-${incident.priority}`">
-              {{ incident.priority }}
+              {{ formatPriority(incident.priority) }}
             </span>
           </td>
           <td>
-            <span class="badge status">{{ incident.status }}</span>
+            <span class="badge status">{{ formatStatus(incident.status) }}</span>
           </td>
-          <td>{{ incident.channel }}</td>
+          <td>{{ formatChannel(incident.channel) }}</td>
           <td>{{ formatDate(incident.created_at) }}</td>
           <td class="summaryCell">{{ formatValue(incident.summary) }}</td>
         </tr>

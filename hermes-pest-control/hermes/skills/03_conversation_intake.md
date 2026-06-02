@@ -37,6 +37,16 @@ there is no mandatory escalation trigger.
 Use `escalate_to_human` when a mandatory escalation trigger is present, even if
 some fields are missing.
 
+For incomplete messages, preserve any field that is already clear. For example,
+`Tengo cucarachas` is missing `affected_area` and `location`, but still has
+`pest_type="cucarachas"`. Do not erase known fields just because the action is
+`collect_missing_data`.
+
+For noisy or misspelled messages, extract confidently recoverable fields before
+asking for missing data. If the message clearly contains pest, area, and
+locality despite spelling mistakes, use `create_incident` unless escalation is
+required. If one field is uncertain, ask only for that field.
+
 Do not require these fields before creating an initial incident:
 
 - full street address;
@@ -95,3 +105,19 @@ Input: `Tengo un problema en la cocina en Fuengirola`
 - action: `collect_missing_data`
 - `missing_fields`: `["pest_type"]`
 - reply includes `plaga`
+
+Input: `ai ormigas en el jardin malaga`
+
+- `pest_type`: `hormigas`
+- `affected_area`: `jardín`
+- `location`: `Málaga`
+- action: `create_incident`
+- priority: `medium`
+
+Input: `Tengo cucarachas`
+
+- `pest_type`: `cucarachas`
+- missing `affected_area` and `location`
+- action: `collect_missing_data`
+- `missing_fields`: `["affected_area", "location"]`
+- reply includes `zona` and `localidad`

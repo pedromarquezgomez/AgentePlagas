@@ -44,6 +44,21 @@ import {
   type Visit,
   VISIT_STATUSES,
 } from './services/api'
+import {
+  formatAction,
+  formatChannel,
+  formatDocumentType,
+  formatPriority,
+  formatStatus,
+} from './utils/labels'
+
+const SHADOW_ACTION_TYPES = ['create_incident', 'collect_missing_data', 'escalate_to_human'] as const
+const DOCUMENT_TYPE_OPTIONS = [
+  'incident_summary',
+  'technician_brief',
+  'post_treatment_recommendations',
+  'work_report_draft',
+] as const
 
 const incidents = ref<Incident[]>([])
 const dashboardSummary = ref<DashboardSummary | null>(null)
@@ -273,7 +288,7 @@ async function loadShadowDecisionRecords(): Promise<void> {
       handleUnauthorized()
       return
     }
-    error.value = err instanceof Error ? err.message : 'No se pudieron cargar las decisiones shadow'
+    error.value = err instanceof Error ? err.message : 'No se pudieron cargar las evaluaciones IA'
     shadowDecisionRecords.value = []
   } finally {
     loading.value = false
@@ -576,11 +591,11 @@ onUnmounted(() => {
       <header class="topBar">
         <div>
           <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Dashboard</h1>
+          <h1>Panel operativo</h1>
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="primaryButton" type="button" disabled>Dashboard</button>
+            <button class="primaryButton" type="button" disabled>Panel</button>
             <button class="secondaryButton" type="button" @click="openIncidentList">
               Incidencias
             </button>
@@ -600,7 +615,7 @@ onUnmounted(() => {
               Documentos
             </button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación LLM
+              Evaluación IA
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadDashboardSummary">
@@ -634,9 +649,7 @@ onUnmounted(() => {
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">
-              Dashboard
-            </button>
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
             <button class="secondaryButton" type="button" @click="openIncidentList">
               Incidencias
             </button>
@@ -654,7 +667,7 @@ onUnmounted(() => {
               Documentos
             </button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación LLM
+              Evaluación IA
             </button>
           </nav>
           <button
@@ -682,14 +695,14 @@ onUnmounted(() => {
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Dashboard</button>
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
             <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
             <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
             <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
             <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
             <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
             <button class="primaryButton" type="button" disabled>Documentos</button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación LLM</button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadDocuments">
             Actualizar
@@ -705,10 +718,9 @@ onUnmounted(() => {
           Tipo
           <select v-model="documentTypeFilter" @change="loadDocuments">
             <option value="">Todos</option>
-            <option value="incident_summary">incident_summary</option>
-            <option value="technician_brief">technician_brief</option>
-            <option value="post_treatment_recommendations">post_treatment_recommendations</option>
-            <option value="work_report_draft">work_report_draft</option>
+            <option v-for="type in DOCUMENT_TYPE_OPTIONS" :key="type" :value="type">
+              {{ formatDocumentType(type) }}
+            </option>
           </select>
         </label>
 
@@ -716,9 +728,9 @@ onUnmounted(() => {
           Estado
           <select v-model="documentStatusFilter" @change="loadDocuments">
             <option value="">Todos</option>
-            <option value="draft">draft</option>
-            <option value="reviewed">reviewed</option>
-            <option value="archived">archived</option>
+            <option value="draft">{{ formatStatus('draft') }}</option>
+            <option value="reviewed">{{ formatStatus('reviewed') }}</option>
+            <option value="archived">{{ formatStatus('archived') }}</option>
           </select>
         </label>
 
@@ -741,18 +753,18 @@ onUnmounted(() => {
       <header class="topBar">
         <div>
           <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Evaluación LLM</h1>
+          <h1>Evaluación IA</h1>
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Dashboard</button>
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
             <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
             <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
             <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
             <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
             <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
             <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
-            <button class="primaryButton" type="button" disabled>Evaluación LLM</button>
+            <button class="primaryButton" type="button" disabled>Evaluación IA</button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadShadowDecisionRecords">
             Actualizar
@@ -763,26 +775,33 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <section class="filters" aria-label="Filtros de evaluación LLM">
+      <section class="contentBand">
+        <div class="infoPanel" aria-label="Explicación de evaluación IA">
+          Esta pantalla compara la decisión del sistema actual con la decisión que habría tomado la IA real.
+          El sistema actual sigue respondiendo al cliente. La IA solo observa en modo sombra y no ejecuta acciones reales.
+        </div>
+      </section>
+
+      <section class="filters" aria-label="Filtros de evaluación IA">
         <label>
           Canal
           <select v-model="shadowChannelFilter" @change="loadShadowDecisionRecords">
             <option value="">Todos</option>
-            <option value="telegram">telegram</option>
-            <option value="whatsapp">whatsapp</option>
-            <option value="webchat">webchat</option>
-            <option value="email">email</option>
-            <option value="sms">sms</option>
+            <option value="telegram">{{ formatChannel('telegram') }}</option>
+            <option value="whatsapp">{{ formatChannel('whatsapp') }}</option>
+            <option value="webchat">{{ formatChannel('webchat') }}</option>
+            <option value="email">{{ formatChannel('email') }}</option>
+            <option value="sms">{{ formatChannel('sms') }}</option>
           </select>
         </label>
 
         <label>
-          Acción shadow
+          Decisión de la IA
           <select v-model="shadowActionFilter" @change="loadShadowDecisionRecords">
             <option value="">Todas</option>
-            <option value="create_incident">create_incident</option>
-            <option value="collect_missing_data">collect_missing_data</option>
-            <option value="escalate_to_human">escalate_to_human</option>
+            <option v-for="action in SHADOW_ACTION_TYPES" :key="action" :value="action">
+              {{ formatAction(action) }}
+            </option>
           </select>
         </label>
 
@@ -802,10 +821,10 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando decisiones shadow...</div>
+        <div v-if="loading" class="stateMessage">Cargando evaluaciones IA...</div>
         <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
         <div v-else-if="shadowDecisionRecords.length === 0" class="stateMessage">
-          No hay decisiones shadow para los filtros seleccionados.
+          No hay evaluaciones IA para los filtros seleccionados.
         </div>
         <ShadowDecisionTable
           v-else
@@ -823,9 +842,7 @@ onUnmounted(() => {
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">
-              Dashboard
-            </button>
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
             <button class="secondaryButton" type="button" @click="openIncidentList">
               Incidencias
             </button>
@@ -843,7 +860,7 @@ onUnmounted(() => {
               Documentos
             </button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación LLM
+              Evaluación IA
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadHumanReviewItems">
@@ -866,7 +883,7 @@ onUnmounted(() => {
           <select v-model="reviewStatusFilter" @change="loadHumanReviewItems">
             <option value="">Todos</option>
             <option v-for="status in HUMAN_REVIEW_STATUSES" :key="status" :value="status">
-              {{ status }}
+              {{ formatStatus(status) }}
             </option>
           </select>
         </label>
@@ -876,7 +893,7 @@ onUnmounted(() => {
           <select v-model="reviewPriorityFilter" @change="loadHumanReviewItems">
             <option value="">Todas</option>
             <option v-for="priority in INCIDENT_PRIORITIES" :key="priority" :value="priority">
-              {{ priority }}
+              {{ formatPriority(priority) }}
             </option>
           </select>
         </label>
@@ -904,9 +921,7 @@ onUnmounted(() => {
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">
-              Dashboard
-            </button>
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
             <button class="secondaryButton" type="button" @click="openIncidentList">
               Incidencias
             </button>
@@ -924,7 +939,7 @@ onUnmounted(() => {
               Documentos
             </button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación LLM
+              Evaluación IA
             </button>
           </nav>
           <button class="primaryButton" type="button" @click="openNewTechnician">
@@ -977,9 +992,7 @@ onUnmounted(() => {
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">
-              Dashboard
-            </button>
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
             <button class="secondaryButton" type="button" @click="openIncidentList">
               Incidencias
             </button>
@@ -997,7 +1010,7 @@ onUnmounted(() => {
               Documentos
             </button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación LLM
+              Evaluación IA
             </button>
           </nav>
           <button class="primaryButton" type="button" @click="openNewVisit">
@@ -1023,7 +1036,7 @@ onUnmounted(() => {
           <select v-model="visitStatusFilter" @change="loadVisits">
             <option value="">Todos</option>
             <option v-for="status in VISIT_STATUSES" :key="status" :value="status">
-              {{ status }}
+              {{ formatStatus(status) }}
             </option>
           </select>
         </label>
@@ -1061,9 +1074,7 @@ onUnmounted(() => {
         </div>
         <div class="topActions">
           <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">
-              Dashboard
-            </button>
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
             <button class="primaryButton" type="button" disabled>Incidencias</button>
             <button class="secondaryButton" type="button" @click="openHumanReviewList">
               Revisión humana
@@ -1081,7 +1092,7 @@ onUnmounted(() => {
               Documentos
             </button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación LLM
+              Evaluación IA
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadIncidents">
@@ -1104,7 +1115,7 @@ onUnmounted(() => {
           <select v-model="statusFilter" @change="loadIncidents">
             <option value="">Todos</option>
             <option v-for="status in INCIDENT_STATUSES" :key="status" :value="status">
-              {{ status }}
+              {{ formatStatus(status) }}
             </option>
           </select>
         </label>
@@ -1114,7 +1125,7 @@ onUnmounted(() => {
           <select v-model="priorityFilter" @change="loadIncidents">
             <option value="">Todas</option>
             <option v-for="priority in INCIDENT_PRIORITIES" :key="priority" :value="priority">
-              {{ priority }}
+              {{ formatPriority(priority) }}
             </option>
           </select>
         </label>

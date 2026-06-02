@@ -8,6 +8,7 @@ import {
   type Visit,
   VISIT_STATUSES,
 } from '../services/api'
+import { formatStatus } from '../utils/labels'
 
 const emit = defineEmits<{
   open: [visitId: string]
@@ -156,7 +157,7 @@ onMounted(() => {
       <select v-model="statusFilter">
         <option value="">Todos</option>
         <option v-for="status in VISIT_STATUSES" :key="status" :value="status">
-          {{ status }}
+          {{ formatStatus(status) }}
         </option>
       </select>
     </label>
@@ -192,7 +193,7 @@ onMounted(() => {
           </span>
           <span class="calendarVisitTitle">Incidencia {{ visit.incident_id }}</span>
           <span>{{ technicianName(visit.technician_id) }}</span>
-          <span class="badge status">{{ visit.status }}</span>
+          <span class="badge status">{{ formatStatus(visit.status) }}</span>
         </button>
       </article>
     </div>

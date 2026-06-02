@@ -8,6 +8,7 @@ import {
   type HumanReviewItem,
   type HumanReviewStatus,
 } from '../services/api'
+import { formatReason, formatStatus } from '../utils/labels'
 
 const props = defineProps<{
   itemId: string
@@ -117,7 +118,7 @@ watch(
       <button class="secondaryButton" type="button" @click="emit('back')">Volver</button>
       <div>
         <p class="eyebrow">Detalle de revisión humana</p>
-        <h2>{{ item ? item.reason : 'Revisión humana' }}</h2>
+        <h2>{{ item ? formatReason(item.reason) : 'Revisión humana' }}</h2>
       </div>
     </div>
 
@@ -184,7 +185,7 @@ watch(
           Estado
           <select v-model="formStatus" :disabled="saving">
             <option v-for="status in HUMAN_REVIEW_STATUSES" :key="status" :value="status">
-              {{ status }}
+              {{ formatStatus(status) }}
             </option>
           </select>
         </label>

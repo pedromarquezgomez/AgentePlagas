@@ -456,6 +456,37 @@ The optional JSON output includes decision-like fields such as `trace_id`,
 `hermes_mode`, `action_type`, `incident_should_create`, `fallback_used`, and
 `response_contract_version`.
 
+## Synthetic Evaluation
+
+Synthetic evaluation creates realistic pest-control intake messages and compares
+Hermes mock against a shadow Hermes LLM endpoint without using Telegram:
+
+```bash
+make synthetic-cases
+make synthetic-shadow-eval
+```
+
+By default this uses local/test-style services and does not touch Firestore real.
+If no `HERMES_SHADOW_API_URL` is configured, it compares mock to mock as a
+reproducible smoke check.
+
+To compare against a local LLM wrapper:
+
+```bash
+make hermes-agent-llm
+```
+
+In another terminal:
+
+```bash
+HERMES_SHADOW_API_URL=http://127.0.0.1:9100/agent make synthetic-shadow-eval
+```
+
+Reports are written to `backend/evals/results/`. Cloud pilot evaluation is
+available only through the explicit `make synthetic-shadow-eval-cloud` command
+and must be run with synthetic metadata and reviewed manually. Full details live
+in [backend/docs/SYNTHETIC_EVALUATION.md](./backend/docs/SYNTHETIC_EVALUATION.md).
+
 ## Decision Audit
 
 Every message processed through `ConversationService` creates a structured
@@ -1407,6 +1438,23 @@ Panel review paths:
 
 The panel view is read-only. It shows primary/shadow action, priority, pest
 type, `should_create`, differences, fallback state, and shadow errors.
+
+### Cómo interpretar la Evaluación IA
+
+The panel labels the shadow comparison as `Evaluación IA` for operators:
+
+- `Sistema actual`: the decision that actually controlled the customer reply and
+  business workflow.
+- `IA en sombra`: the decision the real LLM would have proposed, without
+  executing it.
+- `Coinciden`: both decisions match on the core comparison fields.
+- `Hay diferencias`: the IA proposes a different action, priority, pest type, or
+  incident-creation decision.
+- `Error de IA en sombra`: the IA evaluation failed; the current system was not
+  affected.
+
+Use `Datos técnicos` only for trace/debug work. It contains `trace_id`,
+`conversation_id`, raw differences, and metadata.
 
 Normalized shadow errors:
 

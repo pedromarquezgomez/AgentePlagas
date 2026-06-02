@@ -432,3 +432,133 @@ Minimum gate before staging:
 
 Production must remain in `HERMES_MODE=mock` until the above is complete and
 reviewed.
+
+## Sprint 21 Policy Gate
+
+Date: 2026-06-02
+
+After synthetic shadow analysis, the team added a formal product policy and a
+new fixed eval file:
+
+```text
+backend/docs/HERMES_PRODUCT_POLICY.md
+backend/evals/cases/pilot_policy_cases.json
+```
+
+These new pilot-policy cases are scoped to the LLM candidate with:
+
+```json
+"hermes_modes": ["real"]
+```
+
+Reason:
+
+- the V1 production baseline still uses `HERMES_MODE=mock`;
+- `make evals` must continue to verify the current mock behavior;
+- new Pilot Mode criteria should test the real/LLM candidate without silently
+  changing production behavior;
+- any future mock update should be a separate, explicit business decision.
+
+The policy gate covers:
+
+- chinches in bedroom;
+- avispas/nests near living areas;
+- vulnerable people with interior pests;
+- angry customer/reclamation handling;
+- price-final or closed-price requests;
+- chemical/product requests and real exposure;
+- typo-tolerant extraction;
+- partial extraction in incomplete messages.
+
+This does not activate `HERMES_MODE=real`, does not connect Telegram to the LLM,
+and does not change Cloud Run production configuration.
+
+## Cloud Agent Redeploy After Sprint 21
+
+Date: 2026-06-02
+
+Scope:
+
+- redeployed only Cloud Run service `hermes-agent-llm`;
+- latest validated revision: `hermes-agent-llm-00007-tmz`;
+- backend principal remained in `HERMES_MODE=mock`;
+- Telegram and WhatsApp adapters were not changed;
+- the LLM remained a separate `/agent` service used for eval/shadow only.
+
+Health:
+
+```text
+GET /health -> {"status":"ok","mode":"llm"}
+```
+
+Smoke:
+
+- `POST /agent` with `X-Hermes-Agent-Key` returned valid `AgentResponse`.
+- Plain chinches bedroom case returned:
+  - `action.type=create_incident`
+  - `pest_type=chinches`
+  - `affected_area=dormitorio`
+  - `location=Málaga`
+  - `priority=high`
+- `POST /agent` without `X-Hermes-Agent-Key` returned `401`.
+
+Real-mode fixed eval run against the cloud wrapper:
+
+```text
+28 cases
+28 passed
+0 failed
+```
+
+This includes the 13 baseline evals plus 15 Sprint 21 pilot-policy cases.
+
+An intermediate run before the final chinches clarification produced `26/28`.
+The two failures were both plain chinches-bedroom cases where the LLM escalated
+or marked urgent too aggressively. The fix was a skill/contract clarification:
+plain chinches in bedroom with pest, area, and locality is `create_incident`
+with `priority=high` unless bites, vulnerable people, strong health concern, or
+high affectation are mentioned.
+
+Cloud synthetic shadow after redeploy:
+
+```text
+report: backend/evals/results/synthetic_shadow_report_20260602_095155.json
+total_cases: 50
+full_agreement_count: 30
+differences_count: 20
+shadow_error_count: 0
+fallback_count: 0
+safety_cases_correct: 17
+action_mismatches: 17
+priority_mismatches: 15
+pest_type_mismatches: 17
+```
+
+Comparison with previous cloud synthetic run:
+
+| Metric | Previous | After redeploy |
+| --- | ---: | ---: |
+| total_cases | 50 | 50 |
+| full_agreement_count | 33 | 30 |
+| differences_count | 17 | 20 |
+| shadow_error_count | 0 | 0 |
+| fallback_count | 0 | 0 |
+| safety_cases_correct | 18 | 17 |
+
+Interpretation:
+
+- The cloud LLM path is technically healthy: no shadow errors and no fallback.
+- Fixed product-policy evals are now green.
+- The previously problematic reclamation + roedores case is corrected:
+  `escalate_to_human`, `priority=high`, `pest_type=roedores`.
+- Chemical/product, fixed-price, vulnerable-person, exposure, and chinches
+  policy gates pass in the fixed eval suite.
+- Residual synthetic differences remain product-behavior review items, not
+  transport failures. One notable residual case is an angry customer with
+  cucarachas but missing locality, where the LLM still preferred
+  `collect_missing_data` instead of human escalation.
+
+Readiness update:
+
+The cloud wrapper is ready to continue Shadow Mode observation and controlled
+Pilot Mode design. It is still not approved as the primary Telegram agent.

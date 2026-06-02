@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import type { ShadowDecisionRecord } from '../services/api'
+import {
+  agreementClass,
+  formatAction,
+  formatAgreement,
+  formatChannel,
+  formatFallback,
+  formatPlainValue,
+  formatPriority,
+} from '../utils/labels'
 
 defineProps<{
   records: ShadowDecisionRecord[]
@@ -8,10 +17,6 @@ defineProps<{
 const emit = defineEmits<{
   open: [recordId: string]
 }>()
-
-function formatValue(value: string | null | undefined): string {
-  return value && value.trim() ? value : 'Sin dato'
-}
 
 function formatDate(value: string | undefined): string {
   if (!value) return 'Sin fecha'
@@ -23,11 +28,6 @@ function formatDate(value: string | undefined): string {
   }).format(date)
 }
 
-function formatBoolean(value: boolean | null | undefined): string {
-  if (value === true) return 'sí'
-  if (value === false) return 'no'
-  return 'Sin dato'
-}
 </script>
 
 <template>
@@ -39,13 +39,12 @@ function formatBoolean(value: boolean | null | undefined): string {
           <th>Fecha</th>
           <th>Canal</th>
           <th>Conversación</th>
-          <th>Primary action</th>
-          <th>Shadow action</th>
-          <th>Primary priority</th>
-          <th>Shadow priority</th>
-          <th>Agreement</th>
-          <th>Fallback</th>
-          <th>Error</th>
+          <th>Decisión del sistema actual</th>
+          <th>Decisión de la IA</th>
+          <th>Prioridad actual</th>
+          <th>Prioridad IA</th>
+          <th>Resultado</th>
+          <th>Error IA</th>
         </tr>
       </thead>
       <tbody>
@@ -56,15 +55,20 @@ function formatBoolean(value: boolean | null | undefined): string {
             </button>
           </td>
           <td>{{ formatDate(record.created_at) }}</td>
-          <td>{{ record.channel }}</td>
+          <td>{{ formatChannel(record.channel) }}</td>
           <td>{{ record.conversation_id }}</td>
-          <td><span class="badge status">{{ record.primary_action_type }}</span></td>
-          <td><span class="badge status">{{ formatValue(record.shadow_action_type) }}</span></td>
-          <td>{{ formatValue(record.primary_priority) }}</td>
-          <td>{{ formatValue(record.shadow_priority) }}</td>
-          <td><span class="badge">{{ record.agreement_summary }}</span></td>
-          <td>{{ formatBoolean(record.shadow_fallback_used) }}</td>
-          <td>{{ formatValue(record.shadow_error) }}</td>
+          <td><span class="badge status">{{ formatAction(record.primary_action_type) }}</span></td>
+          <td><span class="badge status">{{ formatAction(record.shadow_action_type) }}</span></td>
+          <td>{{ formatPriority(record.primary_priority) }}</td>
+          <td>{{ formatPriority(record.shadow_priority) }}</td>
+          <td>
+            <span class="badge" :class="agreementClass(record.agreement_summary)">
+              {{ formatAgreement(record.agreement_summary) }}
+            </span>
+          </td>
+          <td>
+            {{ record.shadow_error ? formatPlainValue(record.shadow_error) : formatFallback(record.shadow_fallback_used) }}
+          </td>
         </tr>
       </tbody>
     </table>

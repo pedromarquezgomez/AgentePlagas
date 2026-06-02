@@ -105,8 +105,25 @@ npm run build
 21. Open a visit detail and click `Generar brief para técnico`.
 22. Open a document detail, edit title/content/status, and save.
 23. Open an incident detail and create a visit from `Visitas asociadas`.
-24. Open `/audit/shadow-decisions` and verify the read-only LLM comparison table.
-25. Open one shadow decision detail and verify differences/metadata render as JSON.
+24. Open `/audit/shadow-decisions` and verify the read-only `Evaluación IA` comparison table.
+25. Open one IA evaluation detail and verify the summary, current-system section,
+    IA-in-shadow section, human-readable differences, interpretation, and collapsed
+    technical data.
 26. Refresh the detail page and verify the saved values are still present.
 27. Click `Salir` and verify localStorage or the Firebase session is cleared and
     `/login` is shown.
+
+## Cómo interpretar la Evaluación IA
+
+`Evaluación IA` compares the decision actually used by the current system with
+the decision proposed by the real IA running in shadow mode. The IA does not
+answer customers and does not execute business actions.
+
+- `Coinciden`: current system and IA propose the same core decision.
+- `Hay diferencias`: IA proposes a different action, priority, pest type, or
+  incident creation decision. Review whether the IA criterion is better.
+- `Error de IA en sombra`: the IA could not be evaluated correctly. The current
+  system was not affected.
+
+The detail page keeps technical identifiers such as `trace_id`, raw differences,
+and metadata inside `Datos técnicos`.

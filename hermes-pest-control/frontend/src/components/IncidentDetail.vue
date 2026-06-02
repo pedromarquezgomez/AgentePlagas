@@ -20,6 +20,12 @@ import {
   type Visit,
   type VisitStatus,
 } from '../services/api'
+import {
+  formatDocumentType,
+  formatGeneratedBy,
+  formatPriority,
+  formatStatus,
+} from '../utils/labels'
 
 const props = defineProps<{
   incidentId: string
@@ -313,7 +319,7 @@ watch(
           Estado
           <select v-model="formStatus" :disabled="saving">
             <option v-for="status in INCIDENT_STATUSES" :key="status" :value="status">
-              {{ status }}
+              {{ formatStatus(status) }}
             </option>
           </select>
         </label>
@@ -322,7 +328,7 @@ watch(
           Prioridad
           <select v-model="formPriority" :disabled="saving">
             <option v-for="priority in INCIDENT_PRIORITIES" :key="priority" :value="priority">
-              {{ priority }}
+              {{ formatPriority(priority) }}
             </option>
           </select>
         </label>
@@ -380,10 +386,10 @@ watch(
             </thead>
             <tbody>
               <tr v-for="document in documents" :key="document.id">
-                <td>{{ document.document_type }}</td>
+                <td>{{ formatDocumentType(document.document_type) }}</td>
                 <td>{{ document.title }}</td>
-                <td><span class="badge status">{{ document.status }}</span></td>
-                <td>{{ document.generated_by }}</td>
+                <td><span class="badge status">{{ formatStatus(document.status) }}</span></td>
+                <td>{{ formatGeneratedBy(document.generated_by) }}</td>
               </tr>
             </tbody>
           </table>
@@ -422,7 +428,7 @@ watch(
             </thead>
             <tbody>
               <tr v-for="visit in visits" :key="visit.id">
-                <td><span class="badge status">{{ visit.status }}</span></td>
+                <td><span class="badge status">{{ formatStatus(visit.status) }}</span></td>
                 <td>{{ formatValue(visit.technician_id) }}</td>
                 <td>{{ formatVisitDate(visit.scheduled_start) }}</td>
                 <td>{{ formatVisitDate(visit.scheduled_end) }}</td>
@@ -457,7 +463,7 @@ watch(
             Estado
             <select v-model="visitStatus" :disabled="visitSaving">
               <option v-for="status in VISIT_STATUSES" :key="status" :value="status">
-                {{ status }}
+                {{ formatStatus(status) }}
               </option>
             </select>
           </label>

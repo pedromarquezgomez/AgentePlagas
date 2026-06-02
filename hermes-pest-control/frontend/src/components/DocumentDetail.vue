@@ -8,6 +8,7 @@ import {
   type OperationalDocument,
   type OperationalDocumentStatus,
 } from '../services/api'
+import { formatStatus } from '../utils/labels'
 
 const props = defineProps<{
   documentId: string
@@ -118,7 +119,7 @@ watch(
         Estado
         <select v-model="formStatus" :disabled="saving">
           <option v-for="status in DOCUMENT_STATUSES" :key="status" :value="status">
-            {{ status }}
+            {{ formatStatus(status) }}
           </option>
         </select>
       </label>

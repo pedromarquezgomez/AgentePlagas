@@ -31,7 +31,7 @@ cd backend
 python -m evals.synthetic.generate_synthetic_cases \
   --mode template \
   --count 50 \
-  --output backend/evals/synthetic/generated_cases.json
+  --output evals/synthetic/generated_cases.json
 ```
 
 Optional LLM generation is controlled and never used by tests by default:
@@ -109,6 +109,32 @@ python -m evals.synthetic.promote_cases_to_evals \
 
 Promotion does not change skills or prompts. A human must review the expected
 fields before committing promoted evals.
+
+## Pilot Policy Fixed Evals
+
+Reviewed synthetic cases can become fixed evals only after a human product
+decision. Sprint 21 added a curated set in:
+
+```text
+backend/evals/cases/pilot_policy_cases.json
+```
+
+These cases are intentionally scoped with:
+
+```json
+"hermes_modes": ["real"]
+```
+
+That means `make evals` in mock mode keeps protecting the V1 production
+baseline, while `make evals-agent-llm` or real-mode evaluation can test the
+candidate LLM against the new policy. This avoids silently changing mock
+behavior before Pilot Mode.
+
+The policy source for these cases is:
+
+```text
+backend/docs/HERMES_PRODUCT_POLICY.md
+```
 
 ## Safety Rules
 

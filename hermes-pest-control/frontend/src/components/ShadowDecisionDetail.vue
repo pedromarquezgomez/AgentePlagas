@@ -5,6 +5,20 @@ import {
   isUnauthorizedError,
   type ShadowDecisionRecord,
 } from '../services/api'
+import {
+  agreementClass,
+  differenceText,
+  formatAction,
+  formatAgreement,
+  formatBooleanYesNo,
+  formatChannel,
+  formatFallback,
+  formatHermesMode,
+  formatPlainValue,
+  formatPriority,
+  normalizeDifferences,
+  shadowInterpretation,
+} from '../utils/labels'
 
 const props = defineProps<{
   recordId: string
@@ -21,11 +35,7 @@ const error = ref<string | null>(null)
 
 const formattedDifferences = computed(() => formatJson(record.value?.differences))
 const formattedMetadata = computed(() => formatJson(record.value?.metadata))
-
-function formatValue(value: string | boolean | null | undefined): string {
-  if (typeof value === 'boolean') return value ? 'sí' : 'no'
-  return value && value.trim() ? value : 'Sin dato'
-}
+const differences = computed(() => normalizeDifferences(record.value?.differences))
 
 function formatDate(value: string | undefined): string {
   if (!value) return 'Sin fecha'
@@ -55,7 +65,7 @@ async function loadRecord(): Promise<void> {
       emit('unauthorized')
       return
     }
-    error.value = err instanceof Error ? err.message : 'No se pudo cargar la decisión shadow'
+    error.value = err instanceof Error ? err.message : 'No se pudo cargar la evaluación IA'
     record.value = null
   } finally {
     loading.value = false
@@ -76,107 +86,160 @@ watch(
     <div class="detailHeader">
       <button class="secondaryButton" type="button" @click="emit('back')">Volver</button>
       <div>
-        <p class="eyebrow">Detalle de evaluación LLM</p>
-        <h2>{{ record ? record.conversation_id : 'Shadow Decision' }}</h2>
+        <p class="eyebrow">Detalle de evaluación IA</p>
+        <h2>{{ record ? record.conversation_id : 'Comparativa IA' }}</h2>
       </div>
     </div>
 
-    <div v-if="loading" class="stateMessage">Cargando decisión shadow...</div>
+    <div v-if="loading" class="stateMessage">Cargando evaluación IA...</div>
     <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
 
     <div v-else-if="record" class="detailLayout">
-      <section class="detailPanel fullWidthPanel" aria-label="Comparación shadow">
+      <section class="detailPanel fullWidthPanel" aria-label="Resumen de evaluación IA">
+        <div class="sectionHeader">
+          <div>
+            <h3>Resumen</h3>
+            <p class="sectionText">{{ shadowInterpretation(record.agreement_summary) }}</p>
+          </div>
+          <span class="badge" :class="agreementClass(record.agreement_summary)">
+            {{ formatAgreement(record.agreement_summary) }}
+          </span>
+        </div>
         <dl class="detailGrid">
           <div>
-            <dt>Trace</dt>
-            <dd>{{ record.trace_id }}</dd>
+            <dt>¿Coinciden?</dt>
+            <dd>{{ formatAgreement(record.agreement_summary) }}</dd>
           </div>
           <div>
-            <dt>Conversación</dt>
-            <dd>{{ record.conversation_id }}</dd>
+            <dt>¿Hubo error?</dt>
+            <dd>{{ record.shadow_error ? 'Sí' : 'No' }}</dd>
           </div>
           <div>
-            <dt>Canal</dt>
-            <dd>{{ record.channel }}</dd>
+            <dt>¿Se usó respuesta segura?</dt>
+            <dd>{{ formatFallback(record.shadow_fallback_used) }}</dd>
           </div>
           <div>
             <dt>Fecha</dt>
             <dd>{{ formatDate(record.created_at) }}</dd>
           </div>
+        </dl>
+      </section>
+
+      <section class="detailPanel" aria-label="Sistema actual">
+        <div class="sectionHeader">
           <div>
-            <dt>Primary Hermes</dt>
-            <dd>{{ record.primary_hermes_mode }}</dd>
+            <h3>Sistema actual</h3>
+            <p class="sectionText">Decisión que sí se usó para responder y operar.</p>
+          </div>
+        </div>
+        <dl class="detailGrid singleColumnGrid">
+          <div>
+            <dt>Modo</dt>
+            <dd>{{ formatHermesMode(record.primary_hermes_mode) }}</dd>
           </div>
           <div>
-            <dt>Shadow Hermes</dt>
-            <dd>{{ record.shadow_hermes_mode }}</dd>
+            <dt>Acción</dt>
+            <dd>{{ formatAction(record.primary_action_type) }}</dd>
           </div>
           <div>
-            <dt>Primary action</dt>
-            <dd>{{ record.primary_action_type }}</dd>
+            <dt>Prioridad</dt>
+            <dd>{{ formatPriority(record.primary_priority) }}</dd>
           </div>
           <div>
-            <dt>Shadow action</dt>
-            <dd>{{ formatValue(record.shadow_action_type) }}</dd>
+            <dt>Plaga</dt>
+            <dd>{{ formatPlainValue(record.primary_pest_type) }}</dd>
           </div>
           <div>
-            <dt>Primary priority</dt>
-            <dd>{{ formatValue(record.primary_priority) }}</dd>
-          </div>
-          <div>
-            <dt>Shadow priority</dt>
-            <dd>{{ formatValue(record.shadow_priority) }}</dd>
-          </div>
-          <div>
-            <dt>Primary pest</dt>
-            <dd>{{ formatValue(record.primary_pest_type) }}</dd>
-          </div>
-          <div>
-            <dt>Shadow pest</dt>
-            <dd>{{ formatValue(record.shadow_pest_type) }}</dd>
-          </div>
-          <div>
-            <dt>Primary should create</dt>
-            <dd>{{ formatValue(record.primary_should_create) }}</dd>
-          </div>
-          <div>
-            <dt>Shadow should create</dt>
-            <dd>{{ formatValue(record.shadow_should_create) }}</dd>
-          </div>
-          <div>
-            <dt>Agreement</dt>
-            <dd>{{ record.agreement_summary }}</dd>
-          </div>
-          <div>
-            <dt>Shadow fallback</dt>
-            <dd>{{ formatValue(record.shadow_fallback_used) }}</dd>
-          </div>
-          <div>
-            <dt>Shadow error</dt>
-            <dd>{{ formatValue(record.shadow_error) }}</dd>
+            <dt>¿Crear incidencia?</dt>
+            <dd>{{ formatBooleanYesNo(record.primary_should_create) }}</dd>
           </div>
         </dl>
       </section>
 
-      <section class="detailPanel fullWidthPanel" aria-label="Diferencias">
+      <section class="detailPanel" aria-label="IA en sombra">
         <div class="sectionHeader">
           <div>
-            <h3>Diferencias</h3>
-            <p class="sectionText">Comparación estructurada entre la decisión primaria y shadow.</p>
+            <h3>IA en sombra</h3>
+            <p class="sectionText">Decisión simulada. No respondió al cliente ni ejecutó acciones reales.</p>
           </div>
         </div>
-        <pre class="jsonBlock">{{ formattedDifferences }}</pre>
+        <dl class="detailGrid singleColumnGrid">
+          <div>
+            <dt>Modo</dt>
+            <dd>{{ formatHermesMode(record.shadow_hermes_mode) }}</dd>
+          </div>
+          <div>
+            <dt>Acción propuesta</dt>
+            <dd>{{ formatAction(record.shadow_action_type) }}</dd>
+          </div>
+          <div>
+            <dt>Prioridad propuesta</dt>
+            <dd>{{ formatPriority(record.shadow_priority) }}</dd>
+          </div>
+          <div>
+            <dt>Plaga detectada</dt>
+            <dd>{{ formatPlainValue(record.shadow_pest_type) }}</dd>
+          </div>
+          <div>
+            <dt>¿Crearía incidencia?</dt>
+            <dd>{{ formatBooleanYesNo(record.shadow_should_create) }}</dd>
+          </div>
+        </dl>
       </section>
 
-      <section class="detailPanel fullWidthPanel" aria-label="Metadata">
+      <section class="detailPanel fullWidthPanel" aria-label="Diferencias detectadas">
         <div class="sectionHeader">
           <div>
-            <h3>Metadata</h3>
-            <p class="sectionText">Datos operativos asociados al registro.</p>
+            <h3>Diferencias detectadas</h3>
+            <p class="sectionText">Lectura en lenguaje natural de la comparación.</p>
           </div>
         </div>
-        <pre class="jsonBlock">{{ formattedMetadata }}</pre>
+        <ul v-if="differences.length" class="differenceList">
+          <li v-for="difference in differences" :key="difference">
+            {{ differenceText(difference) }}
+          </li>
+        </ul>
+        <p v-else class="sectionText">Ambos coinciden.</p>
       </section>
+
+      <section class="detailPanel fullWidthPanel" aria-label="Interpretación">
+        <div class="sectionHeader">
+          <div>
+            <h3>Interpretación</h3>
+            <p class="sectionText">{{ shadowInterpretation(record.agreement_summary) }}</p>
+          </div>
+        </div>
+      </section>
+
+      <details class="detailPanel fullWidthPanel technicalDetails">
+        <summary>Datos técnicos</summary>
+        <dl class="detailGrid technicalGrid">
+          <div>
+            <dt>trace_id</dt>
+            <dd>{{ record.trace_id }}</dd>
+          </div>
+          <div>
+            <dt>conversation_id</dt>
+            <dd>{{ record.conversation_id }}</dd>
+          </div>
+          <div>
+            <dt>Canal</dt>
+            <dd>{{ formatChannel(record.channel) }}</dd>
+          </div>
+          <div>
+            <dt>primary_hermes_mode</dt>
+            <dd>{{ record.primary_hermes_mode }}</dd>
+          </div>
+          <div>
+            <dt>shadow_hermes_mode</dt>
+            <dd>{{ record.shadow_hermes_mode }}</dd>
+          </div>
+        </dl>
+        <h3>Diferencias crudas</h3>
+        <pre class="jsonBlock">{{ formattedDifferences }}</pre>
+        <h3>Metadata</h3>
+        <pre class="jsonBlock">{{ formattedMetadata }}</pre>
+      </details>
     </div>
   </section>
 </template>

@@ -213,6 +213,53 @@ What it measures now:
 - forbidden reply substrings;
 - per-case pass/fail status.
 
+Mode scoping:
+
+- cases without `hermes_modes` apply to both `mock` and `real`;
+- cases with `"hermes_modes": ["real"]` are LLM-candidate policy checks and do
+  not affect `make evals` in the current mock production baseline;
+- this lets product policy mature before any Pilot Mode activation.
+
+Product-policy reference:
+
+```text
+backend/docs/HERMES_PRODUCT_POLICY.md
+```
+
+### Synthetic Evaluation Generator
+
+Implemented:
+
+- deterministic template generator in `backend/evals/synthetic/generate_synthetic_cases.py`;
+- optional LLM case generation behind `SYNTHETIC_GENERATION_MODE=llm`;
+- local synthetic shadow runner in `backend/evals/synthetic/run_synthetic_shadow_eval.py`;
+- manual promotion helper in `backend/evals/synthetic/promote_cases_to_evals.py`;
+- `make synthetic-cases`;
+- `make synthetic-shadow-eval`;
+- explicit controlled command `make synthetic-shadow-eval-cloud`.
+
+Role in the harness:
+
+- generates broader pest-control intake coverage without Telegram;
+- compares the active mock decision against a shadow LLM decision;
+- produces aggregate mismatch and fallback metrics;
+- marks synthetic messages in metadata;
+- keeps prompt/skill changes human-reviewed instead of automatic.
+
+Safety boundaries:
+
+- no Telegram or WhatsApp messages are sent;
+- production is not touched by default;
+- Firestore real is avoided by default;
+- OpenAI is not called in tests;
+- generated reports are diagnostic, not self-training instructions.
+
+Full runbook:
+
+```text
+backend/docs/SYNTHETIC_EVALUATION.md
+```
+
 Traceability fields generated now:
 
 - `eval_run_id`;
@@ -675,7 +722,7 @@ GET /audit/shadow-decisions
 GET /audit/shadow-decisions/{id}
 ```
 
-The operations panel also includes an `Evaluación LLM` section:
+The operations panel also includes an `Evaluación IA` section:
 
 ```text
 /audit/shadow-decisions
@@ -685,6 +732,16 @@ The operations panel also includes an `Evaluación LLM` section:
 This UI is read-only and uses the same admin authentication as the rest of the
 panel. It is for comparing primary vs shadow decisions, not for approving agent
 actions.
+
+Operator interpretation:
+
+- `Sistema actual` is the decision that actually affected the user flow.
+- `IA en sombra` is the simulated LLM decision.
+- `Coinciden` means the core decision fields match.
+- `Hay diferencias` means a human should review whether the IA criterion is
+  better or worse.
+- `Error de IA en sombra` means shadow evaluation failed while the primary flow
+  remained safe.
 
 ### Stage 4: Tool Harness
 

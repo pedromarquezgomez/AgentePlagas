@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Visit } from '../services/api'
+import { formatStatus } from '../utils/labels'
 
 defineProps<{
   visits: Visit[]
@@ -50,7 +51,7 @@ function formatDate(value: string | null | undefined): string {
           <td>{{ formatValue(visit.technician_id) }}</td>
           <td>{{ formatDate(visit.scheduled_start) }}</td>
           <td>{{ formatDate(visit.scheduled_end) }}</td>
-          <td><span class="badge status">{{ visit.status }}</span></td>
+          <td><span class="badge status">{{ formatStatus(visit.status) }}</span></td>
           <td>{{ formatValue(visit.address) }}</td>
           <td class="summaryCell">{{ formatValue(visit.notes) }}</td>
         </tr>

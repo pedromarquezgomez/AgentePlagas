@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str = ""
     whatsapp_webhook_secret: str = ""
     whatsapp_graph_api_version: str = "v20.0"
+    synthetic_generation_mode: str = "template"
+    synthetic_case_count: int = 50
+    synthetic_output_path: str = "evals/synthetic/generated_cases.json"
 
     model_config = SettingsConfigDict(
         env_file=".env",

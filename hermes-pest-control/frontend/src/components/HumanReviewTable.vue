@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { HumanReviewItem } from '../services/api'
+import { formatChannel, formatPriority, formatReason, formatStatus } from '../utils/labels'
 
 defineProps<{
   items: HumanReviewItem[]
@@ -48,12 +49,12 @@ function formatDate(value: string | undefined): string {
           </td>
           <td>
             <span class="badge" :class="`priority-${item.priority}`">
-              {{ item.priority }}
+              {{ formatPriority(item.priority) }}
             </span>
           </td>
-          <td>{{ item.reason }}</td>
-          <td><span class="badge status">{{ item.status }}</span></td>
-          <td>{{ item.channel }}</td>
+          <td>{{ formatReason(item.reason) }}</td>
+          <td><span class="badge status">{{ formatStatus(item.status) }}</span></td>
+          <td>{{ formatChannel(item.channel) }}</td>
           <td>{{ formatDate(item.created_at) }}</td>
           <td>{{ formatValue(item.incident_id) }}</td>
           <td class="summaryCell">{{ formatValue(item.summary) }}</td>

@@ -15,6 +15,7 @@ import {
   type Visit,
   type VisitStatus,
 } from '../services/api'
+import { formatDocumentType, formatGeneratedBy, formatStatus } from '../utils/labels'
 
 const props = defineProps<{
   visitId: string
@@ -289,7 +290,7 @@ watch(
           Estado
           <select v-model="formStatus" :disabled="saving">
             <option v-for="status in VISIT_STATUSES" :key="status" :value="status">
-              {{ status }}
+              {{ formatStatus(status) }}
             </option>
           </select>
         </label>
@@ -387,9 +388,9 @@ watch(
             </thead>
             <tbody>
               <tr v-for="document in documents" :key="document.id">
-                <td>{{ document.document_type }}</td>
+                <td>{{ formatDocumentType(document.document_type) }}</td>
                 <td>{{ document.title }}</td>
-                <td><span class="badge status">{{ document.status }}</span></td>
+                <td><span class="badge status">{{ formatStatus(document.status) }}</span></td>
               </tr>
             </tbody>
           </table>

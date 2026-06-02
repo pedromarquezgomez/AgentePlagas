@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OperationalDocument } from '../services/api'
+import { formatDocumentType, formatGeneratedBy, formatStatus } from '../utils/labels'
 
 defineProps<{
   documents: OperationalDocument[]
@@ -46,12 +47,12 @@ function formatDate(value: string | undefined): string {
               Abrir
             </button>
           </td>
-          <td>{{ document.document_type }}</td>
+          <td>{{ formatDocumentType(document.document_type) }}</td>
           <td class="summaryCell">{{ document.title }}</td>
-          <td><span class="badge status">{{ document.status }}</span></td>
+          <td><span class="badge status">{{ formatStatus(document.status) }}</span></td>
           <td>{{ formatValue(document.incident_id) }}</td>
           <td>{{ formatValue(document.visit_id) }}</td>
-          <td>{{ document.generated_by }}</td>
+          <td>{{ formatGeneratedBy(document.generated_by) }}</td>
           <td>{{ formatDate(document.created_at) }}</td>
         </tr>
       </tbody>

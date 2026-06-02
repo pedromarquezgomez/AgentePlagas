@@ -238,6 +238,38 @@ tbody tr:last-child td {
   color: #235b8c;
 }
 
+.agreement-ok {
+  background: #dff4e8;
+  color: #1e6841;
+}
+
+.agreement-warning {
+  background: #fff1c7;
+  color: #755100;
+}
+
+.agreement-error {
+  background: #ffe3d6;
+  color: #8a2f10;
+}
+
+.agreement-neutral {
+  background: #e8edf2;
+  color: #273442;
+}
+
+.infoPanel {
+  background: #eef7ff;
+  border: 1px solid #b8d7f1;
+  border-radius: 8px;
+  color: #244b6b;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+}
+
 .stateMessage {
   background: #ffffff;
   border: 1px solid #d8dee5;
@@ -393,6 +425,14 @@ tbody tr:last-child td {
   margin: 0;
 }
 
+.singleColumnGrid {
+  grid-template-columns: 1fr;
+}
+
+.technicalGrid {
+  margin: 16px 0;
+}
+
 .detailGrid div {
   min-width: 0;
 }
@@ -435,6 +475,27 @@ dd {
   overflow-x: auto;
   padding: 14px;
   white-space: pre-wrap;
+}
+
+.differenceList {
+  color: #273442;
+  display: grid;
+  font-size: 15px;
+  font-weight: 700;
+  gap: 10px;
+  line-height: 1.45;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.technicalDetails {
+  color: #405060;
+}
+
+.technicalDetails summary {
+  cursor: pointer;
+  font-weight: 900;
+  margin-bottom: 14px;
 }
 
 .formActions {

@@ -149,9 +149,7 @@ watch(
         <input v-model="formPhone" :disabled="saving" type="tel" />
       </label>
 
-      <label>
-        Email
-        <input v-model="formEmail" :disabled="saving" type="email" />
+      <label>Correo electrónico<input v-model="formEmail" :disabled="saving" type="email" />
       </label>
 
       <label>
@@ -160,7 +158,7 @@ watch(
       </label>
 
       <label>
-        Skills
+        Especialidades
         <input
           v-model="formSkills"
           :disabled="saving"
