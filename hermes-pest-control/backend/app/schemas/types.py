@@ -2,7 +2,12 @@ from typing import Literal
 
 Channel = Literal["telegram", "whatsapp", "webchat", "email", "sms"]
 MessageType = Literal["text", "image", "file", "unknown"]
-AgentActionType = Literal["create_incident", "collect_missing_data", "escalate_to_human"]
+AgentActionType = Literal[
+    "reply_only",
+    "create_incident",
+    "collect_missing_data",
+    "escalate_to_human",
+]
 IncidentPriority = Literal["low", "medium", "high", "urgent"]
 HumanReviewStatus = Literal["open", "in_review", "resolved", "dismissed"]
 HumanReviewReason = Literal[

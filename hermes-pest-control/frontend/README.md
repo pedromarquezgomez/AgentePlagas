@@ -70,6 +70,8 @@ Available paths:
 /documents/:id
 /audit/shadow-decisions
 /audit/shadow-decisions/:id
+/tools/executions
+/tools/executions/:id
 /login
 ```
 
@@ -109,8 +111,12 @@ npm run build
 25. Open one IA evaluation detail and verify the summary, current-system section,
     IA-in-shadow section, human-readable differences, interpretation, and collapsed
     technical data.
-26. Refresh the detail page and verify the saved values are still present.
-27. Click `Salir` and verify localStorage or the Firebase session is cleared and
+26. Open `/tools/executions` and verify the `Acciones IA` table, filters, empty
+    state, and error state.
+27. Open one action detail, mark it as approved/rejected/needs_more_info/dismissed,
+    add notes, and verify the saved message says the tool was not executed.
+28. Refresh the detail page and verify the saved values are still present.
+29. Click `Salir` and verify localStorage or the Firebase session is cleared and
     `/login` is shown.
 
 ## Cómo interpretar la Evaluación IA
@@ -127,3 +133,41 @@ answer customers and does not execute business actions.
 
 The detail page keeps technical identifiers such as `trace_id`, raw differences,
 and metadata inside `Datos técnicos`.
+
+## Acciones IA
+
+`Acciones IA` shows proposed tool calls from the controlled agent harness. It is
+an operator review screen, not an execution console.
+
+Operators can:
+
+- inspect the proposed tool, provider, payload, risk level, and policy decision;
+- approve, reject, request more information, or dismiss a proposal;
+- add reviewer notes and an optional approved payload for future controlled
+  execution.
+
+Approving a proposal does not execute a tool by itself. For approved
+`gmail.create_draft` records, the detail screen can show `Crear borrador en
+Gmail`. That separate action creates a draft only when backend Gmail flags and
+credentials are configured. It never sends email.
+
+To create local sample records for QA:
+
+```bash
+make seed-tool-executions
+```
+
+Then open `/tools/executions` and review the seeded Gmail, Calendar, Telegram,
+WhatsApp, and Firestore examples.
+
+To prepare a Gmail draft action already approved for controlled execution:
+
+```bash
+SEED_APPROVED_GMAIL_DRAFT=true \
+GMAIL_TEST_DRAFT_RECIPIENT=destino-controlado@example.test \
+make seed-tool-executions
+```
+
+The `Crear borrador en Gmail` button appears only for approved
+`gmail.create_draft` records that have not been executed yet. The backend must
+also have `GMAIL_TOOLS_ENABLED=true` and `GMAIL_DRAFT_EXECUTION_ENABLED=true`.

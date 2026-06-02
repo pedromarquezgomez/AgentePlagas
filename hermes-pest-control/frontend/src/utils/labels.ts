@@ -30,6 +30,10 @@ const statusLabels: Record<string, string> = {
   dismissed: 'Descartada',
   reviewed: 'Revisado',
   archived: 'Archivado',
+  proposed: 'Propuesta',
+  approved: 'Aprobada',
+  rejected: 'Rechazada',
+  needs_more_info: 'Necesita más información',
 }
 
 const agreementLabels: Record<string, string> = {
@@ -74,6 +78,53 @@ const reasonLabels: Record<string, string> = {
   sensitive_case: 'Caso sensible',
 }
 
+const toolNameLabels: Record<string, string> = {
+  'incident.propose_incident': 'Proponer incidencia',
+  'calendar.propose_event': 'Proponer visita en calendario',
+  'gmail.create_draft': 'Borrador de email',
+  'gmail.send_email': 'Enviar email',
+  'telegram.draft_message': 'Borrador de Telegram',
+  'whatsapp.draft_message': 'Borrador de WhatsApp',
+  'firestore.write': 'Escritura directa en Firestore',
+}
+
+const providerLabels: Record<string, string> = {
+  incident_service: 'Servicio de incidencias',
+  internal: 'Sistema interno',
+  calendar: 'Calendario',
+  gmail: 'Gmail',
+  telegram: 'Telegram',
+  whatsapp: 'WhatsApp',
+  firestore: 'Firestore',
+}
+
+const riskLevelLabels: Record<string, string> = {
+  '0': 'Nivel 0 · Lectura/propuesta',
+  '1': 'Nivel 1 · Borrador',
+  '2': 'Nivel 2 · Acción segura',
+  '3': 'Nivel 3 · Requiere aprobación',
+  '4': 'Nivel 4 · Autonomía limitada',
+  '5': 'Nivel 5 · No permitido',
+}
+
+const toolDecisionLabels: Record<string, string> = {
+  allow: 'Permitida como propuesta',
+  deny: 'Denegada',
+  require_human_approval: 'Requiere revisión humana',
+  convert_to_draft: 'Convertida a borrador',
+  require_more_data: 'Necesita más datos',
+}
+
+const executionStatusLabels: Record<string, string> = {
+  not_executed: 'No ejecutada',
+  blocked: 'Bloqueada',
+  draft_proposed: 'Borrador propuesto',
+  pending_human_approval: 'Pendiente de aprobación humana',
+  requires_more_data: 'Requiere más datos',
+  allowed_not_executed: 'Permitida sin ejecutar',
+  executed: 'Ejecutada',
+}
+
 export function labelFromMap(value: string | null | undefined, labels: Record<string, string>): string {
   if (!value || !value.trim()) return 'Sin dato'
   return labels[value] ?? value
@@ -113,6 +164,31 @@ export function formatHermesMode(value: string | null | undefined): string {
 
 export function formatReason(value: string | null | undefined): string {
   return labelFromMap(value, reasonLabels)
+}
+
+export function formatToolName(value: string | null | undefined): string {
+  return labelFromMap(value, toolNameLabels)
+}
+
+export function formatToolProvider(value: string | null | undefined): string {
+  return labelFromMap(value, providerLabels)
+}
+
+export function formatRiskLevel(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return 'Sin dato'
+  return labelFromMap(String(value), riskLevelLabels)
+}
+
+export function formatToolDecision(value: string | null | undefined): string {
+  return labelFromMap(value, toolDecisionLabels)
+}
+
+export function formatReviewStatus(value: string | null | undefined): string {
+  return labelFromMap(value, statusLabels)
+}
+
+export function formatExecutionStatus(value: string | null | undefined): string {
+  return labelFromMap(value, executionStatusLabels)
 }
 
 export function formatBooleanYesNo(value: boolean | null | undefined): string {

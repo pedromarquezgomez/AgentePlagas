@@ -27,6 +27,10 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     )
     monkeypatch.setattr(config_status_route.settings, "hermes_shadow_api_key", "secret-shadow-key")
     monkeypatch.setattr(config_status_route.settings, "hermes_shadow_sample_rate", 0.5)
+    monkeypatch.setattr(config_status_route.settings, "hermes_pilot_mode", False)
+    monkeypatch.setattr(config_status_route.settings, "hermes_pilot_allowed_channels", "telegram")
+    monkeypatch.setattr(config_status_route.settings, "hermes_pilot_sample_rate", 1.0)
+    monkeypatch.setattr(config_status_route.settings, "hermes_pilot_require_gate", True)
     monkeypatch.setattr(config_status_route.settings, "hermes_agent_mode", "local")
     monkeypatch.setattr(config_status_route.settings, "hermes_agent_api_key", "secret-agent-key")
     monkeypatch.setattr(config_status_route.settings, "hermes_skills_dir", "../hermes/skills")
@@ -66,6 +70,10 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "hermes_shadow_api_url_configured": True,
         "hermes_shadow_api_key_configured": True,
         "hermes_shadow_sample_rate": "0.5",
+        "hermes_pilot_mode": False,
+        "hermes_pilot_allowed_channels": "telegram",
+        "hermes_pilot_sample_rate": "1.0",
+        "hermes_pilot_require_gate": True,
         "hermes_agent_mode": "local",
         "hermes_agent_api_key_configured": True,
         "hermes_skills_dir_configured": True,

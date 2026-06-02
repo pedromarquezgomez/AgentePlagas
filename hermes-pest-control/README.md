@@ -729,6 +729,34 @@ Shadow mode is disabled by default. See:
 backend/docs/SHADOW_MODE_RUNBOOK.md
 ```
 
+## Hermes Agent Pilot Mode
+
+Pilot Mode is a controlled bridge between the current mock behavior and Hermes
+Agent as a possible primary responder. It is disabled by default and does not
+give the LLM permission to call tools, write to Firestore, or send channel
+messages directly.
+
+Key variables:
+
+```text
+HERMES_PILOT_MODE=false
+HERMES_PILOT_SAMPLE_RATE=1.0
+HERMES_PILOT_ALLOWED_CHANNELS=telegram
+HERMES_PILOT_REQUIRE_GATE=true
+HERMES_PILOT_MAX_RESPONSE_LENGTH=800
+```
+
+When enabled in a controlled environment, a Pilot Gate only allows simple intake
+cases to use Hermes Agent. Sensitive cases go to Human Review, and incomplete or
+pricing-related cases stay on the current mock flow. Every routing decision is
+audited in `DecisionRecord.metadata`.
+
+Rollback:
+
+```text
+HERMES_PILOT_MODE=false
+```
+
 ## Docker
 
 ```bash

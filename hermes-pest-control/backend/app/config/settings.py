@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     hermes_shadow_api_key: str = ""
     hermes_shadow_sample_rate: float = 1.0
     hermes_shadow_timeout_seconds: float = 20.0
+    hermes_pilot_mode: bool = False
+    hermes_pilot_sample_rate: float = 1.0
+    hermes_pilot_allowed_channels: str = "telegram"
+    hermes_pilot_require_gate: bool = True
+    hermes_pilot_max_response_length: int = 800
     hermes_agent_server_port: int = 9100
     hermes_skills_dir: str = "../hermes/skills"
     hermes_agent_mode: str = "local"
@@ -41,6 +46,11 @@ class Settings(BaseSettings):
     google_calendar_id: str = ""
     google_calendar_credentials_path: str = ""
     google_calendar_credentials_json: str = ""
+    gmail_tools_enabled: bool = False
+    gmail_draft_execution_enabled: bool = False
+    gmail_credentials_path: str = ""
+    gmail_credentials_json: str = ""
+    gmail_delegated_user: str = ""
     whatsapp_enabled: bool = False
     whatsapp_provider: str = "meta"
     whatsapp_verify_token: str = ""
@@ -51,6 +61,11 @@ class Settings(BaseSettings):
     synthetic_generation_mode: str = "template"
     synthetic_case_count: int = 50
     synthetic_output_path: str = "evals/synthetic/generated_cases.json"
+    nous_hermes_enabled: bool = False
+    nous_hermes_mode: str = "disabled"
+    nous_hermes_tools_enabled: bool = False
+    nous_hermes_allowed_tools: str = ""
+    tool_harness_enforcement: str = "strict"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -9,6 +9,7 @@ from app.schemas.decision_record import DecisionRecordCreate
 from app.schemas.human_review import HumanReviewItemCreate
 from app.schemas.incoming_message import IncomingMessage
 from app.schemas.incident import IncidentDraft
+from app.schemas.pilot_gate import PilotGateResult
 from app.schemas.shadow_decision_record import ShadowDecisionRecordCreate
 from app.services.decision_audit_service import DecisionAuditService
 from app.services.firestore_factory import get_firestore_service
@@ -16,6 +17,7 @@ from app.services.hermes_clients import default_business_context
 from app.services.hermes_service import HermesService
 from app.services.human_review_service import HumanReviewService
 from app.services.incident_service import IncidentService
+from app.services.pilot_gate import HermesPilotGate
 from app.services.shadow_decision_service import ShadowDecisionService
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,8 @@ class ConversationService:
         human_review_service: HumanReviewService | None = None,
         shadow_decision_service: ShadowDecisionService | None = None,
         shadow_hermes_service: HermesService | None = None,
+        pilot_hermes_service: HermesService | None = None,
+        pilot_gate: HermesPilotGate | None = None,
         firestore_service=None,
         settings: Settings | None = None,
         random_func: Callable[[], float] | None = None,
@@ -52,6 +56,8 @@ class ConversationService:
             self.firestore_service
         )
         self.shadow_hermes_service = shadow_hermes_service
+        self.pilot_hermes_service = pilot_hermes_service
+        self.pilot_gate = pilot_gate or HermesPilotGate()
         self.random_func = random_func or random.random
 
     async def handle_incoming_message(self, message: IncomingMessage) -> AgentResponse:
@@ -156,6 +162,19 @@ class ConversationService:
         conversation_id: str,
         trace_id: str,
     ) -> AgentResponse:
+        if self._is_pilot_candidate(message):
+            return await self._get_pilot_or_fallback_response(
+                message,
+                conversation_id,
+                trace_id,
+            )
+
+        if self.settings.hermes_pilot_mode:
+            logger.info(
+                "hermes_pilot_skipped trace_id=%s conversation_id=%s reason=channel",
+                trace_id,
+                conversation_id,
+            )
         try:
             business_context = default_business_context(conversation_id)
             business_context["trace_id"] = trace_id
@@ -169,6 +188,259 @@ class ConversationService:
             return AgentResponse.model_validate(raw_response)
         except Exception:
             return self._build_safe_agent_error_response()
+
+    async def _get_pilot_or_fallback_response(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+    ) -> AgentResponse:
+        gate_result = self.pilot_gate.evaluate(message)
+        if not gate_result.eligible:
+            if gate_result.route == "human_review":
+                logger.info(
+                    "hermes_pilot_blocked trace_id=%s conversation_id=%s route=%s "
+                    "policy_rule=%s",
+                    trace_id,
+                    conversation_id,
+                    gate_result.route,
+                    gate_result.policy_rule,
+                )
+                return self._build_pilot_human_review_response(gate_result)
+
+            response = await self._get_primary_hermes_response(
+                message,
+                conversation_id,
+                trace_id,
+            )
+            self._merge_metadata(
+                response,
+                self._pilot_metadata(
+                    gate_result=gate_result,
+                    pilot_used=False,
+                    pilot_blocked=True,
+                ),
+            )
+            return response
+
+        if not self._should_sample_pilot():
+            response = await self._get_primary_hermes_response(
+                message,
+                conversation_id,
+                trace_id,
+            )
+            self._merge_metadata(
+                response,
+                self._pilot_metadata(
+                    gate_result=gate_result,
+                    pilot_used=False,
+                    pilot_blocked=True,
+                    extra={"pilot_blocked_reason": "sample_rate"},
+                ),
+            )
+            return response
+
+        try:
+            pilot_service = self.pilot_hermes_service or self._build_pilot_hermes_service()
+            business_context = default_business_context(conversation_id)
+            business_context["trace_id"] = trace_id
+            business_context["pilot_mode"] = True
+            raw_response = await pilot_service.process_message(
+                message,
+                conversation_history=[],
+                business_context=business_context,
+            )
+            response = (
+                raw_response
+                if isinstance(raw_response, AgentResponse)
+                else AgentResponse.model_validate(raw_response)
+            )
+            if bool(response.metadata.get("fallback_used", False)):
+                return await self._pilot_fallback_to_primary(
+                    message,
+                    conversation_id,
+                    trace_id,
+                    gate_result,
+                    response.metadata.get("fallback_reason") or "agent_fallback",
+                )
+            if len(response.reply or "") > self.settings.hermes_pilot_max_response_length:
+                return await self._pilot_fallback_to_primary(
+                    message,
+                    conversation_id,
+                    trace_id,
+                    gate_result,
+                    "max_response_length",
+                )
+            self._merge_metadata(
+                response,
+                self._pilot_metadata(
+                    gate_result=gate_result,
+                    pilot_used=True,
+                    pilot_blocked=False,
+                    extra={
+                        "effective_hermes_mode": "pilot",
+                        "pilot_agent_hermes_mode": getattr(
+                            pilot_service,
+                            "hermes_mode",
+                            "real",
+                        ),
+                    },
+                ),
+            )
+            logger.info(
+                "hermes_pilot_used trace_id=%s conversation_id=%s action_type=%s",
+                trace_id,
+                conversation_id,
+                response.action.type,
+            )
+            return response
+        except Exception as exc:
+            return await self._pilot_fallback_to_primary(
+                message,
+                conversation_id,
+                trace_id,
+                gate_result,
+                f"UnexpectedError:{exc.__class__.__name__}",
+            )
+
+    async def _get_primary_hermes_response(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+    ) -> AgentResponse:
+        try:
+            business_context = default_business_context(conversation_id)
+            business_context["trace_id"] = trace_id
+            raw_response = await self.hermes_service.process_message(
+                message,
+                conversation_history=[],
+                business_context=business_context,
+            )
+            if isinstance(raw_response, AgentResponse):
+                return raw_response
+            return AgentResponse.model_validate(raw_response)
+        except Exception:
+            return self._build_safe_agent_error_response()
+
+    async def _pilot_fallback_to_primary(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+        gate_result: PilotGateResult,
+        fallback_reason: str,
+    ) -> AgentResponse:
+        logger.warning(
+            "hermes_pilot_fallback trace_id=%s conversation_id=%s reason=%s",
+            trace_id,
+            conversation_id,
+            fallback_reason,
+        )
+        response = await self._get_primary_hermes_response(
+            message,
+            conversation_id,
+            trace_id,
+        )
+        self._merge_metadata(
+            response,
+            self._pilot_metadata(
+                gate_result=gate_result,
+                pilot_used=False,
+                pilot_blocked=False,
+                extra={
+                    "fallback_used": True,
+                    "fallback_reason": str(fallback_reason),
+                    "pilot_agent_failed": True,
+                },
+            ),
+        )
+        return response
+
+    def _build_pilot_human_review_response(
+        self,
+        gate_result: PilotGateResult,
+    ) -> AgentResponse:
+        return AgentResponse(
+            reply=(
+                "Gracias por avisarnos. Por seguridad, voy a pasar este caso al "
+                "equipo para que lo revise antes de darte indicaciones."
+            ),
+            action={
+                "type": "escalate_to_human",
+                "missing_fields": [],
+            },
+            incident={
+                "should_create": True,
+                "pest_type": None,
+                "location": None,
+                "affected_area": None,
+                "priority": "urgent",
+                "summary": (
+                    "Caso bloqueado por Pilot Gate. Requiere revisión humana antes "
+                    "de delegar en Hermes Agent."
+                ),
+            },
+            metadata=self._pilot_metadata(
+                gate_result=gate_result,
+                pilot_used=False,
+                pilot_blocked=True,
+                extra={"sensitive_case": True},
+            ),
+        )
+
+    def _pilot_metadata(
+        self,
+        gate_result: PilotGateResult,
+        pilot_used: bool,
+        pilot_blocked: bool,
+        extra: dict | None = None,
+    ) -> dict:
+        metadata = {
+            "pilot_mode": True,
+            "pilot_used": pilot_used,
+            "pilot_blocked": pilot_blocked,
+            "pilot_gate_eligible": gate_result.eligible,
+            "pilot_route": gate_result.route,
+            "pilot_blocked_reason": gate_result.reason if pilot_blocked else None,
+            "pilot_risk_flags": gate_result.risk_flags,
+            "pilot_policy_rule": gate_result.policy_rule,
+        }
+        if extra:
+            metadata.update(extra)
+        return metadata
+
+    def _merge_metadata(self, response: AgentResponse, metadata: dict) -> None:
+        response.metadata.update(
+            {key: value for key, value in metadata.items() if value is not None}
+        )
+
+    def _is_pilot_candidate(self, message: IncomingMessage) -> bool:
+        if not self.settings.hermes_pilot_mode:
+            return False
+        allowed_channels = {
+            channel.strip()
+            for channel in self.settings.hermes_pilot_allowed_channels.split(",")
+            if channel.strip()
+        }
+        if allowed_channels and message.channel not in allowed_channels:
+            return False
+        return True
+
+    def _should_sample_pilot(self) -> bool:
+        sample_rate = max(0.0, min(1.0, self.settings.hermes_pilot_sample_rate))
+        return self.random_func() < sample_rate
+
+    def _build_pilot_hermes_service(self) -> HermesService:
+        pilot_api_url = self.settings.hermes_api_url or self.settings.hermes_shadow_api_url
+        pilot_settings = Settings(
+            hermes_mode="real",
+            hermes_api_url=pilot_api_url,
+            hermes_api_key=self.settings.hermes_api_key,
+            hermes_shadow_api_key=self.settings.hermes_shadow_api_key,
+            hermes_timeout_seconds=self.settings.hermes_timeout_seconds,
+        )
+        return HermesService(settings=pilot_settings)
 
     def _build_safe_agent_error_response(self) -> AgentResponse:
         return AgentResponse(
@@ -284,16 +556,37 @@ class ConversationService:
             message_id=message_id,
             incident_id=incident_id,
             channel=message.channel,
-            hermes_mode=getattr(self.hermes_service, "hermes_mode", "unknown"),
+            hermes_mode=response.metadata.get(
+                "effective_hermes_mode",
+                getattr(self.hermes_service, "hermes_mode", "unknown"),
+            ),
             action_type=response.action.type,
             incident_should_create=incident_should_create,
             pest_type=response.incident.pest_type if response.incident else None,
             priority=response.incident.priority if response.incident else None,
             fallback_used=fallback_used,
             fallback_reason=fallback_reason,
+            pilot_mode_enabled=bool(response.metadata.get("pilot_mode", False)),
+            pilot_used=bool(response.metadata.get("pilot_used", False)),
+            pilot_blocked=bool(response.metadata.get("pilot_blocked", False)),
+            pilot_blocked_reason=response.metadata.get("pilot_blocked_reason"),
+            pilot_route=response.metadata.get("pilot_route"),
+            pilot_risk_flags=response.metadata.get("pilot_risk_flags", []),
+            pilot_policy_rule=response.metadata.get("pilot_policy_rule"),
             metadata={
                 "message_type": message.message_type,
                 "missing_fields": response.action.missing_fields,
+                "pilot_mode": bool(response.metadata.get("pilot_mode", False)),
+                "pilot_used": bool(response.metadata.get("pilot_used", False)),
+                "pilot_blocked": bool(response.metadata.get("pilot_blocked", False)),
+                "pilot_gate_eligible": response.metadata.get("pilot_gate_eligible"),
+                "pilot_route": response.metadata.get("pilot_route"),
+                "pilot_blocked_reason": response.metadata.get("pilot_blocked_reason"),
+                "pilot_risk_flags": response.metadata.get("pilot_risk_flags", []),
+                "pilot_policy_rule": response.metadata.get("pilot_policy_rule"),
+                "pilot_agent_failed": bool(
+                    response.metadata.get("pilot_agent_failed", False)
+                ),
             },
         )
         created_decision_record = (

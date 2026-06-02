@@ -32,6 +32,7 @@ export const DOCUMENT_TYPES = [
   'work_report_draft',
 ] as const
 export const DOCUMENT_STATUSES = ['draft', 'reviewed', 'archived'] as const
+export const TOOL_REVIEW_STATUSES = ['proposed', 'approved', 'rejected', 'needs_more_info', 'dismissed'] as const
 
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
 export type IncidentPriority = (typeof INCIDENT_PRIORITIES)[number]
@@ -39,6 +40,7 @@ export type HumanReviewStatus = (typeof HUMAN_REVIEW_STATUSES)[number]
 export type VisitStatus = (typeof VISIT_STATUSES)[number]
 export type OperationalDocumentType = (typeof DOCUMENT_TYPES)[number]
 export type OperationalDocumentStatus = (typeof DOCUMENT_STATUSES)[number]
+export type ToolReviewStatus = (typeof TOOL_REVIEW_STATUSES)[number]
 
 export interface Incident {
   id: string
@@ -84,6 +86,13 @@ export interface DecisionRecord {
   prompt_version: string
   skill_version: string
   response_contract_version: string
+  pilot_mode_enabled?: boolean
+  pilot_used?: boolean
+  pilot_blocked?: boolean
+  pilot_blocked_reason?: string | null
+  pilot_route?: string | null
+  pilot_risk_flags?: string[]
+  pilot_policy_rule?: string | null
   created_at?: string
 }
 
@@ -310,6 +319,51 @@ export interface OperationalDocumentUpdate {
   content?: string
   status?: OperationalDocumentStatus
   metadata?: Record<string, unknown>
+}
+
+export interface ToolExecutionRecord {
+  id: string
+  tool_request_id: string
+  tool_decision_id: string
+  trace_id: string
+  conversation_id: string
+  tool_name: string
+  provider: string
+  action: string
+  risk_level: number
+  requires_approval: boolean
+  decision: string
+  execution_status: string
+  review_status: ToolReviewStatus | string
+  reviewer_notes?: string | null
+  reviewed_by?: string | null
+  approved_payload?: Record<string, unknown> | null
+  executed: boolean
+  external_effect: boolean
+  execution_result?: Record<string, unknown> | null
+  execution_error?: string | null
+  created_at?: string
+  updated_at?: string | null
+  reviewed_at?: string | null
+  executed_at?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface ToolExecutionFilters {
+  status?: string
+  tool_name?: string
+  provider?: string
+  decision?: string
+  risk_level?: number
+  requires_approval?: boolean
+  limit?: number
+}
+
+export interface ToolExecutionUpdate {
+  review_status?: ToolReviewStatus
+  reviewer_notes?: string | null
+  reviewed_by?: string | null
+  approved_payload?: Record<string, unknown> | null
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
@@ -764,5 +818,58 @@ export async function generateTechnicianBriefDocument(
     `/visits/${encodeURIComponent(visitId)}/generate-technician-brief`,
     { method: 'POST' },
     'No se pudo generar el brief',
+  )
+}
+
+export async function fetchToolExecutionRecords(
+  filters: ToolExecutionFilters = {},
+): Promise<ToolExecutionRecord[]> {
+  const params = new URLSearchParams()
+  if (filters.status) params.set('status', filters.status)
+  if (filters.tool_name) params.set('tool_name', filters.tool_name)
+  if (filters.provider) params.set('provider', filters.provider)
+  if (filters.decision) params.set('decision', filters.decision)
+  if (filters.risk_level !== undefined) params.set('risk_level', String(filters.risk_level))
+  if (filters.requires_approval !== undefined) {
+    params.set('requires_approval', String(filters.requires_approval))
+  }
+  if (filters.limit) params.set('limit', String(filters.limit))
+
+  const query = params.toString()
+  return apiFetch<ToolExecutionRecord[]>(
+    `/tools/executions${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar las acciones IA',
+  )
+}
+
+export async function fetchToolExecutionRecord(
+  executionId: string,
+): Promise<ToolExecutionRecord> {
+  return apiFetch<ToolExecutionRecord>(
+    `/tools/executions/${encodeURIComponent(executionId)}`,
+    {},
+    'No se pudo cargar la acción IA',
+  )
+}
+
+export async function updateToolExecutionRecord(
+  executionId: string,
+  update: ToolExecutionUpdate,
+): Promise<ToolExecutionRecord> {
+  return apiFetch<ToolExecutionRecord>(
+    `/tools/executions/${encodeURIComponent(executionId)}`,
+    { method: 'PATCH', body: JSON.stringify(update) },
+    'No se pudo guardar la revisión de la acción IA',
+  )
+}
+
+export async function executeToolExecutionRecord(
+  executionId: string,
+): Promise<ToolExecutionRecord> {
+  return apiFetch<ToolExecutionRecord>(
+    `/tools/executions/${encodeURIComponent(executionId)}/execute`,
+    { method: 'POST' },
+    'No se pudo ejecutar la acción IA',
   )
 }

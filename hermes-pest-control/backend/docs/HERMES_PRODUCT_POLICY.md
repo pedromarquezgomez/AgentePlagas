@@ -218,4 +218,45 @@ Before any controlled Pilot Mode activation:
 - differences must be classified as `llm_better`, `mock_better`,
   `ambiguous_needs_policy`, or `eval_case_needs_refinement`;
 - fallback and Human Review must remain active;
+
+### Sprint 26 Controlled Pilot Gate
+
+Pilot Mode does not replace the backend or make the LLM autonomous. It only lets
+`ConversationService` route a small subset of low-risk messages to Hermes Agent
+as primary response candidate. The gate must run before any LLM call when
+`HERMES_PILOT_REQUIRE_GATE=true`.
+
+Eligible examples:
+
+- clear pest, affected area, and locality;
+- no product, health, legal, pricing, food-business, or vulnerable-person risk;
+- ordinary intake such as `cucarachas + cocina + Torremolinos` or
+  `hormigas + jardín + Málaga`.
+
+Blocked to Human Review:
+
+- pesticide, poison, chemical, dose, application, or mixing requests;
+- pet, child, baby, elderly, pregnant, respiratory-risk, or vulnerable-person
+  exposure;
+- restaurant, bar, professional kitchen, or food-business context;
+- angry complaint, legal threat, reclamation, or conflict;
+- dangerous product advice;
+- rodents with conflict or food-business context.
+
+Routed back to mock:
+
+- exact/final/closed price requests;
+- incomplete or very ambiguous intake;
+- reasonable doubt.
+
+The pilot response must still be valid `AgentResponse`. If the agent fails,
+returns fallback, or exceeds `HERMES_PILOT_MAX_RESPONSE_LENGTH`, the system
+falls back to the current mock flow and records the pilot failure in
+`DecisionRecord.metadata`.
+
+Rollback is immediate:
+
+```text
+HERMES_PILOT_MODE=false
+```
 - Telegram must not be switched to real LLM behavior without explicit approval.

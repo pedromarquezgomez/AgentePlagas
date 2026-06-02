@@ -745,14 +745,137 @@ Operator interpretation:
 
 ### Stage 4: Tool Harness
 
-Status: pending.
+Status: experimental PoC.
 
-- tool registry;
-- tool permissions;
-- approval gates;
-- tool-call audit;
-- dry-run mode;
-- sandboxed tool tests.
+- `ToolRequest`, `ToolDecision`, and `ToolExecutionRecord` schemas exist.
+- `HermesToolHarness` gates experimental Nous Hermes tool proposals.
+- `NousHermesRuntimeAdapter` converts PoC output into `AgentResponse` or
+  `ToolRequest`.
+- The local runner executes three controlled scenarios without external
+  effects:
+  - visit scheduling proposal;
+  - Gmail draft proposal;
+  - dangerous WhatsApp chemical-advice request.
+- All PoC `ToolExecutionRecord` entries must remain `executed=false` and
+  `external_effect=false`.
+- Gmail send, direct Firestore writes, and dangerous chemical channel messages
+  are blocked.
+- Calendar and channel drafts require human approval.
+
+Run the local controlled PoC from the backend folder:
+
+```bash
+python experiments/nous_hermes_controlled/run_controlled_poc.py
+```
+
+Reports are written to ignored local files under `backend/evals/results/`.
+
+Remaining:
+
+- real Nous Hermes process invocation;
+- persisted tool audit collection;
+- approval queue integration;
+- operator UI for ToolRequests;
+- production rollout controls.
+
+Sprint 24 adds the first operator review surface for tool proposals:
+
+```text
+GET /tools/executions
+GET /tools/executions/{id}
+PATCH /tools/executions/{id}
+```
+
+The panel exposes these records under:
+
+```text
+/tools/executions
+/tools/executions/:id
+```
+
+Visible label: `Acciones IA`.
+
+This is still review-only. Operators can mark a proposal as `approved`,
+`rejected`, `needs_more_info`, or `dismissed`, add notes, and optionally store an
+approved payload for a future controlled-execution phase. Approval does not
+execute Gmail, Calendar, Telegram, WhatsApp, or Firestore tools. Tool records
+must remain `executed=false` and `external_effect=false`.
+
+### Stage 4.1: Gmail Draft Execution
+
+Status: controlled and disabled by default.
+
+Sprint 25 introduces the first low-risk real tool execution:
+
+```text
+POST /tools/executions/{id}/execute
+```
+
+Only `gmail.create_draft` is executable. Preconditions:
+
+- `review_status=approved`;
+- `executed=false`;
+- `GMAIL_TOOLS_ENABLED=true`;
+- `GMAIL_DRAFT_EXECUTION_ENABLED=true`;
+- valid Gmail credentials are configured;
+- payload contains `recipient`, `subject`, and `body`.
+
+The endpoint creates a Gmail draft and stores a safe `execution_result` with
+provider and draft/message ids. It does not send email. `gmail.send_email`,
+Calendar, Telegram, WhatsApp, and direct Firestore tools remain blocked.
+
+Operational validation:
+
+- `make gmail-draft-check` verifies Gmail auth without creating drafts.
+- `CONFIRM_CREATE_GMAIL_DRAFT=true make gmail-draft-check` creates a controlled
+  test draft only.
+- `SEED_APPROVED_GMAIL_DRAFT=true make seed-tool-executions` prepares an
+  approved `gmail.create_draft` action for panel QA.
+
+Rollback is flag-based: set `GMAIL_DRAFT_EXECUTION_ENABLED=false` and
+`GMAIL_TOOLS_ENABLED=false`.
+
+### Stage 4.2: Hermes Agent Pilot Mode
+
+Status: implemented, disabled by default.
+
+Sprint 26 adds a controlled Pilot Mode in front of Hermes Agent. The active
+orchestrator is still `ConversationService`; Telegram and WhatsApp adapters are
+unchanged; the LLM still cannot write to Firestore or call tools directly.
+
+Pilot routing is:
+
+```text
+IncomingMessage
+-> ConversationService
+-> Pilot Gate
+-> Hermes Agent only if eligible
+-> AgentResponse validation
+-> DecisionRecord/HumanReview/fallback
+```
+
+Configuration:
+
+```text
+HERMES_PILOT_MODE=false
+HERMES_PILOT_SAMPLE_RATE=1.0
+HERMES_PILOT_ALLOWED_CHANNELS=telegram
+HERMES_PILOT_REQUIRE_GATE=true
+HERMES_PILOT_MAX_RESPONSE_LENGTH=800
+```
+
+Eligible low-risk messages can use Hermes Agent as the primary reply. Sensitive
+messages are routed to Human Review, and incomplete or pricing-related messages
+fall back to the current mock behavior. Any agent error, fallback response, or
+oversized reply falls back to the primary mock flow and is audited in
+`DecisionRecord.metadata` with `pilot_used`, `pilot_blocked`,
+`pilot_policy_rule`, and `pilot_risk_flags`.
+
+Production rollback remains a single flag:
+
+```text
+HERMES_PILOT_MODE=false
+```
 
 ### Stage 5: Production Governance
 

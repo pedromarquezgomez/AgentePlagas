@@ -35,6 +35,61 @@ class RealModeHermesService:
         }
 
 
+class CountingMockHermesService:
+    hermes_mode = "mock"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def process_message(self, *_args, **_kwargs) -> dict:
+        self.calls += 1
+        return {
+            "reply": "Respuesta mock controlada.",
+            "action": {"type": "collect_missing_data", "missing_fields": ["location"]},
+            "incident": {"should_create": False},
+        }
+
+
+class CountingPilotHermesService:
+    hermes_mode = "real"
+
+    def __init__(self, *, fallback: bool = False, fail: bool = False) -> None:
+        self.calls = 0
+        self.fallback = fallback
+        self.fail = fail
+
+    async def process_message(self, *_args, **_kwargs) -> dict:
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("pilot unavailable")
+        if self.fallback:
+            return {
+                "reply": "Fallback desde piloto.",
+                "action": {"type": "escalate_to_human", "missing_fields": []},
+                "incident": {
+                    "should_create": True,
+                    "priority": "medium",
+                    "summary": "Error procesando respuesta del agente.",
+                },
+                "metadata": {
+                    "fallback_used": True,
+                    "fallback_reason": "HermesClientError:timeout",
+                },
+            }
+        return {
+            "reply": "Respuesta desde piloto LLM.",
+            "action": {"type": "create_incident", "missing_fields": []},
+            "incident": {
+                "should_create": True,
+                "pest_type": "cucarachas",
+                "location": "Torremolinos",
+                "affected_area": "cocina",
+                "priority": "high",
+                "summary": "Piloto registra cucarachas en cocina en Torremolinos.",
+            },
+        }
+
+
 class EscalatingHermesService:
     hermes_mode = "mock"
 
@@ -434,3 +489,392 @@ async def test_shadow_fallback_reason_is_stored_as_shadow_error() -> None:
         shadow_records[0]["metadata"]["shadow_fallback_reason"]
         == "HermesClientError:connection_error"
     )
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_eligible_case_calls_pilot_agent() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+            hermes_pilot_sample_rate=1.0,
+        ),
+        random_func=lambda: 0.0,
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-eligible",
+        external_chat_id="pilot-eligible-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos desde hace una semana",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-eligible"},
+    )
+    assert response.reply == "Respuesta desde piloto LLM."
+    assert response.action.type == "create_incident"
+    assert pilot_service.calls == 1
+    assert base_service.calls == 0
+    assert decision_records[0]["hermes_mode"] == "pilot"
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is True
+    assert decision_records[0]["pilot_blocked"] is False
+    assert decision_records[0]["pilot_route"] == "agent"
+    assert decision_records[0]["pilot_policy_rule"] == "pilot.simple_intake"
+    assert decision_records[0]["pilot_risk_flags"] == []
+    assert decision_records[0]["metadata"]["pilot_used"] is True
+    assert decision_records[0]["metadata"]["pilot_policy_rule"] == "pilot.simple_intake"
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_ineligible_mock_route_does_not_call_pilot() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+        ),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-price",
+        external_chat_id="pilot-price-chat",
+        message_type="text",
+        text="Quiero precio exacto para cucarachas en cocina en Torremolinos",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-price"},
+    )
+    assert response.reply == "Respuesta mock controlada."
+    assert pilot_service.calls == 0
+    assert base_service.calls == 1
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is False
+    assert decision_records[0]["pilot_blocked"] is True
+    assert decision_records[0]["pilot_route"] == "mock"
+    assert decision_records[0]["pilot_blocked_reason"] == "El cliente pide precio cerrado o exacto; se mantiene el flujo actual."
+    assert decision_records[0]["pilot_policy_rule"] == "pilot.price_request"
+    assert decision_records[0]["metadata"]["pilot_blocked"] is True
+    assert decision_records[0]["metadata"]["pilot_route"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_sensitive_case_routes_to_human_review() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+        ),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-sensitive",
+        external_chat_id="pilot-sensitive-chat",
+        message_type="text",
+        text="Mi perro ha tocado producto químico y hay cucarachas en casa",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    review_items = await firestore_service.list_documents(
+        "human_review_items",
+        filters={"conversation_id": "telegram:pilot-sensitive"},
+    )
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-sensitive"},
+    )
+    assert response.action.type == "escalate_to_human"
+    assert pilot_service.calls == 0
+    assert base_service.calls == 0
+    assert len(review_items) == 1
+    assert review_items[0]["reason"] == "agent_escalation"
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is False
+    assert decision_records[0]["pilot_blocked"] is True
+    assert decision_records[0]["pilot_route"] == "human_review"
+    assert decision_records[0]["pilot_risk_flags"] == ["chemical_request", "exposure_or_pet"]
+    assert decision_records[0]["pilot_policy_rule"] == "pilot.sensitive_case"
+    assert decision_records[0]["metadata"]["pilot_route"] == "human_review"
+    assert decision_records[0]["metadata"]["pilot_blocked"] is True
+    assert "chemical_request" in decision_records[0]["metadata"]["pilot_risk_flags"]
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_agent_fallback_does_not_break_primary_flow() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService(fallback=True)
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+            hermes_pilot_sample_rate=1.0,
+        ),
+        random_func=lambda: 0.0,
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-fallback",
+        external_chat_id="pilot-fallback-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos desde hace una semana",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-fallback"},
+    )
+    assert response.reply == "Respuesta mock controlada."
+    assert pilot_service.calls == 1
+    assert base_service.calls == 1
+    assert decision_records[0]["fallback_used"] is True
+    assert decision_records[0]["fallback_reason"] == "HermesClientError:timeout"
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is False
+    assert decision_records[0]["pilot_blocked"] is False
+    assert decision_records[0]["metadata"]["pilot_agent_failed"] is True
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_vulnerable_person_routes_to_human_review() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+        ),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-vulnerable",
+        external_chat_id="pilot-vulnerable-chat",
+        message_type="text",
+        text="Hay cucarachas en la cocina y tenemos un bebé en casa",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    review_items = await firestore_service.list_documents(
+        "human_review_items",
+        filters={"conversation_id": "telegram:pilot-vulnerable"},
+    )
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-vulnerable"},
+    )
+    assert response.action.type == "escalate_to_human"
+    assert pilot_service.calls == 0
+    assert base_service.calls == 0
+    assert len(review_items) == 1
+    assert review_items[0]["reason"] == "agent_escalation"
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is False
+    assert decision_records[0]["pilot_blocked"] is True
+    assert decision_records[0]["pilot_route"] == "human_review"
+    assert "vulnerable_person" in decision_records[0]["pilot_risk_flags"]
+    assert decision_records[0]["pilot_policy_rule"] == "pilot.sensitive_case"
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_food_business_conflict_routes_to_human_review() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+        ),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-conflict",
+        external_chat_id="pilot-conflict-chat",
+        message_type="text",
+        text="Tenemos ratas en la cocina del restaurante en Málaga y estoy muy enfadado",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    review_items = await firestore_service.list_documents(
+        "human_review_items",
+        filters={"conversation_id": "telegram:pilot-conflict"},
+    )
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-conflict"},
+    )
+    assert response.action.type == "escalate_to_human"
+    assert pilot_service.calls == 0
+    assert base_service.calls == 0
+    assert len(review_items) == 1
+    assert review_items[0]["reason"] == "agent_escalation"
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is False
+    assert decision_records[0]["pilot_blocked"] is True
+    assert decision_records[0]["pilot_route"] == "human_review"
+    assert "rodent_conflict" in decision_records[0]["pilot_risk_flags"]
+    assert decision_records[0]["pilot_policy_rule"] == "pilot.sensitive_case"
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_chemical_product_routes_to_human_review() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+        ),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-chemical",
+        external_chat_id="pilot-chemical-chat",
+        message_type="text",
+        text="Tengo hormigas, decidme qué insecticida o veneno químico puedo mezclar",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    review_items = await firestore_service.list_documents(
+        "human_review_items",
+        filters={"conversation_id": "telegram:pilot-chemical"},
+    )
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-chemical"},
+    )
+    assert response.action.type == "escalate_to_human"
+    assert pilot_service.calls == 0
+    assert base_service.calls == 0
+    assert len(review_items) == 1
+    assert review_items[0]["reason"] == "agent_escalation"
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is False
+    assert decision_records[0]["pilot_blocked"] is True
+    assert decision_records[0]["pilot_route"] == "human_review"
+    assert "chemical_request" in decision_records[0]["pilot_risk_flags"]
+    assert decision_records[0]["pilot_policy_rule"] == "pilot.sensitive_case"
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_price_request_routes_to_mock() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+        ),
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-price-req",
+        external_chat_id="pilot-price-req-chat",
+        message_type="text",
+        text="Quiero saber el precio exacto del servicio",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-price-req"},
+    )
+    assert response.reply == "Respuesta mock controlada."
+    assert pilot_service.calls == 0
+    assert base_service.calls == 1
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is False
+    assert decision_records[0]["pilot_blocked"] is True
+    assert decision_records[0]["pilot_route"] == "mock"
+    assert decision_records[0]["pilot_policy_rule"] == "pilot.price_request"
+
+
+@pytest.mark.asyncio
+async def test_pilot_mode_eligible_message_uses_agent_response() -> None:
+    firestore_service = MockFirestoreService()
+    pilot_service = CountingPilotHermesService()
+    base_service = CountingMockHermesService()
+    service = ConversationService(
+        hermes_service=base_service,
+        pilot_hermes_service=pilot_service,
+        firestore_service=firestore_service,
+        settings=Settings(
+            hermes_pilot_mode=True,
+            hermes_pilot_allowed_channels="telegram",
+            hermes_pilot_sample_rate=1.0,
+        ),
+        random_func=lambda: 0.0,
+    )
+    message = IncomingMessage(
+        channel="telegram",
+        external_user_id="pilot-eligible-direct",
+        external_chat_id="pilot-eligible-direct-chat",
+        message_type="text",
+        text="Tengo cucarachas en la cocina en Torremolinos desde hace una semana",
+    )
+
+    response = await service.handle_incoming_message(message)
+
+    decision_records = await firestore_service.list_documents(
+        "decision_records",
+        filters={"conversation_id": "telegram:pilot-eligible-direct"},
+    )
+    assert response.reply == "Respuesta desde piloto LLM."
+    assert response.action.type == "create_incident"
+    assert pilot_service.calls == 1
+    assert base_service.calls == 0
+    assert decision_records[0]["pilot_mode_enabled"] is True
+    assert decision_records[0]["pilot_used"] is True
+    assert decision_records[0]["pilot_blocked"] is False
+    assert decision_records[0]["pilot_route"] == "agent"
+    assert decision_records[0]["pilot_risk_flags"] == []

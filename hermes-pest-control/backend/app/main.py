@@ -18,6 +18,7 @@ from app.routes import (
     messages_test,
     technicians,
     telegram,
+    tools,
     visits,
     whatsapp,
 )
@@ -68,6 +69,7 @@ app.include_router(documents.router)
 app.include_router(human_review.router)
 app.include_router(incidents.router)
 app.include_router(technicians.router)
+app.include_router(tools.router)
 app.include_router(visits.router)
 app.include_router(messages_test.router)
 app.include_router(telegram.router)
