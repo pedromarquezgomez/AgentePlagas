@@ -239,6 +239,24 @@ The current controlled Gmail draft execution path is also evaluated by the
 Policy Engine before delegating to `ToolExecutionService`. `gmail.send_email`
 remains denied because it is not an allowed policy rule.
 
+#### Policy Enforcement Boundary
+
+Controlled tool execution has a single production entry point:
+
+```text
+Route /tools/executions/{id}/execute
+-> PolicyEngine
+-> ToolExecutionService
+-> controlled backend executor/service
+```
+
+Providers, skills, and registries are not execution layers. Providers may
+propose structured actions, skills describe product capabilities, and registries
+publish metadata. They must not call backend services, Gmail executors,
+Firestore, or `execute_execution_record` directly. This boundary keeps the
+final authorization decision inside the harness, not inside an LLM provider or
+experimental agent runtime.
+
 Sprint 10A adds a development-only fake Hermes HTTP server at
 `backend/scripts/fake_hermes_server.py`. It is not part of the production
 runtime; it exists to verify the real-mode HTTP boundary, response validation,

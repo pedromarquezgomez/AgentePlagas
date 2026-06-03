@@ -1027,6 +1027,33 @@ provider. It is consulted before controlled tool execution. Providers and skills
 cannot bypass it; backend services only run after the harness has authorized the
 action or routed it to human review.
 
+#### Policy Enforcement Boundary
+
+The controlled execution boundary is:
+
+```text
+Route /tools/executions/{id}/execute
+-> PolicyEngine
+-> ToolExecutionService
+-> controlled backend executor/service
+```
+
+Only the protected route may call `ToolExecutionService.execute_execution_record`
+in application code. The route first builds a `PolicyContext`, asks
+`PolicyEngine` for the final decision, and only delegates execution when the
+decision is `ALLOW`.
+
+`DENY` returns a safe blocked response. `REQUIRE_HUMAN_REVIEW` keeps the record
+reviewable by a human operator and does not execute the external action.
+
+Providers, skills, and registries are intentionally non-execution layers:
+
+- providers reason and propose structured responses or actions;
+- skills describe what Hermes Pest knows how to do;
+- registries expose metadata;
+- tools describe backend actions under policy;
+- services perform real state changes only after harness authorization.
+
 ### Stage 5: Production Governance
 
 Status: pending.

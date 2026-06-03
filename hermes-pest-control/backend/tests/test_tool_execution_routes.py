@@ -238,8 +238,13 @@ def test_execute_tool_execution_uses_approved_payload_when_present(monkeypatch) 
 
 
 def test_execute_tool_execution_rejects_send_email(monkeypatch) -> None:
+    class MockGmailExecutor:
+        async def create_draft(self, payload: dict) -> dict:
+            raise AssertionError("Policy should block before executor is called.")
+
     service = ToolExecutionService(MockFirestoreService())
     monkeypatch.setattr(tools_route, "tool_execution_service", service)
+    monkeypatch.setattr(tools_route, "gmail_tool_executor", MockGmailExecutor())
     record = anyio.run(
         service.create_execution_record,
         _record(
@@ -254,7 +259,10 @@ def test_execute_tool_execution_rejects_send_email(monkeypatch) -> None:
     response = client.post(f"/tools/executions/{record.id}/execute")
 
     assert response.status_code == 403
-    assert "not allowed by policy" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "Tool execution blocked by policy: tool is not allowed."
+    )
 
 
 def test_execute_tool_execution_requires_human_review_when_policy_requires_it(
@@ -282,7 +290,10 @@ def test_execute_tool_execution_requires_human_review_when_policy_requires_it(
     response = client.post(f"/tools/executions/{record.id}/execute")
 
     assert response.status_code == 409
-    assert "requires human review" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "Tool execution requires human review before execution."
+    )
 
 
 def test_execute_tool_execution_does_not_run_twice(monkeypatch) -> None:

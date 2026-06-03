@@ -84,12 +84,12 @@ async def execute_tool_execution(execution_id: str) -> dict:
         if policy_result.decision == PolicyDecision.DENY:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=policy_result.reason,
+                detail="Tool execution blocked by policy: tool is not allowed.",
             )
         if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=policy_result.reason,
+                detail="Tool execution requires human review before execution.",
             )
         return await tool_execution_service.execute_execution_record(
             execution_id,
