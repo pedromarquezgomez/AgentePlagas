@@ -983,6 +983,7 @@ The operating model is:
 
 ```text
 Skill    = what Hermes Pest knows how to reason about
+Policy  = whether a proposed tool/action may proceed
 Tool     = technical backend action under policy
 Provider = model/runtime that proposes
 Service  = backend owner that changes real state
@@ -990,6 +991,41 @@ Service  = backend owner that changes real state
 
 Firestore remains the source of truth. Tool execution must pass through backend
 services and the existing review/audit controls.
+
+### Policy Engine
+
+Status: implemented.
+
+Policy modules live under:
+
+```text
+backend/app/policies/
+backend/app/policies/contracts.py
+backend/app/policies/default_rules.py
+backend/app/policies/engine.py
+```
+
+The `PolicyEngine` receives a `PolicyContext` and returns one of:
+
+```text
+ALLOW
+DENY
+REQUIRE_HUMAN_REVIEW
+```
+
+Initial rules:
+
+- `create_incident_tool`: `ALLOW`;
+- `get_incident_tool`: `ALLOW`;
+- `list_incidents_tool`: `ALLOW`;
+- `escalate_to_human_tool`: `ALLOW`;
+- `suggest_visit_tool`: `REQUIRE_HUMAN_REVIEW`;
+- unknown tools: `DENY`.
+
+The Policy Engine does not execute tools, modify Firestore, or depend on a
+provider. It is consulted before controlled tool execution. Providers and skills
+cannot bypass it; backend services only run after the harness has authorized the
+action or routed it to human review.
 
 ### Stage 5: Production Governance
 

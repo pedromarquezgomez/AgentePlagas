@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies.admin_auth import require_admin_auth
+from app.policies.contracts import PolicyContext, PolicyDecision
+from app.policies.engine import PolicyEngine
 from app.schemas.tool_harness import ToolExecutionRecordUpdate
 from app.services.gmail_tool_executor import (
     GmailToolDisabledError,
@@ -22,6 +24,7 @@ router = APIRouter(
 )
 tool_execution_service = ToolExecutionService()
 gmail_tool_executor = None
+policy_engine = PolicyEngine()
 
 
 @router.get("/executions")
@@ -76,6 +79,18 @@ async def update_tool_execution(
 @router.post("/executions/{execution_id}/execute")
 async def execute_tool_execution(execution_id: str) -> dict:
     try:
+        current_record = await tool_execution_service.get_execution_record(execution_id)
+        policy_result = policy_engine.evaluate(_policy_context_from_record(current_record))
+        if policy_result.decision == PolicyDecision.DENY:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=policy_result.reason,
+            )
+        if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=policy_result.reason,
+            )
         return await tool_execution_service.execute_execution_record(
             execution_id,
             gmail_executor=gmail_tool_executor,
@@ -108,3 +123,24 @@ async def execute_tool_execution(execution_id: str) -> dict:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Gmail draft execution failed.",
         ) from exc
+
+
+def _policy_context_from_record(record: dict) -> PolicyContext:
+    conversation_id = str(record.get("conversation_id") or "")
+    channel = conversation_id.split(":", 1)[0] if ":" in conversation_id else None
+    user_id = conversation_id.split(":", 1)[1] if ":" in conversation_id else None
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    return PolicyContext(
+        channel=channel,
+        user_id=user_id,
+        incident_id=metadata.get("incident_id"),
+        requested_tool=str(record.get("tool_name") or ""),
+        requested_action=record.get("action"),
+        source_provider=str(record.get("provider") or "unknown"),
+        confidence=metadata.get("confidence"),
+        metadata={
+            "execution_id": record.get("id"),
+            "risk_level": record.get("risk_level"),
+            "requires_approval": record.get("requires_approval"),
+        },
+    )

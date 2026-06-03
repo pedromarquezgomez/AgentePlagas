@@ -211,9 +211,33 @@ The boundary is:
 ```text
 Skill = what Hermes Pest knows how to reason about.
 Tool = technical backend action available under policy.
+Policy Engine = authorization decision for proposed tool/action.
 Provider = model/runtime that proposes responses or actions.
 Service = backend owner that modifies real state.
 ```
+
+### Policy Engine
+
+Location: `backend/app/policies/`
+
+The Policy Engine is the governance layer of the Agent Harness. Providers may
+reason and propose actions, but they do not authorize execution. Skills describe
+business capabilities, but they do not authorize execution either. Backend
+services perform real state changes, but the authorization decision belongs to
+the harness policy layer before a tool is executed.
+
+Initial decisions:
+
+- `create_incident_tool` -> `ALLOW`;
+- `get_incident_tool` -> `ALLOW`;
+- `list_incidents_tool` -> `ALLOW`;
+- `escalate_to_human_tool` -> `ALLOW`;
+- `suggest_visit_tool` -> `REQUIRE_HUMAN_REVIEW`;
+- unknown tools -> `DENY`.
+
+The current controlled Gmail draft execution path is also evaluated by the
+Policy Engine before delegating to `ToolExecutionService`. `gmail.send_email`
+remains denied because it is not an allowed policy rule.
 
 Sprint 10A adds a development-only fake Hermes HTTP server at
 `backend/scripts/fake_hermes_server.py`. It is not part of the production
