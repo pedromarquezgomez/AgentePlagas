@@ -119,6 +119,8 @@ async def test_llm_runtime_provider_returns_valid_agent_response() -> None:
         Settings(
             agent_provider="llm",
             llm_provider="openai",
+            llm_api_key="test-openai-key",
+            llm_model="gpt-test",
             openai_api_key="test-openai-key",
             openai_model="gpt-test",
         ),

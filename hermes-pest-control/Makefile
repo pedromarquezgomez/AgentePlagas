@@ -1,4 +1,4 @@
-.PHONY: dev test smoke evals evals-real evals-hermes-agent evals-agent-llm synthetic-cases synthetic-shadow-eval synthetic-shadow-eval-cloud seed-tool-executions gmail-draft-check fake-hermes hermes-agent-server hermes-agent-llm firestore-check set-telegram-webhook telegram-webhook-info frontend-install frontend-dev frontend-build
+.PHONY: dev test smoke smoke-llm evals evals-real evals-hermes-agent evals-agent-llm synthetic-cases synthetic-shadow-eval synthetic-shadow-eval-cloud seed-tool-executions gmail-draft-check fake-hermes hermes-agent-server hermes-agent-llm firestore-check set-telegram-webhook telegram-webhook-info frontend-install frontend-dev frontend-build
 
 dev:
 	cd backend && scripts/run_dev.sh
@@ -8,6 +8,9 @@ test:
 
 smoke:
 	cd backend && scripts/smoke_test.sh
+
+smoke-llm:
+	cd backend && scripts/smoke_test_llm.sh
 
 evals:
 	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; python -m evals.run_evals
@@ -27,7 +30,7 @@ synthetic-cases:
 	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; python -m evals.synthetic.generate_synthetic_cases
 
 synthetic-shadow-eval:
-	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; APP_ENV=test python -m evals.synthetic.run_synthetic_shadow_eval
+	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; APP_ENV=test AGENT_PROVIDER=mock python -m evals.synthetic.run_synthetic_shadow_eval
 
 synthetic-shadow-eval-cloud:
 	@test -n "$$HERMES_SHADOW_API_URL" || (echo "Set HERMES_SHADOW_API_URL explicitly before running cloud synthetic shadow eval." && exit 1)

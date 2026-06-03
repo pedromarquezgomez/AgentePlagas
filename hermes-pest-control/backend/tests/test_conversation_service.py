@@ -208,8 +208,20 @@ async def test_conversation_service_returns_safe_response_for_invalid_hermes() -
 
 @pytest.mark.asyncio
 async def test_conversation_service_persists_conversation_messages_and_incident() -> None:
+    from app.services.hermes_service import HermesService
+    from app.harness.providers.mock_provider import MockAgentRuntimeProvider
+
     firestore_service = MockFirestoreService()
-    service = ConversationService(firestore_service=firestore_service)
+    # Inyectar provider mock explícito para que el test sea independiente del .env activo
+    mock_provider = MockAgentRuntimeProvider()
+    hermes_service = HermesService(
+        settings=Settings(agent_provider="mock", hermes_mode="mock"),
+        provider=mock_provider,
+    )
+    service = ConversationService(
+        firestore_service=firestore_service,
+        hermes_service=hermes_service,
+    )
     message = IncomingMessage(
         channel="telegram",
         external_user_id="test-user-1",
@@ -252,6 +264,7 @@ async def test_conversation_service_persists_conversation_messages_and_incident(
     assert decision_records[0]["action_type"] == "create_incident"
     assert decision_records[0]["fallback_used"] is False
     assert decision_records[0]["response_contract_version"] == "AgentResponse.v1"
+
 
 
 @pytest.mark.asyncio
