@@ -100,6 +100,9 @@ class LLMRuntimeProvider:
             "available_skills": [
                 skill.model_dump(mode="json") for skill in request.available_skills
             ],
+            "available_tools": [
+                tool.as_runtime_metadata() for tool in request.available_tools
+            ],
             "response_contract": "AgentResponse",
         }
         skill_sections = "\n\n".join(
@@ -110,8 +113,15 @@ class LLMRuntimeProvider:
                 "Return only strict JSON compatible with AgentResponse.",
                 "Do not call tools, databases, Telegram, WhatsApp, Gmail, or Calendar.",
                 "Do not create incidents directly. Only propose a structured response.",
+                "Tools are executable only by backend services after policy checks.",
                 "# Product Skills",
                 skill_sections or "No product skills were provided.",
+                "# Backend Tools",
+                json.dumps(
+                    safe_runtime_payload["available_tools"],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
                 json.dumps(safe_runtime_payload, ensure_ascii=False, indent=2),
             ]
         )

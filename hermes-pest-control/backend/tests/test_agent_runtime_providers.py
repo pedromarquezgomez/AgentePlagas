@@ -10,6 +10,7 @@ from app.harness.providers.llm_provider import LLMRuntimeProvider
 from app.harness.providers.mock_provider import MockAgentRuntimeProvider
 from app.schemas.incoming_message import IncomingMessage
 from app.skills.registry import default_skill_registry
+from app.tools.registry import default_tool_registry
 
 
 def _incoming_message(text: str) -> IncomingMessage:
@@ -70,6 +71,7 @@ async def test_hermes_http_runtime_provider_uses_agent_response_contract() -> No
         conversation_history=[],
         business_context={"domain": "pest_control"},
         available_skills=default_skill_registry().list_skills(),
+        available_tools=default_tool_registry().list_tools(),
     )
 
     response = await provider.process(request)
@@ -79,6 +81,7 @@ async def test_hermes_http_runtime_provider_uses_agent_response_contract() -> No
     assert captured_payload["response_contract"] == "AgentResponse"
     assert captured_payload["message"]["channel"] == "telegram"
     assert captured_payload["available_skills"][0]["name"] == "classify_pest"
+    assert captured_payload["available_tools"][0]["name"] == "create_incident_tool"
 
 
 @pytest.mark.asyncio
@@ -119,6 +122,7 @@ async def test_llm_runtime_provider_returns_valid_agent_response() -> None:
         conversation_history=[],
         business_context={"trace_id": "trace-runtime"},
         available_skills=default_skill_registry().list_skills(),
+        available_tools=default_tool_registry().list_tools(),
     )
 
     response = await provider.process(request)
@@ -129,6 +133,7 @@ async def test_llm_runtime_provider_returns_valid_agent_response() -> None:
     assert captured_payload["model"] == "gpt-test"
     assert captured_payload["text"]["format"]["name"] == "AgentResponse"
     assert "classify_pest" in captured_payload["input"][1]["content"]
+    assert "create_incident_tool" in captured_payload["input"][1]["content"]
 
 
 @pytest.mark.asyncio

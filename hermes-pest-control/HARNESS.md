@@ -953,6 +953,44 @@ The older markdown skills under `hermes/skills` are retained for experimental
 HTTP-wrapper compatibility only. They should be treated as adapter material,
 not as the long-term source of product capability definitions.
 
+### Tool Registry
+
+Status: implemented.
+
+Backend tools live under:
+
+```text
+backend/app/tools/
+backend/app/tools/contracts.py
+backend/app/tools/registry.py
+backend/app/tools/definitions/
+```
+
+The first tool registry separates execution mechanics from product skills:
+
+- `create_incident_tool`;
+- `get_incident_tool`;
+- `list_incidents_tool`;
+- `escalate_to_human_tool`;
+- `suggest_visit_tool`.
+
+Providers receive safe tool metadata through `AgentRuntimeRequest`, but they are
+not allowed to execute tools. Skills also cannot execute tools or write to
+Firestore. A provider may propose intent; the backend converts that proposal
+into reviewed decisions and service calls.
+
+The operating model is:
+
+```text
+Skill    = what Hermes Pest knows how to reason about
+Tool     = technical backend action under policy
+Provider = model/runtime that proposes
+Service  = backend owner that changes real state
+```
+
+Firestore remains the source of truth. Tool execution must pass through backend
+services and the existing review/audit controls.
+
 ### Stage 5: Production Governance
 
 Status: pending.

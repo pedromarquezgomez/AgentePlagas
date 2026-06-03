@@ -1,0 +1,55 @@
+from app.tools.contracts import BackendTool
+
+
+DEFAULT_BACKEND_TOOLS = [
+    BackendTool(
+        name="create_incident_tool",
+        description="Create an operational incident from a validated incident draft.",
+        service_owner="IncidentService",
+        allowed_actions=["create_incident"],
+        risk_level=2,
+        requires_approval=False,
+        execution_policy="backend_service_only",
+        notes="Only ConversationService/IncidentService may persist incidents.",
+    ),
+    BackendTool(
+        name="get_incident_tool",
+        description="Read a single incident by id.",
+        service_owner="IncidentService",
+        allowed_actions=["get_incident"],
+        risk_level=0,
+        requires_approval=False,
+        execution_policy="backend_service_only",
+        notes="Read-only operational access.",
+    ),
+    BackendTool(
+        name="list_incidents_tool",
+        description="List incidents using controlled filters.",
+        service_owner="IncidentService",
+        allowed_actions=["list_incidents"],
+        risk_level=0,
+        requires_approval=False,
+        execution_policy="backend_service_only",
+        notes="Read-only operational access.",
+    ),
+    BackendTool(
+        name="escalate_to_human_tool",
+        description="Create a human review item for sensitive or blocked cases.",
+        service_owner="HumanReviewService",
+        allowed_actions=["create_review_item"],
+        risk_level=2,
+        requires_approval=False,
+        execution_policy="backend_service_only",
+        notes="Escalation is an internal safety action controlled by backend services.",
+    ),
+    BackendTool(
+        name="suggest_visit_tool",
+        description="Propose a visit or draft scheduling action without creating a visit.",
+        service_owner="VisitService",
+        allowed_actions=["suggest_visit", "propose_calendar_event"],
+        risk_level=3,
+        requires_approval=True,
+        execution_policy="review_required",
+        notes="Visit creation and calendar writes require backend/human control.",
+    ),
+]

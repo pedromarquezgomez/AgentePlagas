@@ -185,6 +185,36 @@ Legacy markdown files under `hermes/skills` may still be used by the
 experimental HTTP wrapper while it is migrated, but they are no longer the
 architectural source of product capability definitions.
 
+### Backend Tools
+
+Location: `backend/app/tools/`
+
+Tools are backend-owned technical actions. A skill describes what Hermes Pest
+can reason about; a tool describes how the backend may execute a concrete
+operation through an existing service.
+
+Initial tools:
+
+- `create_incident_tool` -> `IncidentService`;
+- `get_incident_tool` -> `IncidentService`;
+- `list_incidents_tool` -> `IncidentService`;
+- `escalate_to_human_tool` -> `HumanReviewService`;
+- `suggest_visit_tool` -> `VisitService`.
+
+`ToolRegistry` exposes tool metadata to providers through `AgentRuntimeRequest`,
+but providers are forbidden callers. Providers can only propose intent or
+structured actions. Actual state changes remain with services such as
+IncidentService, HumanReviewService, VisitService, and ToolExecutionService.
+
+The boundary is:
+
+```text
+Skill = what Hermes Pest knows how to reason about.
+Tool = technical backend action available under policy.
+Provider = model/runtime that proposes responses or actions.
+Service = backend owner that modifies real state.
+```
+
 Sprint 10A adds a development-only fake Hermes HTTP server at
 `backend/scripts/fake_hermes_server.py`. It is not part of the production
 runtime; it exists to verify the real-mode HTTP boundary, response validation,

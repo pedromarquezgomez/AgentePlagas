@@ -25,6 +25,9 @@ class HermesHttpRuntimeProvider:
             "available_skills": [
                 skill.model_dump(mode="json") for skill in request.available_skills
             ],
+            "available_tools": [
+                tool.as_runtime_metadata() for tool in request.available_tools
+            ],
         }
         return await self.client.process_message(
             request.incoming_message,
