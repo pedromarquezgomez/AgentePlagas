@@ -31,9 +31,9 @@ async def test_context_manager_builds_complete_context() -> None:
     mock_tool_registry.list_tools.return_value = []
     
     mock_policy_engine = MagicMock()
-    mock_policy_engine.rules = {
-        "test_tool": PolicyDecision.ALLOW,
-        "secure_tool": PolicyDecision.REQUIRE_HUMAN_REVIEW,
+    mock_policy_engine.get_constraints.return_value = {
+        "test_tool": "ALLOW",
+        "secure_tool": "REQUIRE_HUMAN_REVIEW",
     }
 
     manager = ContextManager(
@@ -60,3 +60,36 @@ async def test_context_manager_builds_complete_context() -> None:
     assert context.metadata == {"some_meta": "value"}
     assert context.incident_id is None
     assert context.incident_summary is None
+
+
+@pytest.mark.asyncio
+async def test_context_manager_handles_missing_policy_engine() -> None:
+    # Mocks
+    mock_firestore = AsyncMock()
+    mock_firestore.list_documents.return_value = []
+
+    mock_skill_registry = MagicMock()
+    mock_skill_registry.list_skills.return_value = []
+
+    mock_tool_registry = MagicMock()
+    mock_tool_registry.list_tools.return_value = []
+
+
+    # mock que no tiene get_constraints
+    mock_policy_engine = MagicMock(spec=[])
+
+    manager = ContextManager(
+        firestore_service=mock_firestore,
+        skill_registry=mock_skill_registry,
+        tool_registry=mock_tool_registry,
+        policy_engine=mock_policy_engine,
+    )
+
+    context = await manager.build_context(
+        incoming_message=_incoming_message(),
+        conversation_history=[],
+    )
+
+    assert context.channel == "telegram"
+    assert context.policy_constraints == {}
+    assert context.incident_id is None

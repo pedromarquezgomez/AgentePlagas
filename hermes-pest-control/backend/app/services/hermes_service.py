@@ -36,11 +36,21 @@ class HermesService:
         self.hermes_mode = self._legacy_hermes_mode_for_provider()
         self.skill_registry = skill_registry or default_skill_registry()
         self.tool_registry = tool_registry or default_tool_registry()
+
+        from app.services.firestore_factory import get_firestore_service
+        from app.policies.engine import PolicyEngine
+
+        firestore_service = get_firestore_service(self.settings)
+        policy_engine = PolicyEngine()
+
         self.context_manager = context_manager or ContextManager(
+            firestore_service=firestore_service,
             skill_registry=self.skill_registry,
             tool_registry=self.tool_registry,
+            policy_engine=policy_engine,
             settings=self.settings,
         )
+
         self.provider = provider or self._build_provider(client)
         self.client = client or getattr(self.provider, "client", self.provider)
 

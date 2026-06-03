@@ -57,12 +57,9 @@ class ContextManager:
 
         # Extraer restricciones de políticas
         policy_constraints = {}
-        if self.policy_engine and hasattr(self.policy_engine, "rules"):
-            for tool_name, decision in self.policy_engine.rules.items():
-                if hasattr(decision, "value"):
-                    policy_constraints[tool_name] = decision.value
-                else:
-                    policy_constraints[tool_name] = str(decision)
+        if self.policy_engine and hasattr(self.policy_engine, "get_constraints"):
+            policy_constraints = self.policy_engine.get_constraints()
+
 
         # Combinar metadatos a partir de business_context
         metadata = {}

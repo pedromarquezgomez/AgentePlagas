@@ -1,4 +1,7 @@
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class IncidentBuilder:
@@ -30,8 +33,12 @@ class IncidentBuilder:
                     )
                     active = sorted_incidents[0]
                     return active.get("id"), active.get("summary")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "incident_builder_failed conversation_id=%s error=%s",
+                    conversation_id,
+                    str(exc),
+                )
 
         # Fallback a metadatos de contexto de negocio si están definidos
         if business_context:

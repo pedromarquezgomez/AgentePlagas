@@ -36,12 +36,13 @@ async def test_history_builder_loads_from_firestore() -> None:
 
 
 @pytest.mark.asyncio
-async def test_history_builder_returns_empty_on_error() -> None:
+async def test_history_builder_returns_empty_on_error(caplog) -> None:
     mock_firestore = AsyncMock()
     mock_firestore.list_documents.side_effect = RuntimeError("db error")
     builder = HistoryBuilder(firestore_service=mock_firestore)
     result = await builder.build("test-conv-id")
     assert result == []
+    assert "history_builder_failed" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -68,6 +69,17 @@ async def test_incident_builder_fallback_to_business_context() -> None:
     )
     assert inc_id == "inc-fallback"
     assert summary == "Fallback summary"
+
+
+@pytest.mark.asyncio
+async def test_incident_builder_logs_on_error(caplog) -> None:
+    mock_firestore = AsyncMock()
+    mock_firestore.list_documents.side_effect = RuntimeError("incident db error")
+    builder = IncidentBuilder(firestore_service=mock_firestore)
+    inc_id, summary = await builder.build("test-conv-id")
+    assert inc_id is None
+    assert summary is None
+    assert "incident_builder_failed" in caplog.text
 
 
 def test_skills_builder_loads_skills() -> None:

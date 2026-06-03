@@ -1,4 +1,7 @@
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class HistoryBuilder:
@@ -38,5 +41,10 @@ class HistoryBuilder:
                 role = "user" if direction == "inbound" else "assistant"
                 history.append({"role": role, "content": text})
             return history
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "history_builder_failed conversation_id=%s error=%s",
+                conversation_id,
+                str(exc),
+            )
             return []

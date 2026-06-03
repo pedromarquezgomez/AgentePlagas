@@ -30,3 +30,12 @@ class PolicyEngine:
         if decision == PolicyDecision.REQUIRE_HUMAN_REVIEW:
             return f"Tool requires human review by harness policy: {requested_tool}"
         return f"Tool denied by harness policy: {requested_tool}"
+
+    def get_constraints(self) -> dict[str, str]:
+        constraints = {}
+        for tool, decision in self.rules.items():
+            if hasattr(decision, "value"):
+                constraints[tool] = decision.value
+            else:
+                constraints[tool] = str(decision)
+        return constraints
