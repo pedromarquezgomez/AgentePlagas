@@ -65,3 +65,22 @@ frontend-dev:
 
 frontend-build:
 	cd frontend && npm run build
+
+nous-dashboard:
+	@echo "Preparando el Dashboard nativo de Nous Research Hermes Agent..."
+	@if [ ! -d backend/nous-hermes-agent ]; then \
+		echo "Clonando el repositorio oficial de hermes-agent..."; \
+		git clone --depth 1 https://github.com/nousresearch/hermes-agent.git backend/nous-hermes-agent; \
+	fi
+	@if [ ! -d backend/nous-hermes-agent/.venv-dashboard ]; then \
+		echo "Creando entorno virtual e instalando dependencias de hermes-agent..."; \
+		python3 -m venv backend/nous-hermes-agent/.venv-dashboard && \
+		backend/nous-hermes-agent/.venv-dashboard/bin/pip install --upgrade pip && \
+		backend/nous-hermes-agent/.venv-dashboard/bin/pip install -e backend/nous-hermes-agent; \
+	fi
+	@echo "Conectando las Skills del proyecto al archivo de configuración de Hermes..."
+	@backend/nous-hermes-agent/.venv-dashboard/bin/python backend/scripts/connect_nous_skills.py
+	@echo "Iniciando el Dashboard nativo de Nous Research (http://127.0.0.1:9119)..."
+	@OPENAI_API_KEY="$$(gcloud secrets versions access latest --secret="openai-api-key" 2>/dev/null || echo "$$OPENAI_API_KEY")" \
+	backend/nous-hermes-agent/.venv-dashboard/bin/hermes dashboard
+
