@@ -2,6 +2,10 @@ import logging
 from typing import Any
 
 from app.config.settings import Settings
+from app.harness.contracts import AgentRuntimeRequest
+from app.harness.providers.hermes_http_provider import HermesHttpRuntimeProvider
+from app.harness.providers.mock_provider import MockAgentRuntimeProvider
+from app.harness.runtime import AgentRuntimeProvider, LegacyClientRuntimeProvider
 from app.schemas.agent_response import AgentResponse
 from app.schemas.incoming_message import IncomingMessage
 from app.services.hermes_clients import (
@@ -19,10 +23,12 @@ class HermesService:
         self,
         settings: Settings | None = None,
         client: HermesMockClient | HermesRealClient | None = None,
+        provider: AgentRuntimeProvider | None = None,
     ) -> None:
         self.settings = settings or Settings()
         self.hermes_mode = self.settings.hermes_mode.casefold()
-        self.client = client or self._build_client()
+        self.provider = provider or self._build_provider(client)
+        self.client = client or getattr(self.provider, "client", self.provider)
 
     async def process_message(
         self,
@@ -44,10 +50,12 @@ class HermesService:
         )
 
         try:
-            response = await self.client.process_message(
-                incoming_message,
-                conversation_history=conversation_history,
-                business_context=business_context,
+            response = await self.provider.process(
+                AgentRuntimeRequest(
+                    incoming_message=incoming_message,
+                    conversation_history=conversation_history,
+                    business_context=business_context,
+                )
             )
             logger.info(
                 "hermes_request_completed hermes_mode=%s action_type=%s",
@@ -75,10 +83,48 @@ class HermesService:
                 f"UnexpectedError:{exc.__class__.__name__}"
             )
 
-    def _build_client(self) -> HermesMockClient | HermesRealClient:
+    def _build_provider(
+        self,
+        client: HermesMockClient | HermesRealClient | None = None,
+    ) -> AgentRuntimeProvider:
+        if client is not None:
+            return LegacyClientRuntimeProvider(
+                client,
+                name=f"{self.hermes_mode}_legacy_client",
+                mode=self.hermes_mode,
+            )
         if self.hermes_mode == "real":
-            return HermesRealClient(self.settings)
-        return HermesMockClient()
+            return HermesHttpRuntimeProvider(self.settings)
+        return MockAgentRuntimeProvider()
+
+    @classmethod
+    def for_shadow(cls, settings: Settings) -> "HermesService":
+        shadow_settings = Settings(
+            hermes_mode="real",
+            hermes_api_url=settings.hermes_shadow_api_url,
+            hermes_shadow_api_key=settings.hermes_shadow_api_key,
+            hermes_timeout_seconds=settings.hermes_shadow_timeout_seconds,
+        )
+        return cls(settings=shadow_settings)
+
+    @classmethod
+    def shadow_enabled(cls, settings: Settings) -> bool:
+        return settings.hermes_shadow_mode
+
+    @classmethod
+    def shadow_runtime_configured(cls, settings: Settings) -> bool:
+        return bool(settings.hermes_shadow_api_url)
+
+    @classmethod
+    def for_pilot(cls, settings: Settings) -> "HermesService":
+        pilot_settings = Settings(
+            hermes_mode="real",
+            hermes_api_url=settings.hermes_api_url or settings.hermes_shadow_api_url,
+            hermes_api_key=settings.hermes_api_key,
+            hermes_shadow_api_key=settings.hermes_shadow_api_key,
+            hermes_timeout_seconds=settings.hermes_timeout_seconds,
+        )
+        return cls(settings=pilot_settings)
 
     def _normalize_context_args(
         self,
@@ -92,7 +138,9 @@ class HermesService:
             business_context or default_business_context(),
         )
 
-    def _safe_fallback_response(self, fallback_reason: str = "hermes_service_error") -> AgentResponse:
+    def _safe_fallback_response(
+        self, fallback_reason: str = "hermes_service_error"
+    ) -> AgentResponse:
         logger.info("hermes_fallback_used hermes_mode=%s", self.hermes_mode)
         return AgentResponse(
             reply=(

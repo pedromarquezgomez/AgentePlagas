@@ -1,6 +1,10 @@
 import pytest
 
-from app.config.cors import CorsConfigurationError, get_cors_allowed_origins
+from app.config.cors import (
+    LOCAL_DEV_ORIGINS,
+    CorsConfigurationError,
+    get_cors_allowed_origins,
+)
 from app.config.settings import Settings
 
 
@@ -9,7 +13,7 @@ def test_cors_uses_local_defaults_in_development() -> None:
 
     origins = get_cors_allowed_origins(settings)
 
-    assert origins == ["http://127.0.0.1:5173", "http://localhost:5173"]
+    assert origins == LOCAL_DEV_ORIGINS
 
 
 def test_cors_uses_configured_origins_and_frontend_url() -> None:

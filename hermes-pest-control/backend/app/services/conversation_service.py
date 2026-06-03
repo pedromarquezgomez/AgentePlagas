@@ -432,15 +432,7 @@ class ConversationService:
         return self.random_func() < sample_rate
 
     def _build_pilot_hermes_service(self) -> HermesService:
-        pilot_api_url = self.settings.hermes_api_url or self.settings.hermes_shadow_api_url
-        pilot_settings = Settings(
-            hermes_mode="real",
-            hermes_api_url=pilot_api_url,
-            hermes_api_key=self.settings.hermes_api_key,
-            hermes_shadow_api_key=self.settings.hermes_shadow_api_key,
-            hermes_timeout_seconds=self.settings.hermes_timeout_seconds,
-        )
-        return HermesService(settings=pilot_settings)
+        return HermesService.for_pilot(self.settings)
 
     def _build_safe_agent_error_response(self) -> AgentResponse:
         return AgentResponse(
@@ -673,9 +665,12 @@ class ConversationService:
         trace_id: str,
         primary_response: AgentResponse,
     ) -> None:
-        if not self.settings.hermes_shadow_mode:
+        if not HermesService.shadow_enabled(self.settings):
             return
-        if self.shadow_hermes_service is None and not self.settings.hermes_shadow_api_url:
+        if (
+            self.shadow_hermes_service is None
+            and not HermesService.shadow_runtime_configured(self.settings)
+        ):
             logger.warning(
                 "hermes_shadow_skipped trace_id=%s conversation_id=%s "
                 "reason=missing_shadow_api_url",
@@ -753,13 +748,7 @@ class ConversationService:
         return self.random_func() < sample_rate
 
     def _build_shadow_hermes_service(self) -> HermesService:
-        shadow_settings = Settings(
-            hermes_mode="real",
-            hermes_api_url=self.settings.hermes_shadow_api_url,
-            hermes_shadow_api_key=self.settings.hermes_shadow_api_key,
-            hermes_timeout_seconds=self.settings.hermes_shadow_timeout_seconds,
-        )
-        return HermesService(settings=shadow_settings)
+        return HermesService.for_shadow(self.settings)
 
     def _build_shadow_record(
         self,

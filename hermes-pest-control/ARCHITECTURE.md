@@ -23,7 +23,7 @@ The current product surface is intentionally small:
 
 - Channel adapters do transport work only.
 - ConversationService orchestrates the application flow.
-- HermesService is replaceable and hides mock/real client selection.
+- HermesService is replaceable and hides mock/real runtime provider selection.
 - Business services execute decisions; the agent proposes actions.
 - Persistence services are infrastructure, not domain logic.
 - Firestore/VisitService remains the source of truth for visits; Google Calendar
@@ -124,15 +124,29 @@ It does not assign technicians or modify the agenda from Hermes output.
 
 Location: `backend/app/services/hermes_service.py`
 
-HermesService is the agent boundary. It selects a mock or real-ready client
-using `HERMES_MODE` and returns an AgentResponse. If the real client fails or
-returns an invalid response, HermesService returns a safe
-`escalate_to_human` fallback.
+HermesService is the agent boundary. It selects a neutral runtime provider using
+`HERMES_MODE` and returns an AgentResponse. If the real provider fails or
+returns an invalid response, HermesService returns a safe `escalate_to_human`
+fallback.
 
 Current modes:
 
 - `HERMES_MODE=mock`: deterministic local behavior.
-- `HERMES_MODE=real`: HTTP client prepared for Hermes Agent.
+- `HERMES_MODE=real`: HTTP runtime provider prepared for Hermes Agent.
+
+Runtime abstractions live under `backend/app/harness/`:
+
+- `runtime.py`: provider protocol and legacy-client compatibility adapter.
+- `contracts.py`: neutral `AgentRuntimeRequest` passed to providers.
+- `providers/mock_provider.py`: deterministic provider for local/test behavior.
+- `providers/hermes_http_provider.py`: HTTP provider for Hermes Agent-compatible
+  wrappers.
+
+`ConversationService` depends on `HermesService`, not on Hermes Agent, Nous,
+HTTP endpoints, skills, or wrapper internals. Hermes Agent is therefore an
+optional provider behind the same AgentResponse contract. Firestore remains the
+source of truth, and agents only propose responses/actions; backend services
+perform persistence and controlled execution.
 
 Sprint 10A adds a development-only fake Hermes HTTP server at
 `backend/scripts/fake_hermes_server.py`. It is not part of the production

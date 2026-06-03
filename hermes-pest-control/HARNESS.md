@@ -877,6 +877,30 @@ Production rollback remains a single flag:
 HERMES_PILOT_MODE=false
 ```
 
+### Runtime Provider Boundary
+
+Status: implemented.
+
+The agent runtime is encapsulated behind neutral provider contracts under:
+
+```text
+backend/app/harness/
+backend/app/harness/runtime.py
+backend/app/harness/contracts.py
+backend/app/harness/providers/mock_provider.py
+backend/app/harness/providers/hermes_http_provider.py
+```
+
+`HermesService` remains the stable service facade used by
+`ConversationService`, evals, shadow mode, and pilot mode. Internally it now
+routes `HERMES_MODE=mock` to `MockAgentRuntimeProvider` and `HERMES_MODE=real`
+to `HermesHttpRuntimeProvider`.
+
+This keeps Hermes Agent, Nous-style runtimes, HTTP wrappers, skills, and future
+providers out of the orchestrator. Providers must return `AgentResponse`; tool
+use remains mediated separately through `ToolRequest`, `ToolDecision`, audit,
+and backend services.
+
 ### Stage 5: Production Governance
 
 Status: pending.
