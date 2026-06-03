@@ -68,8 +68,11 @@ class HermesMockClient:
                         "pest_type": state.pest_type,
                         "location": state.location,
                         "affected_area": state.affected_area or "cocina",
-                        "priority": self._priority_for(state.pest_type_spanish or state.pest_type),
+                        "priority": state.recommended_priority or self._priority_for(state.pest_type_spanish or state.pest_type),
                         "summary": f"Cliente informa de presencia de {state.pest_type} en {state.location}.",
+                        "confidence": state.confidence,
+                        "evidence": state.evidence,
+                        "detected_terms": state.detected_terms,
                     },
                     metadata={
                         "customer_name": state.customer_name,
@@ -91,11 +94,14 @@ class HermesMockClient:
                         "pest_type": state.pest_type_spanish,
                         "location": state.location,
                         "affected_area": state.affected_area,
-                        "priority": self._priority_for(state.pest_type_spanish),
+                        "priority": state.recommended_priority or self._priority_for(state.pest_type_spanish),
                         "summary": (
                             f"Cliente informa de presencia de {state.pest_type_spanish} en "
                             f"{state.affected_area} en {state.location}."
                         ),
+                        "confidence": state.confidence,
+                        "evidence": state.evidence,
+                        "detected_terms": state.detected_terms,
                     },
                 )
 
@@ -185,6 +191,9 @@ class HermesMockClient:
                 "affected_area": affected_area,
                 "priority": priority,
                 "summary": "Caso sensible o de seguridad que requiere revisión humana.",
+                "confidence": classified.confidence,
+                "evidence": classified.evidence,
+                "detected_terms": classified.detected_terms,
             },
         )
 
@@ -202,11 +211,15 @@ class HermesMockClient:
                 "negocio alimentario",
                 "restaurante",
                 "bar",
+                "negocio",
             ]
         )
 
     def _priority_for(self, pest_type: str | None) -> str:
-        if pest_type in {"cucarachas", "roedores", "cockroach", "rodent"}:
+        if not pest_type:
+            return "medium"
+        pt_lower = pest_type.lower()
+        if pt_lower in {"cucarachas", "roedores", "cockroach", "rodent"}:
             return "high"
         return "medium"
 

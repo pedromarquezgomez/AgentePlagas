@@ -110,6 +110,11 @@ class IncidentIntakeService:
 
         pest_type = None
         pest_type_spanish = None
+        confidence = None
+        evidence = None
+        detected_terms = []
+        recommended_priority = None
+        requires_human_review = False
         location = None
         customer_name = None
         affected_area = None
@@ -120,6 +125,11 @@ class IncidentIntakeService:
             if classified.pest_type:
                 pest_type = classified.pest_type
                 pest_type_spanish = classified.pest_type_spanish
+                confidence = classified.confidence
+                evidence = classified.evidence
+                detected_terms = classified.detected_terms
+                recommended_priority = classified.recommended_priority
+                requires_human_review = classified.requires_human_review
 
             area = self._extract_affected_area(ut)
             if area:
@@ -160,7 +170,7 @@ class IncidentIntakeService:
             if not affected_area:
                 missing_fields.append("affected_area")
         else:
-            if not pest_type or pest_type == "unknown":
+            if not pest_type or pest_type == "UNKNOWN":
                 missing_fields.append("pest_type")
             if not location:
                 missing_fields.append("location")
@@ -178,4 +188,9 @@ class IncidentIntakeService:
             missing_fields=missing_fields,
             ready_for_incident=ready_for_incident,
             is_legacy_flow=is_legacy_flow,
+            confidence=confidence,
+            evidence=evidence,
+            detected_terms=detected_terms,
+            recommended_priority=recommended_priority,
+            requires_human_review=requires_human_review,
         )

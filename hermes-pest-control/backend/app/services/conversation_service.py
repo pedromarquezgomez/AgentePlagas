@@ -275,6 +275,20 @@ class ConversationService:
     ) -> IncidentDraft:
         incident_data = response.incident
 
+        metadata = {
+            "external_user_id": message.external_user_id,
+            "external_chat_id": message.external_chat_id,
+            "source_message_type": message.message_type,
+            "source_metadata": message.metadata,
+        }
+        if incident_data:
+            if getattr(incident_data, "confidence", None):
+                metadata["confidence"] = incident_data.confidence
+            if getattr(incident_data, "evidence", None):
+                metadata["evidence"] = incident_data.evidence
+            if getattr(incident_data, "detected_terms", None):
+                metadata["detected_terms"] = incident_data.detected_terms
+
         return IncidentDraft(
             conversation_id=conversation_id,
             channel=message.channel,
@@ -283,12 +297,7 @@ class ConversationService:
             affected_area=incident_data.affected_area if incident_data else None,
             priority=incident_data.priority if incident_data else "medium",
             summary=incident_data.summary if incident_data else None,
-            metadata={
-                "external_user_id": message.external_user_id,
-                "external_chat_id": message.external_chat_id,
-                "source_message_type": message.message_type,
-                "source_metadata": message.metadata,
-            },
+            metadata=metadata,
         )
 
     async def _get_hermes_response(

@@ -20,6 +20,10 @@ class AgentIncidentProposal(BaseModel):
     id: str | None = None
     conversation_id: str | None = None
     status: str | None = None
+    confidence: str | None = None
+    evidence: str | None = None
+    detected_terms: list[str] = Field(default_factory=list)
+
 
 
 class AgentResponse(BaseModel):

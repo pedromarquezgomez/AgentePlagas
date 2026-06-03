@@ -66,7 +66,7 @@ async def test_complete_message_proposes_create_incident() -> None:
     assert not response.action.missing_fields
     assert response.incident is not None
     assert response.incident.should_create is True
-    assert response.incident.pest_type == "cockroach"
+    assert response.incident.pest_type == "COCKROACH"
     assert response.incident.location == "cocina del local central"
 
 
@@ -99,14 +99,14 @@ async def test_multi_turn_flow_reconstructs_state_and_creates_incident() -> None
     assert resp3.action.type == "create_incident"
     assert resp3.incident is not None
     assert resp3.incident.should_create is True
-    assert resp3.incident.pest_type == "cockroach"
+    assert resp3.incident.pest_type == "COCKROACH"
     assert resp3.incident.location == "cocina del local"
     assert resp3.incident.id is not None
 
     # Verificar que el incidente real existe en base de datos
     incident_in_db = await service.incident_service.get_incident(resp3.incident.id)
     assert incident_in_db is not None
-    assert incident_in_db["pest_type"] == "cockroach"
+    assert incident_in_db["pest_type"] == "COCKROACH"
     assert incident_in_db["location"] == "cocina del local"
 
 
