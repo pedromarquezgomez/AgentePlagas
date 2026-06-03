@@ -23,6 +23,10 @@ class AgentIncidentProposal(BaseModel):
     confidence: str | None = None
     evidence: str | None = None
     detected_terms: list[str] = Field(default_factory=list)
+    severity: str | None = None
+    response_hours: int | None = None
+    assessment_reason: str | None = None
+
 
 
 

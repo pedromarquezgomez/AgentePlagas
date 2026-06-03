@@ -18,3 +18,9 @@ class IncidentIntakeState(BaseModel):
     recommended_priority: str | None = None
     requires_human_review: bool = False
 
+    # Metadatos de priorizacion del Sprint 12
+    severity: str | None = None
+    priority: str | None = None
+    response_hours: int | None = None
+    assessment_reason: str | None = None
+

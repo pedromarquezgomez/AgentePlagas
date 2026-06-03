@@ -1,0 +1,10 @@
+from enum import Enum
+
+
+class CustomerType(str, Enum):
+    HOSPITALITY = "HOSPITALITY"
+    FOOD_BUSINESS = "FOOD_BUSINESS"
+    COMMUNITY = "COMMUNITY"
+    PRIVATE_HOME = "PRIVATE_HOME"
+    INDUSTRIAL = "INDUSTRIAL"
+    UNKNOWN = "UNKNOWN"

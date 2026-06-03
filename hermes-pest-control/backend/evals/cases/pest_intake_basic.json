@@ -17,7 +17,7 @@
         "pest_type": "cucarachas",
         "location": "Torremolinos",
         "affected_area": "cocina",
-        "priority": "high",
+        "priority": "urgent",
         "should_create": true
       },
       "must_include_in_reply": [
@@ -47,7 +47,7 @@
         "pest_type": "roedores",
         "location": "Marbella",
         "affected_area": "garaje",
-        "priority": "high",
+        "priority": "urgent",
         "should_create": true
       },
       "must_include_in_reply": [

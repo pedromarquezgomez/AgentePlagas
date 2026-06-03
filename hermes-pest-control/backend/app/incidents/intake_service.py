@@ -179,6 +179,40 @@ class IncidentIntakeService:
 
         ready_for_incident = not missing_fields
 
+        # Motores de priorización y cliente del Sprint 12
+        from app.customers.classifier import CustomerTypeClassifier
+        from app.incidents.prioritization.engine import IncidentPrioritizationEngine
+        from app.pests.contracts import PestClassification
+
+        customer_classifier = CustomerTypeClassifier()
+        prioritization_engine = IncidentPrioritizationEngine()
+
+        all_user_text = " ".join(user_texts)
+        customer_type = customer_classifier.classify(all_user_text)
+
+        pest_classification = PestClassification(
+            pest_type=pest_type,
+            confidence=confidence,
+            evidence=evidence,
+            detected_terms=detected_terms,
+            recommended_priority=recommended_priority,
+            requires_human_review=requires_human_review,
+            pest_type_spanish=pest_type_spanish,
+        )
+
+        assessment = prioritization_engine.assess(
+            pest_classification=pest_classification,
+            location_text=location,
+            customer_type=customer_type,
+            affected_area=affected_area,
+        )
+
+        severity = assessment.incident_severity.value
+        priority = assessment.incident_priority.value
+        requires_human_review = requires_human_review or assessment.requires_human_review
+        response_hours = assessment.recommended_response_hours
+        assessment_reason = assessment.reason
+
         return IncidentIntakeState(
             pest_type=pest_type,
             pest_type_spanish=pest_type_spanish,
@@ -193,4 +227,8 @@ class IncidentIntakeService:
             detected_terms=detected_terms,
             recommended_priority=recommended_priority,
             requires_human_review=requires_human_review,
+            severity=severity,
+            priority=priority,
+            response_hours=response_hours,
+            assessment_reason=assessment_reason,
         )

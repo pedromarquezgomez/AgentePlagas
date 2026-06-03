@@ -68,11 +68,14 @@ class HermesMockClient:
                         "pest_type": state.pest_type,
                         "location": state.location,
                         "affected_area": state.affected_area or "cocina",
-                        "priority": state.recommended_priority or self._priority_for(state.pest_type_spanish or state.pest_type),
+                        "priority": _map_priority(state.priority) or state.recommended_priority or self._priority_for(state.pest_type_spanish or state.pest_type),
                         "summary": f"Cliente informa de presencia de {state.pest_type} en {state.location}.",
                         "confidence": state.confidence,
                         "evidence": state.evidence,
                         "detected_terms": state.detected_terms,
+                        "severity": state.severity,
+                        "response_hours": state.response_hours,
+                        "assessment_reason": state.assessment_reason,
                     },
                     metadata={
                         "customer_name": state.customer_name,
@@ -94,7 +97,7 @@ class HermesMockClient:
                         "pest_type": state.pest_type_spanish,
                         "location": state.location,
                         "affected_area": state.affected_area,
-                        "priority": state.recommended_priority or self._priority_for(state.pest_type_spanish),
+                        "priority": _map_priority(state.priority) or state.recommended_priority or self._priority_for(state.pest_type_spanish),
                         "summary": (
                             f"Cliente informa de presencia de {state.pest_type_spanish} en "
                             f"{state.affected_area} en {state.location}."
@@ -102,6 +105,9 @@ class HermesMockClient:
                         "confidence": state.confidence,
                         "evidence": state.evidence,
                         "detected_terms": state.detected_terms,
+                        "severity": state.severity,
+                        "response_hours": state.response_hours,
+                        "assessment_reason": state.assessment_reason,
                     },
                 )
 
@@ -166,13 +172,33 @@ class HermesMockClient:
     def _build_human_review_response(self, text: str) -> AgentResponse:
         from app.pests.classifier import PestClassifier
         from app.incidents.intake_service import IncidentIntakeService
+        from app.customers.classifier import CustomerTypeClassifier
+        from app.incidents.prioritization.engine import IncidentPrioritizationEngine
+
         classifier = PestClassifier()
         service = IncidentIntakeService(classifier=classifier)
         classified = classifier.classify(text)
         pest_type = classified.pest_type_spanish
         affected_area = service._extract_affected_area(text)
         location = service._extract_location_legacy(text)
-        priority = "urgent" if self._is_urgent_review(text) else "high"
+
+        customer_classifier = CustomerTypeClassifier()
+        prioritization_engine = IncidentPrioritizationEngine()
+        customer_type = customer_classifier.classify(text)
+
+        assessment = prioritization_engine.assess(
+            pest_classification=classified,
+            location_text=location,
+            customer_type=customer_type,
+            affected_area=affected_area,
+        )
+
+        priority_val = _map_priority(assessment.incident_priority.value)
+        if not priority_val or priority_val in {"medium", "low"}:
+            priority_val = "high"
+
+        priority = "urgent" if self._is_urgent_review(text) else priority_val
+
 
         return AgentResponse(
             reply=(
@@ -194,6 +220,9 @@ class HermesMockClient:
                 "confidence": classified.confidence,
                 "evidence": classified.evidence,
                 "detected_terms": classified.detected_terms,
+                "severity": assessment.incident_severity.value,
+                "response_hours": assessment.recommended_response_hours,
+                "assessment_reason": assessment.reason,
             },
         )
 
@@ -393,3 +422,18 @@ def default_business_context(conversation_id: str | None = None) -> dict[str, An
     if conversation_id:
         context["conversation_id"] = conversation_id
     return context
+
+
+def _map_priority(priority: str | None) -> str | None:
+    if not priority:
+        return None
+    p_upper = priority.upper()
+    if p_upper == "URGENT":
+        return "urgent"
+    if p_upper == "HIGH":
+        return "high"
+    if p_upper == "NORMAL":
+        return "medium"
+    if p_upper == "LOW":
+        return "low"
+    return "medium"

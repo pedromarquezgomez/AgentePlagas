@@ -117,6 +117,25 @@ class ConversationService:
                 response.incident.conversation_id = created_incident.conversation_id
                 response.incident.status = created_incident.status
 
+            # Registrar evento de priorización en auditoría
+            from app.audit.contracts import AuditEvent, AuditEventType
+            self.audit_service.record_event(
+                AuditEvent(
+                    event_type=AuditEventType.INCIDENT_PRIORITIZED,
+                    execution_id=trace_id,
+                    user_id=message.external_user_id,
+                    channel=message.channel,
+                    status="completed",
+                    message="Incident prioritization completed.",
+                    metadata={
+                        "severity": response.incident.severity if response.incident else None,
+                        "priority": response.incident.priority if response.incident else None,
+                        "reason": response.incident.assessment_reason if response.incident else None,
+                        "response_hours": response.incident.response_hours if response.incident else None,
+                    },
+                )
+            )
+
         decision_record = await self._record_decision(
             message=message,
             conversation_id=conversation_id,
@@ -288,6 +307,19 @@ class ConversationService:
                 metadata["evidence"] = incident_data.evidence
             if getattr(incident_data, "detected_terms", None):
                 metadata["detected_terms"] = incident_data.detected_terms
+            if getattr(incident_data, "severity", None):
+                metadata["severity"] = incident_data.severity
+            if getattr(incident_data, "response_hours", None):
+                metadata["response_hours"] = incident_data.response_hours
+            if getattr(incident_data, "assessment_reason", None):
+                metadata["assessment_reason"] = incident_data.assessment_reason
+
+            metadata["classification"] = {
+                "pest_type": incident_data.pest_type,
+                "confidence": getattr(incident_data, "confidence", None),
+                "evidence": getattr(incident_data, "evidence", None),
+                "detected_terms": getattr(incident_data, "detected_terms", []),
+            }
 
         return IncidentDraft(
             conversation_id=conversation_id,
