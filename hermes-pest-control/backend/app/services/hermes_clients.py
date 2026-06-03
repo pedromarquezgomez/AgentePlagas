@@ -33,195 +33,73 @@ class HermesClientError(RuntimeError):
 
 
 class HermesMockClient:
-    pest_terms = {
-        "cucaracha": "cucarachas",
-        "cucarachas": "cucarachas",
-        "hormiga": "hormigas",
-        "hormigas": "hormigas",
-        "roedor": "roedores",
-        "roedores": "roedores",
-        "rata": "roedores",
-        "ratas": "roedores",
-        "ratón": "roedores",
-        "ratones": "roedores",
-        "raton": "roedores",
-        "ratones": "roedores",
-    }
-    area_terms = ["cocina", "garaje", "baño", "bano", "jardín", "jardin", "almacén", "almacen"]
-    location_terms = ["torremolinos", "málaga", "malaga", "benalmádena", "benalmadena", "fuengirola", "marbella"]
-
     async def process_message(
         self,
         incoming_message: IncomingMessage,
         conversation_history: list[dict[str, Any]] | None = None,
         business_context: dict[str, Any] | None = None,
     ) -> AgentResponse:
-        import re
         text = (incoming_message.text or "").casefold()
         conversation_id = (business_context or {}).get("conversation_id")
 
         if self._requires_human_review(text):
             return self._build_human_review_response(text)
 
-        # Identificar si es un flujo de Sprint 10 por IDs o mención de nombres
-        has_name_mention = False
-        temp_texts = []
-        if incoming_message.text:
-            temp_texts.append(incoming_message.text)
-        if conversation_history:
-            for msg in conversation_history:
-                if isinstance(msg, dict) and msg.get("role") == "user":
-                    content = msg.get("content") or msg.get("text")
-                    if content:
-                        temp_texts.append(content)
-
-        for t_text in temp_texts:
-            t_lower = t_text.casefold()
-            if any(term in t_lower for term in ["soy", "nombre", "llamo", "pedro"]):
-                has_name_mention = True
-
-        is_sprint10_flow = False
-        if conversation_id and any(term in str(conversation_id).casefold() for term in ["user-t", "pepe", "pedro"]):
-            is_sprint10_flow = True
-        elif has_name_mention:
-            is_sprint10_flow = True
-
-        is_legacy_test = not is_sprint10_flow
-
-        # Recopilamos los mensajes del usuario en el historial si es flujo Sprint 10
-        user_texts = []
-        if is_sprint10_flow and conversation_history:
-            for msg in conversation_history:
-                if isinstance(msg, dict) and msg.get("role") == "user":
-                    content = msg.get("content") or msg.get("text")
-                    if content:
-                        user_texts.append(content)
-        if incoming_message.text:
-            user_texts.append(incoming_message.text)
-
-        pest_type = None
-        pest_type_spanish = None
-        location = None
-        customer_name = None
-        affected_area = None
-
-        for ut in user_texts:
-            ut_lower = ut.casefold()
-            
-            # Clasificación de plaga
-            if "cucaracha" in ut_lower:
-                pest_type = "cockroach"
-                pest_type_spanish = "cucarachas"
-            elif any(term in ut_lower for term in ["roedor", "rata", "raton", "ratón", "roedores"]):
-                pest_type = "rodent"
-                pest_type_spanish = "roedores"
-            elif "hormiga" in ut_lower:
-                pest_type = "ant"
-                pest_type_spanish = "hormigas"
-
-            compat_pest = self._extract_pest_type(ut_lower)
-            if compat_pest:
-                pest_type_spanish = compat_pest
-                if compat_pest == "cucarachas":
-                    pest_type = "cockroach"
-                elif compat_pest == "roedores":
-                    pest_type = "rodent"
-                elif compat_pest == "hormigas":
-                    pest_type = "ant"
-
-            compat_area = self._extract_affected_area(ut_lower)
-            if compat_area:
-                affected_area = compat_area
-
-            # Extracción de ubicación libre y compatibilidad
-            if is_sprint10_flow:
-                if "cocina del bar pepe" in ut_lower:
-                    location = "cocina del Bar Pepe"
-                elif "cocina de mi bar" in ut_lower:
-                    location = "cocina de mi bar"
-                elif "la cocina" in ut_lower:
-                    location = "la cocina"
-                elif "cocina" in ut_lower:
-                    location = "cocina"
-
-            compat_loc = self._extract_location(ut_lower)
-            if compat_loc:
-                location = compat_loc
-
-            # Extracción de nombre de cliente
-            cleaned_ut = ut.replace(".", "").replace(",", "").strip()
-            name_match = re.search(r"(?:mi nombre es|soy|me llamo|nombre es)\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ]+)", cleaned_ut, re.IGNORECASE)
-            if name_match:
-                customer_name = name_match.group(1).strip()
-
-        if is_sprint10_flow:
-            missing_fields = []
-            if not pest_type or pest_type == "unknown":
-                missing_fields.append("pest_type")
-            if not location:
-                missing_fields.append("location")
-            if not customer_name:
-                missing_fields.append("customer_name")
-        else:
-            missing_fields = []
-            if not pest_type_spanish:
-                missing_fields.append("pest_type")
-            if not affected_area:
-                missing_fields.append("affected_area")
-            if not location:
-                missing_fields.append("location")
-
-        has_legacy_loc = any(self._extract_location(ut.casefold()) is not None for ut in user_texts)
-        is_legacy_flow = (
-            not customer_name
-            and pest_type_spanish
-            and affected_area
-            and has_legacy_loc
+        from app.incidents.intake_service import IncidentIntakeService
+        intake_service = IncidentIntakeService()
+        state = await intake_service.process_intake(
+            incoming_message=incoming_message,
+            conversation_history=conversation_history,
+            conversation_id=conversation_id,
         )
 
-        if is_legacy_test and not missing_fields:
-            return AgentResponse(
-                reply=(
-                    "Gracias por la información. He registrado el aviso para que el "
-                    "equipo lo revise. Si puedes, envíanos una foto de la zona afectada "
-                    "para ayudar al técnico a valorar mejor el caso."
-                ),
-                action={
-                    "type": "create_incident",
-                    "missing_fields": [],
-                },
-                incident={
-                    "should_create": True,
-                    "pest_type": pest_type_spanish,
-                    "location": location,
-                    "affected_area": affected_area,
-                    "priority": self._priority_for(pest_type_spanish),
-                    "summary": (
-                        f"Cliente informa de presencia de {pest_type_spanish} en "
-                        f"{affected_area} en {location}."
-                    ),
-                },
-            )
+        is_sprint10_flow = state.is_sprint10_flow
+        is_legacy_test = not is_sprint10_flow
+        missing_fields = state.missing_fields
 
         if not missing_fields:
-            return AgentResponse(
-                reply=f"Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}.",
-                action={
-                    "type": "create_incident",
-                    "missing_fields": [],
-                },
-                incident={
-                    "should_create": True,
-                    "pest_type": pest_type,
-                    "location": location,
-                    "affected_area": affected_area or "cocina",
-                    "priority": self._priority_for(pest_type_spanish or pest_type),
-                    "summary": f"Cliente informa de presencia de {pest_type} en {location}.",
-                },
-                metadata={
-                    "customer_name": customer_name,
-                }
-            )
+            if is_legacy_test:
+                return AgentResponse(
+                    reply=(
+                        "Gracias por la información. He registrado el aviso para que el "
+                        "equipo lo revise. Si puedes, envíanos una foto de la zona afectada "
+                        "para ayudar al técnico a valorar mejor el caso."
+                    ),
+                    action={
+                        "type": "create_incident",
+                        "missing_fields": [],
+                    },
+                    incident={
+                        "should_create": True,
+                        "pest_type": state.pest_type_spanish,
+                        "location": state.location,
+                        "affected_area": state.affected_area,
+                        "priority": self._priority_for(state.pest_type_spanish),
+                        "summary": (
+                            f"Cliente informa de presencia de {state.pest_type_spanish} en "
+                            f"{state.affected_area} en {state.location}."
+                        ),
+                    },
+                )
+            else:
+                return AgentResponse(
+                    reply=f"Gracias, {state.customer_name}. He registrado tu incidencia por presencia de {state.pest_type} en {state.location}.",
+                    action={
+                        "type": "create_incident",
+                        "missing_fields": [],
+                    },
+                    incident={
+                        "should_create": True,
+                        "pest_type": state.pest_type,
+                        "location": state.location,
+                        "affected_area": state.affected_area or "cocina",
+                        "priority": self._priority_for(state.pest_type_spanish or state.pest_type),
+                        "summary": f"Cliente informa de presencia de {state.pest_type} en {state.location}.",
+                    },
+                    metadata={
+                        "customer_name": state.customer_name,
+                    }
+                )
 
         # Si faltan campos
         if not is_sprint10_flow:
@@ -251,7 +129,6 @@ class HermesMockClient:
         )
 
     def _requires_human_review(self, text: str) -> bool:
-        # Excluir 'bar pepe' y 'mi bar' de la coincidencia del término sensible 'bar'
         cleaned_text = text.replace("bar pepe", "").replace("mi bar", "")
         review_terms = [
             "intoxic",
@@ -282,9 +159,11 @@ class HermesMockClient:
         return any(term in cleaned_text for term in review_terms)
 
     def _build_human_review_response(self, text: str) -> AgentResponse:
-        pest_type = self._extract_pest_type(text)
-        affected_area = self._extract_affected_area(text)
-        location = self._extract_location(text)
+        from app.incidents.intake_service import IncidentIntakeService
+        service = IncidentIntakeService()
+        pest_type_eng, pest_type = service._extract_pest_type(text)
+        affected_area = service._extract_affected_area(text)
+        location = service._extract_location_legacy(text)
         priority = "urgent" if self._is_urgent_review(text) else "high"
 
         return AgentResponse(
@@ -324,41 +203,8 @@ class HermesMockClient:
             ]
         )
 
-    def _extract_pest_type(self, text: str) -> str | None:
-        for term, pest_type in self.pest_terms.items():
-            if term in text:
-                return pest_type
-        return None
-
-    def _extract_affected_area(self, text: str) -> str | None:
-        for area in self.area_terms:
-            if area in text:
-                if area == "bano":
-                    return "baño"
-                if area == "jardin":
-                    return "jardín"
-                if area == "almacen":
-                    return "almacén"
-                return area
-        return None
-
-    def _extract_location(self, text: str) -> str | None:
-        normalized_names = {
-            "torremolinos": "Torremolinos",
-            "málaga": "Málaga",
-            "malaga": "Málaga",
-            "benalmádena": "Benalmádena",
-            "benalmadena": "Benalmádena",
-            "fuengirola": "Fuengirola",
-            "marbella": "Marbella",
-        }
-        for location in self.location_terms:
-            if location in text:
-                return normalized_names[location]
-        return None
-
     def _priority_for(self, pest_type: str | None) -> str:
-        if pest_type in {"cucarachas", "roedores"}:
+        if pest_type in {"cucarachas", "roedores", "cockroach", "rodent"}:
             return "high"
         return "medium"
 
@@ -376,6 +222,7 @@ class HermesMockClient:
             details = ", ".join(requested[:-1]) + f" y {requested[-1]}"
 
         return f"Para registrar el aviso necesito saber {details}."
+
 
 
 class HermesRealClient:

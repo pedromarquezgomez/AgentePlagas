@@ -102,100 +102,12 @@ class ConversationService:
         incident_id = None
 
         if response.action.type == "create_incident":
-            from app.schemas.tool_harness import ToolExecutionRecord
-            from app.policies.contracts import PolicyContext, PolicyDecision
-            from app.audit.contracts import AuditEvent, AuditEventType
-
-            tool_name = "create_incident_tool"
-            tool_request_id = str(uuid4())
-            tool_decision_id = str(uuid4())
-            execution_id = str(uuid4())
-
-            tool_payload = {
-                "conversation_id": conversation_id,
-                "channel": message.channel,
-                "pest_type": response.incident.pest_type if response.incident else None,
-                "location": response.incident.location if response.incident else None,
-                "affected_area": response.incident.affected_area if response.incident else None,
-                "priority": response.incident.priority if response.incident else "medium",
-                "summary": response.incident.summary if response.incident else None,
-                "metadata": {
-                    "customer_name": response.metadata.get("customer_name") or (getattr(response.incident, "metadata", {}) or {}).get("customer_name") if response.incident else None,
-                    **(response.metadata if response.metadata else {}),
-                }
-            }
-
-            self.audit_service.record_event(
-                AuditEvent(
-                    event_type=AuditEventType.TOOL_PROPOSED,
-                    execution_id=execution_id,
-                    tool_name=tool_name,
-                    provider="mock_provider",
-                    user_id=message.external_user_id,
-                    channel=message.channel,
-                    status="requested",
-                    message="Tool execution requested.",
-                    metadata={
-                        "action": "create_incident",
-                        "risk_level": 2,
-                        "requires_approval": False,
-                    },
-                )
-            )
-
-            policy_context = PolicyContext(
-                channel=message.channel,
-                user_id=message.external_user_id,
-                requested_tool=tool_name,
-                requested_action="create_incident",
-                source_provider="mock_provider",
-            )
-            policy_result = self.policy_engine.evaluate(policy_context)
-
-            self.audit_service.record_event(
-                AuditEvent(
-                    event_type=AuditEventType.POLICY_EVALUATED,
-                    execution_id=execution_id,
-                    tool_name=tool_name,
-                    provider="mock_provider",
-                    user_id=message.external_user_id,
-                    channel=message.channel,
-                    policy_decision=policy_result.decision.value,
-                    status=policy_result.decision.value,
-                    message="Policy Engine evaluated tool execution.",
-                    metadata={"action": "create_incident"},
-                )
-            )
-
-            record = ToolExecutionRecord(
-                id=execution_id,
-                tool_request_id=tool_request_id,
-                tool_decision_id=tool_decision_id,
-                trace_id=trace_id,
+            incident_id = await self._execute_create_incident_tool(
+                message=message,
                 conversation_id=conversation_id,
-                tool_name=tool_name,
-                provider="mock_provider",
-                action="create_incident",
-                risk_level=2,
-                requires_approval=False,
-                decision="allow" if policy_result.decision == PolicyDecision.ALLOW else "deny",
-                execution_status="allowed_not_executed" if policy_result.decision == PolicyDecision.ALLOW else "blocked",
-                review_status="approved" if policy_result.decision == PolicyDecision.ALLOW else "dismissed",
-                approved_payload=tool_payload,
-                metadata={"payload": tool_payload},
+                trace_id=trace_id,
+                response=response,
             )
-            await self.tool_execution_service.create_execution_record(record)
-
-            if policy_result.decision == PolicyDecision.ALLOW:
-                execute_fn = getattr(self.tool_execution_service, "execute_execution_record")
-                execution_record = await execute_fn(execution_id)
-                created_incident_data = execution_record.get("execution_result")
-                if created_incident_data:
-                    incident_id = created_incident_data.get("id")
-                    if response.incident is not None:
-                        response.incident.id = incident_id
-                        response.incident.conversation_id = conversation_id
-                        response.incident.status = created_incident_data.get("status")
         elif self._should_create_incident(response):
             incident = self._build_incident(message, conversation_id, response)
             created_incident = await self.incident_service.create_incident(incident)
@@ -235,6 +147,112 @@ class ConversationService:
             response.action.type,
         )
         return response
+
+    async def _execute_create_incident_tool(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+        response: AgentResponse,
+    ) -> str | None:
+        from app.schemas.tool_harness import ToolExecutionRecord
+        from app.policies.contracts import PolicyContext, PolicyDecision
+        from app.audit.contracts import AuditEvent, AuditEventType
+
+        tool_name = "create_incident_tool"
+        tool_request_id = str(uuid4())
+        tool_decision_id = str(uuid4())
+        execution_id = str(uuid4())
+
+        tool_payload = {
+            "conversation_id": conversation_id,
+            "channel": message.channel,
+            "pest_type": response.incident.pest_type if response.incident else None,
+            "location": response.incident.location if response.incident else None,
+            "affected_area": response.incident.affected_area if response.incident else None,
+            "priority": response.incident.priority if response.incident else "medium",
+            "summary": response.incident.summary if response.incident else None,
+            "metadata": {
+                "customer_name": response.metadata.get("customer_name")
+                or (getattr(response.incident, "metadata", {}) or {}).get("customer_name")
+                if response.incident else None,
+                **(response.metadata if response.metadata else {}),
+            }
+        }
+
+        self.audit_service.record_event(
+            AuditEvent(
+                event_type=AuditEventType.TOOL_PROPOSED,
+                execution_id=execution_id,
+                tool_name=tool_name,
+                provider="mock_provider",
+                user_id=message.external_user_id,
+                channel=message.channel,
+                status="requested",
+                message="Tool execution requested.",
+                metadata={
+                    "action": "create_incident",
+                    "risk_level": 2,
+                    "requires_approval": False,
+                },
+            )
+        )
+
+        policy_context = PolicyContext(
+            channel=message.channel,
+            user_id=message.external_user_id,
+            requested_tool=tool_name,
+            requested_action="create_incident",
+            source_provider="mock_provider",
+        )
+        policy_result = self.policy_engine.evaluate(policy_context)
+
+        self.audit_service.record_event(
+            AuditEvent(
+                event_type=AuditEventType.POLICY_EVALUATED,
+                execution_id=execution_id,
+                tool_name=tool_name,
+                provider="mock_provider",
+                user_id=message.external_user_id,
+                channel=message.channel,
+                policy_decision=policy_result.decision.value,
+                status=policy_result.decision.value,
+                message="Policy Engine evaluated tool execution.",
+                metadata={"action": "create_incident"},
+            )
+        )
+
+        record = ToolExecutionRecord(
+            id=execution_id,
+            tool_request_id=tool_request_id,
+            tool_decision_id=tool_decision_id,
+            trace_id=trace_id,
+            conversation_id=conversation_id,
+            tool_name=tool_name,
+            provider="mock_provider",
+            action="create_incident",
+            risk_level=2,
+            requires_approval=False,
+            decision="allow" if policy_result.decision == PolicyDecision.ALLOW else "deny",
+            execution_status="allowed_not_executed" if policy_result.decision == PolicyDecision.ALLOW else "blocked",
+            review_status="approved" if policy_result.decision == PolicyDecision.ALLOW else "dismissed",
+            approved_payload=tool_payload,
+            metadata={"payload": tool_payload},
+        )
+        await self.tool_execution_service.create_execution_record(record)
+
+        incident_id = None
+        if policy_result.decision == PolicyDecision.ALLOW:
+            execute_fn = getattr(self.tool_execution_service, "execute_execution_record")
+            execution_record = await execute_fn(execution_id)
+            created_incident_data = execution_record.get("execution_result")
+            if created_incident_data:
+                incident_id = created_incident_data.get("id")
+                if response.incident is not None:
+                    response.incident.id = incident_id
+                    response.incident.conversation_id = conversation_id
+                    response.incident.status = created_incident_data.get("status")
+        return incident_id
 
     def build_conversation_id(self, message: IncomingMessage) -> str:
         return f"{message.channel}:{message.external_user_id}"
