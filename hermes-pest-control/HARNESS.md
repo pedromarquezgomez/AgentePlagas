@@ -1032,6 +1032,52 @@ The public `ToolExecutionRecord` API remains compatible with the existing panel,
 while the internal request/result/error contracts prepare the harness for Gmail,
 Calendar, CRM, WhatsApp, agenda, presupuesto, and future audit records.
 
+### Harness Audit Log
+
+Status: implemented as an in-memory harness layer.
+
+Audit modules live under:
+
+```text
+backend/app/audit/
+backend/app/audit/contracts.py
+backend/app/audit/in_memory_repository.py
+backend/app/audit/service.py
+```
+
+The audit log records important Agent Harness events:
+
+```text
+Provider -> Skill -> Tool -> PolicyEngine -> ToolExecutionService -> Resultado
+```
+
+Initial event types:
+
+- `PROVIDER_SELECTED`;
+- `TOOL_PROPOSED`;
+- `POLICY_EVALUATED`;
+- `TOOL_EXECUTION_STARTED`;
+- `TOOL_EXECUTION_COMPLETED`;
+- `TOOL_EXECUTION_FAILED`;
+- `HUMAN_REVIEW_REQUIRED`.
+
+Current storage is in memory only. It prepares structured traceability before a
+future persistent audit repository. It does not write to Firestore yet.
+
+Responsibility split:
+
+```text
+Provider = razona
+Skill = define capacidad
+PolicyEngine = autoriza
+ToolExecutionService = ejecuta
+AuditService = registra
+```
+
+`AuditService` is best-effort. If audit recording fails, it returns safely and
+does not block the main execution path. The audit layer never decides policies
+and never executes tools.
+
 ### Policy Engine
 
 Status: implemented.

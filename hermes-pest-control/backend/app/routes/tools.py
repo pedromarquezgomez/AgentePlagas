@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.audit.contracts import AuditEvent, AuditEventType
+from app.audit.service import default_audit_service
 from app.dependencies.admin_auth import require_admin_auth
 from app.policies.contracts import PolicyContext, PolicyDecision
 from app.policies.engine import PolicyEngine
@@ -25,6 +27,7 @@ router = APIRouter(
 tool_execution_service = ToolExecutionService()
 gmail_tool_executor = None
 policy_engine = PolicyEngine()
+audit_service = default_audit_service()
 
 
 @router.get("/executions")
@@ -80,13 +83,16 @@ async def update_tool_execution(
 async def execute_tool_execution(execution_id: str) -> dict:
     try:
         current_record = await tool_execution_service.get_execution_record(execution_id)
+        _record_tool_execution_requested(current_record)
         policy_result = policy_engine.evaluate(_policy_context_from_record(current_record))
+        _record_policy_evaluated(current_record, policy_result.decision.value)
         if policy_result.decision == PolicyDecision.DENY:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Tool execution blocked by policy: tool is not allowed.",
             )
         if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW:
+            _record_human_review_required(current_record)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Tool execution requires human review before execution.",
@@ -144,3 +150,73 @@ def _policy_context_from_record(record: dict) -> PolicyContext:
             "requires_approval": record.get("requires_approval"),
         },
     )
+
+
+def _record_tool_execution_requested(record: dict) -> None:
+    context = _audit_context_from_record(record)
+    audit_service.record_event(
+        AuditEvent(
+            event_type=AuditEventType.TOOL_PROPOSED,
+            execution_id=context["execution_id"],
+            tool_name=context["tool_name"],
+            provider=context["provider"],
+            user_id=context["user_id"],
+            channel=context["channel"],
+            status="requested",
+            message="Tool execution requested.",
+            metadata={
+                "action": record.get("action"),
+                "risk_level": record.get("risk_level"),
+                "requires_approval": record.get("requires_approval"),
+            },
+        )
+    )
+
+
+def _record_policy_evaluated(record: dict, policy_decision: str) -> None:
+    context = _audit_context_from_record(record)
+    audit_service.record_event(
+        AuditEvent(
+            event_type=AuditEventType.POLICY_EVALUATED,
+            execution_id=context["execution_id"],
+            tool_name=context["tool_name"],
+            provider=context["provider"],
+            user_id=context["user_id"],
+            channel=context["channel"],
+            policy_decision=policy_decision,
+            status=policy_decision,
+            message="Policy Engine evaluated tool execution.",
+            metadata={"action": record.get("action")},
+        )
+    )
+
+
+def _record_human_review_required(record: dict) -> None:
+    context = _audit_context_from_record(record)
+    audit_service.record_event(
+        AuditEvent(
+            event_type=AuditEventType.HUMAN_REVIEW_REQUIRED,
+            execution_id=context["execution_id"],
+            tool_name=context["tool_name"],
+            provider=context["provider"],
+            user_id=context["user_id"],
+            channel=context["channel"],
+            policy_decision=PolicyDecision.REQUIRE_HUMAN_REVIEW.value,
+            status="requires_human_review",
+            message="Policy requires human review before tool execution.",
+            metadata={"action": record.get("action")},
+        )
+    )
+
+
+def _audit_context_from_record(record: dict) -> dict:
+    conversation_id = str(record.get("conversation_id") or "")
+    channel = conversation_id.split(":", 1)[0] if ":" in conversation_id else None
+    user_id = conversation_id.split(":", 1)[1] if ":" in conversation_id else None
+    return {
+        "execution_id": record.get("id"),
+        "tool_name": record.get("tool_name"),
+        "provider": record.get("provider"),
+        "channel": channel,
+        "user_id": user_id,
+    }

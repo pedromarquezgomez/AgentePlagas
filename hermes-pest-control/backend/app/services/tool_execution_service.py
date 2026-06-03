@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from app.audit.contracts import AuditEvent, AuditEventType
+from app.audit.service import AuditService, default_audit_service
 from app.schemas.tool_harness import ToolExecutionRecord, ToolExecutionRecordUpdate
 from app.services.firestore_factory import get_firestore_service
 from app.services.gmail_tool_executor import (
@@ -35,8 +37,13 @@ class ToolExecutionUnsupportedError(RuntimeError):
 class ToolExecutionService:
     collection_name = "tool_execution_records"
 
-    def __init__(self, firestore_service=None) -> None:
+    def __init__(
+        self,
+        firestore_service=None,
+        audit_service: AuditService | None = None,
+    ) -> None:
         self.firestore_service = firestore_service or get_firestore_service()
+        self.audit_service = audit_service or default_audit_service()
 
     async def create_execution_record(
         self,
@@ -145,42 +152,70 @@ class ToolExecutionService:
 
         execution_request = self._execution_request_from_record(current_record)
         if current_record.get("review_status") != "approved":
-            self._execution_error(
+            execution_error = self._execution_error(
                 execution_request,
                 error_code="not_approved",
                 error_message="Tool execution requires review_status=approved.",
             )
+            self._record_execution_failed(current_record, execution_error)
             raise ToolExecutionNotApprovedError(
                 "Tool execution requires review_status=approved."
             )
         if current_record.get("executed") is True:
-            self._execution_error(
+            execution_error = self._execution_error(
                 execution_request,
                 error_code="already_executed",
                 error_message="Tool execution record has already been executed.",
             )
+            self._record_execution_failed(current_record, execution_error)
             raise ToolExecutionAlreadyExecutedError(
                 "Tool execution record has already been executed."
             )
         if not self._is_gmail_create_draft(current_record):
-            self._execution_error(
+            execution_error = self._execution_error(
                 execution_request,
                 error_code="unsupported_tool",
                 error_message="Only gmail.create_draft can be executed in this sprint.",
             )
+            self._record_execution_failed(current_record, execution_error)
             raise ToolExecutionUnsupportedError(
                 "Only gmail.create_draft can be executed in this sprint."
             )
 
         executor = gmail_executor or GmailToolExecutor()
+        self._record_execution_started(current_record)
 
         try:
             executor_result = await executor.create_draft(execution_request.payload)
-        except GmailToolDisabledError:
+        except GmailToolDisabledError as exc:
+            self._record_execution_failed(
+                current_record,
+                self._execution_error(
+                    execution_request,
+                    error_code="gmail_tool_disabled",
+                    error_message=str(exc),
+                ),
+            )
             raise
-        except GmailToolPayloadError:
+        except GmailToolPayloadError as exc:
+            self._record_execution_failed(
+                current_record,
+                self._execution_error(
+                    execution_request,
+                    error_code="gmail_payload_invalid",
+                    error_message=str(exc),
+                ),
+            )
             raise
-        except GmailToolExecutionError:
+        except GmailToolExecutionError as exc:
+            self._record_execution_failed(
+                current_record,
+                self._execution_error(
+                    execution_request,
+                    error_code="gmail_execution_failed",
+                    error_message=str(exc),
+                ),
+            )
             raise
 
         execution_result = ToolExecutionResult(
@@ -203,6 +238,7 @@ class ToolExecutionService:
                 "executed_at": execution_result.executed_at,
             },
         )
+        self._record_execution_completed(current_record, execution_result)
 
         updated_record = await self.firestore_service.get_document(
             self.collection_name,
@@ -267,4 +303,64 @@ class ToolExecutionService:
             tool_name=execution_request.tool_name,
             error_code=error_code,
             error_message=error_message,
+        )
+
+    def _record_execution_started(self, record: dict) -> None:
+        self._record_audit_event(
+            record,
+            event_type=AuditEventType.TOOL_EXECUTION_STARTED,
+            status="started",
+            message="Tool execution started.",
+        )
+
+    def _record_execution_completed(
+        self,
+        record: dict,
+        execution_result: ToolExecutionResult,
+    ) -> None:
+        self._record_audit_event(
+            record,
+            event_type=AuditEventType.TOOL_EXECUTION_COMPLETED,
+            status=execution_result.status.value,
+            message=execution_result.message,
+            metadata={"result_keys": sorted(execution_result.result.keys())},
+        )
+
+    def _record_execution_failed(
+        self,
+        record: dict,
+        execution_error: ToolExecutionError,
+    ) -> None:
+        self._record_audit_event(
+            record,
+            event_type=AuditEventType.TOOL_EXECUTION_FAILED,
+            status=ToolExecutionStatus.FAILED.value,
+            message=execution_error.error_message,
+            metadata={"error_code": execution_error.error_code},
+        )
+
+    def _record_audit_event(
+        self,
+        record: dict,
+        *,
+        event_type: AuditEventType,
+        status: str,
+        message: str,
+        metadata: dict | None = None,
+    ) -> None:
+        conversation_id = str(record.get("conversation_id") or "")
+        channel = conversation_id.split(":", 1)[0] if ":" in conversation_id else None
+        user_id = conversation_id.split(":", 1)[1] if ":" in conversation_id else None
+        self.audit_service.record_event(
+            AuditEvent(
+                event_type=event_type,
+                execution_id=record.get("id"),
+                tool_name=record.get("tool_name"),
+                provider=record.get("provider"),
+                user_id=user_id,
+                channel=channel,
+                status=status,
+                message=message,
+                metadata=metadata or {},
+            )
         )

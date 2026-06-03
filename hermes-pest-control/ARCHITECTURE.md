@@ -232,6 +232,36 @@ Public API records remain backward compatible, but the service layer now has a
 single internal contract for execution lifecycle, audit preparation, and future
 tool integrations.
 
+#### Harness Audit Log
+
+Location: `backend/app/audit/`
+
+The Harness Audit Log records the important control-plane events around tool
+execution:
+
+```text
+Provider -> Skill -> Tool -> PolicyEngine -> ToolExecutionService -> Resultado
+```
+
+Current audit storage is in-memory only. It is designed for structured
+traceability and tests, not yet for analytics or long-term persistence. Audit
+events record tool proposal, policy evaluation, human review routing, execution
+start, execution completion, and execution failure.
+
+Responsibilities remain separate:
+
+```text
+Provider = razona
+Skill = define capacidad
+PolicyEngine = autoriza
+ToolExecutionService = ejecuta
+AuditService = registra
+```
+
+`AuditService` is best-effort. If audit storage fails, the operational path must
+continue so that audit outages do not block approved tool execution or safety
+fallbacks.
+
 The boundary is:
 
 ```text
