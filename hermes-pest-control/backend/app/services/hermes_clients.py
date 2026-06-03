@@ -158,9 +158,12 @@ class HermesMockClient:
         return any(term in cleaned_text for term in review_terms)
 
     def _build_human_review_response(self, text: str) -> AgentResponse:
+        from app.pests.classifier import PestClassifier
         from app.incidents.intake_service import IncidentIntakeService
-        service = IncidentIntakeService()
-        pest_type_eng, pest_type = service._extract_pest_type(text)
+        classifier = PestClassifier()
+        service = IncidentIntakeService(classifier=classifier)
+        classified = classifier.classify(text)
+        pest_type = classified.pest_type_spanish
         affected_area = service._extract_affected_area(text)
         location = service._extract_location_legacy(text)
         priority = "urgent" if self._is_urgent_review(text) else "high"

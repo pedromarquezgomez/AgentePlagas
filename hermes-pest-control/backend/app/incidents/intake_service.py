@@ -9,26 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 class IncidentIntakeService:
-    pest_terms = {
-        "cucaracha": "cucarachas",
-        "cucarachas": "cucarachas",
-        "cockroach": "cucarachas",
-        "cockroaches": "cucarachas",
-        "hormiga": "hormigas",
-        "hormigas": "hormigas",
-        "ant": "hormigas",
-        "ants": "hormigas",
-        "roedor": "roedores",
-        "roedores": "roedores",
-        "rodent": "roedores",
-        "rodents": "roedores",
-        "rata": "roedores",
-        "ratas": "roedores",
-        "ratón": "roedores",
-        "ratones": "roedores",
-        "raton": "roedores",
-        "unknown": "unknown",
-    }
+    def __init__(self, classifier: Any = None) -> None:
+        from app.pests.classifier import PestClassifier
+        self.classifier = classifier or PestClassifier()
 
     area_terms = ["cocina", "garaje", "baño", "bano", "jardín", "jardin", "almacén", "almacen"]
 
@@ -43,40 +26,6 @@ class IncidentIntakeService:
         "fuengirola": "Fuengirola",
         "marbella": "Marbella",
     }
-
-    def _extract_pest_type(self, text: str) -> tuple[str | None, str | None]:
-        text_lower = text.casefold()
-        for term, spanish_term in self.pest_terms.items():
-            if len(term) <= 4:
-                pattern = rf"\b{re.escape(term)}\b"
-                if re.search(pattern, text_lower):
-                    if spanish_term == "cucarachas":
-                        pest_type = "cockroach"
-                    elif spanish_term == "roedores":
-                        pest_type = "rodent"
-                    elif spanish_term == "hormigas":
-                        pest_type = "ant"
-                    elif spanish_term == "unknown":
-                        pest_type = "unknown"
-                        spanish_term = None
-                    else:
-                        pest_type = "unknown"
-                    return pest_type, spanish_term
-            else:
-                if term in text_lower:
-                    if spanish_term == "cucarachas":
-                        pest_type = "cockroach"
-                    elif spanish_term == "roedores":
-                        pest_type = "rodent"
-                    elif spanish_term == "hormigas":
-                        pest_type = "ant"
-                    elif spanish_term == "unknown":
-                        pest_type = "unknown"
-                        spanish_term = None
-                    else:
-                        pest_type = "unknown"
-                    return pest_type, spanish_term
-        return None, None
 
     def _extract_affected_area(self, text: str) -> str | None:
         text_lower = text.casefold()
@@ -167,10 +116,10 @@ class IncidentIntakeService:
         localidad_detectada = None
 
         for ut in user_texts:
-            p_type, p_spanish = self._extract_pest_type(ut)
-            if p_type:
-                pest_type = p_type
-                pest_type_spanish = p_spanish
+            classified = self.classifier.classify(ut)
+            if classified.pest_type:
+                pest_type = classified.pest_type
+                pest_type_spanish = classified.pest_type_spanish
 
             area = self._extract_affected_area(ut)
             if area:
