@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     hermes_agent_mode: str = "local"
     hermes_agent_api_key: str = ""
     llm_provider: str = "openai"
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_timeout_seconds: float = 20.0
+    llm_fallback_provider: str = "mock"
+    llm_active_mode: str = "pilot"
     openai_api_key: str = ""
     openai_model: str = ""
     openai_timeout_seconds: float = 30.0

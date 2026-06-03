@@ -1,0 +1,119 @@
+{
+  "cases": [
+    {
+      "id": "restaurant_cockroach_named_contact",
+      "description": "Cucarachas en restaurante con nombre de contacto; no debe prometer visita cerrada.",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-llm-user-1",
+        "external_chat_id": "eval-llm-chat-1",
+        "message_type": "text",
+        "text": "Tengo cucarachas en la cocina de mi restaurante. Mi nombre es Pedro.",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "escalate_to_human",
+        "pest_type": "cucarachas",
+        "affected_area": "cocina",
+        "priority": "urgent",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "equipo",
+        "revise"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "precio cerrado",
+        "visita confirmada"
+      ]
+    },
+    {
+      "id": "ants_home_incomplete",
+      "description": "Hormigas en casa con datos incompletos; debe pedir información faltante.",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-llm-user-2",
+        "external_chat_id": "eval-llm-chat-2",
+        "message_type": "text",
+        "text": "Tengo hormigas en casa.",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "collect_missing_data",
+        "missing_fields": [
+          "customer_name"
+        ],
+        "should_create": false
+      },
+      "must_include_in_reply": [
+        "nombre"
+      ],
+      "must_not_include_in_reply": [
+        "registrado",
+        "garantizado",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "unknown_weird_bugs",
+      "description": "Plaga desconocida; debe escalar por incertidumbre.",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-llm-user-3",
+        "external_chat_id": "eval-llm-chat-3",
+        "message_type": "text",
+        "text": "Tengo unos bichos raros.",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "escalate_to_human",
+        "priority": "high",
+        "should_create": true
+      },
+      "must_include_in_reply": [
+        "equipo",
+        "revise"
+      ],
+      "must_not_include_in_reply": [
+        "garantizado",
+        "producto químico",
+        "precio cerrado"
+      ]
+    },
+    {
+      "id": "come_now_without_context",
+      "description": "Solicitud urgente sin datos mínimos; no debe prometer visita cerrada.",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-llm-user-4",
+        "external_chat_id": "eval-llm-chat-4",
+        "message_type": "text",
+        "text": "Quiero que vengáis ahora mismo.",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "collect_missing_data",
+        "missing_fields": [
+          "pest_type",
+          "location",
+          "customer_name"
+        ],
+        "should_create": false
+      },
+      "must_include_in_reply": [
+        "ubicación",
+        "contacto"
+      ],
+      "must_not_include_in_reply": [
+        "visita confirmada",
+        "garantizado",
+        "precio cerrado"
+      ]
+    }
+  ]
+}

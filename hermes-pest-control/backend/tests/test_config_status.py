@@ -36,6 +36,10 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     monkeypatch.setattr(config_status_route.settings, "hermes_agent_api_key", "secret-agent-key")
     monkeypatch.setattr(config_status_route.settings, "hermes_skills_dir", "../hermes/skills")
     monkeypatch.setattr(config_status_route.settings, "llm_provider", "openai")
+    monkeypatch.setattr(config_status_route.settings, "llm_api_key", "")
+    monkeypatch.setattr(config_status_route.settings, "llm_model", "")
+    monkeypatch.setattr(config_status_route.settings, "llm_fallback_provider", "mock")
+    monkeypatch.setattr(config_status_route.settings, "llm_active_mode", "pilot")
     monkeypatch.setattr(config_status_route.settings, "openai_api_key", "secret-openai-key")
     monkeypatch.setattr(config_status_route.settings, "openai_model", "secret-model")
     monkeypatch.setattr(config_status_route.settings, "agent_max_output_tokens", 1200)
@@ -80,6 +84,10 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "hermes_agent_api_key_configured": True,
         "hermes_skills_dir_configured": True,
         "llm_provider": "openai",
+        "llm_active_mode": "pilot",
+        "llm_api_key_configured": True,
+        "llm_model_configured": True,
+        "llm_fallback_provider": "mock",
         "openai_api_key_configured": True,
         "openai_model_configured": True,
         "agent_max_output_tokens_configured": True,
@@ -113,6 +121,8 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
     assert "secret-agent-key" not in response.text
     assert "openai_api_key" not in body
     assert "openai_model" not in body
+    assert "llm_api_key" not in body
+    assert "llm_model" not in body
     assert "secret-openai-key" not in response.text
     assert "secret-model" not in response.text
     assert "admin_api_key" not in body

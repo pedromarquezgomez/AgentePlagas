@@ -972,6 +972,46 @@ the primary inference adapter; Nous/Hermes Agent remains an experimental
 provider until comparative evals, shadow stability, pilot approval, and rollback
 criteria justify a broader role.
 
+### LLM Active Mode
+
+Status: controlled path implemented.
+
+`AGENT_PROVIDER=llm` makes the standard LLM provider the primary response
+generator. This does not grant execution authority to the model. The provider
+receives:
+
+- `ConversationContext`;
+- available product skills;
+- available backend tool metadata;
+- `PolicyEngine` constraints;
+- the mandatory `AgentResponse` contract.
+
+The LLM may generate the customer reply and propose actions such as
+`create_incident`, but it cannot execute tools, write Firestore, send channel
+messages, create Gmail drafts, create Calendar events, or close incidents.
+Real effects still require:
+
+```text
+Provider proposal
+  -> PolicyEngine
+  -> ToolExecutionService
+  -> Domain Service
+  -> AuditService
+```
+
+Fallback is mandatory. If the LLM times out, returns invalid JSON, violates the
+response contract, or the API call fails, `LLMRuntimeProvider` delegates to
+`MockAgentRuntimeProvider` and marks the response metadata:
+
+```text
+fallback_used=true
+fallback_reason=LLMProviderError:...
+fallback_provider=mock
+```
+
+This keeps Telegram and WhatsApp operational while allowing controlled LLM
+activation and rollback.
+
 ### Product Skill Registry
 
 Status: implemented.

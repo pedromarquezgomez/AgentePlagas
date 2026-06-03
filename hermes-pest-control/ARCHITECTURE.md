@@ -136,6 +136,28 @@ Current modes:
 - `AGENT_PROVIDER=nous_hermes`: experimental HTTP runtime provider for
   Hermes/Nous-compatible wrappers.
 
+When `AGENT_PROVIDER=llm` is enabled, the LLM becomes the primary response
+generator, but it still runs inside the harness. It receives
+`ConversationContext`, product skills, backend tool metadata, and
+`PolicyEngine` constraints. It may propose an `AgentResponse` and actions such
+as `create_incident`, but it cannot write to Firestore, execute tools, send
+messages, send email, or create calendar events. Any real action still flows
+through:
+
+```text
+AgentResponse
+  -> ConversationService
+  -> PolicyEngine
+  -> ToolExecutionService
+  -> Domain Service
+  -> Firestore
+```
+
+If the LLM request times out, the provider API fails, or the response cannot be
+validated as `AgentResponse`, `LLMRuntimeProvider` falls back to
+`MockAgentRuntimeProvider` and annotates the response metadata with
+`fallback_used`, `fallback_reason`, and `fallback_provider=mock`.
+
 Temporary compatibility remains:
 
 - `HERMES_MODE=mock`: maps to the mock provider when `AGENT_PROVIDER` is unset.

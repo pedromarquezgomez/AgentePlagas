@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.config.settings import Settings
 from app.context.contracts import ConversationContext
+from app.harness.providers.mock_provider import MockAgentRuntimeProvider
 from app.schemas.agent_response import AgentResponse
 
 logger = logging.getLogger(__name__)
@@ -24,27 +25,34 @@ class LLMRuntimeProvider:
     ) -> None:
         self.settings = settings or Settings()
         self.transport = transport
+        self.fallback_provider = MockAgentRuntimeProvider()
 
     async def process(self, context: ConversationContext) -> AgentResponse:
         if self.settings.llm_provider.casefold() != "openai":
-            return self._safe_fallback_response(
+            return await self._fallback_to_mock(
+                context,
                 f"LLMProviderError:unsupported_provider:{self.settings.llm_provider}"
             )
-        if not self.settings.openai_api_key:
-            return self._safe_fallback_response("LLMProviderError:not_configured")
-        if not self.settings.openai_model:
-            return self._safe_fallback_response("LLMProviderError:model_not_configured")
+        api_key = self._api_key()
+        model = self._model()
+        if not api_key:
+            return await self._fallback_to_mock(context, "LLMProviderError:not_configured")
+        if not model:
+            return await self._fallback_to_mock(
+                context,
+                "LLMProviderError:model_not_configured",
+            )
 
         payload = self._build_payload(context)
         headers = {
-            "Authorization": f"Bearer {self.settings.openai_api_key.strip()}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
         trace_id = context.metadata.get("trace_id")
 
         try:
             async with httpx.AsyncClient(
-                timeout=self.settings.openai_timeout_seconds,
+                timeout=self._timeout_seconds(),
                 transport=self.transport,
             ) as client:
                 response = await client.post(
@@ -59,7 +67,7 @@ class LLMRuntimeProvider:
                 trace_id,
                 exc.__class__.__name__,
             )
-            return self._safe_fallback_response("LLMProviderError:timeout")
+            return await self._fallback_to_mock(context, "LLMProviderError:timeout")
         except httpx.HTTPError as exc:
             logger.warning(
                 "llm_runtime_request_failed trace_id=%s error_type=request_failed "
@@ -67,7 +75,10 @@ class LLMRuntimeProvider:
                 trace_id,
                 exc.__class__.__name__,
             )
-            return self._safe_fallback_response("LLMProviderError:request_failed")
+            return await self._fallback_to_mock(
+                context,
+                "LLMProviderError:request_failed",
+            )
 
         if response.status_code >= 400:
             logger.warning(
@@ -77,7 +88,8 @@ class LLMRuntimeProvider:
                 response.status_code,
                 response.status_code,
             )
-            return self._safe_fallback_response(
+            return await self._fallback_to_mock(
+                context,
                 f"LLMProviderError:http_{response.status_code}"
             )
 
@@ -90,7 +102,10 @@ class LLMRuntimeProvider:
                 trace_id,
                 exc.__class__.__name__,
             )
-            return self._safe_fallback_response("LLMProviderError:invalid_response")
+            return await self._fallback_to_mock(
+                context,
+                "LLMProviderError:invalid_response",
+            )
 
     def _build_payload(self, context: ConversationContext) -> dict[str, Any]:
         business_context = {
@@ -120,11 +135,31 @@ class LLMRuntimeProvider:
         prompt = "\n\n".join(
             [
                 "Return only strict JSON compatible with AgentResponse.",
-                "Do not call tools, databases, Telegram, WhatsApp, Gmail, or Calendar.",
-                "Do not create incidents directly. Only propose a structured response.",
-                "Tools are executable only by backend services after policy checks.",
+                "You are Hermes Pest, a professional intake assistant for pest "
+                "control incidents.",
+                "You may reply to the client and propose actions, but you must never "
+                "execute tools, write databases, send Telegram/WhatsApp, send email, "
+                "or create calendar events.",
+                "The backend is the only component allowed to execute tools after "
+                "policy and controlled execution checks.",
+                "Do not promise fixed visit times, guaranteed elimination, closed "
+                "prices, or definitive diagnoses.",
+                "Minimum data for creating an incident: pest type, affected area, "
+                "location, and contact name when available. If essential data is "
+                "missing, use collect_missing_data.",
+                "For unknown pests or low confidence, use collect_missing_data or "
+                "escalate_to_human and set metadata.requires_human_review when possible.",
+                "If the user asks about dangerous chemicals, product mixing, exposure "
+                "to pets/children/vulnerable people, or urgent health risk, escalate "
+                "to human review and do not provide dangerous instructions.",
                 "# Product Skills",
                 skill_sections or "No product skills were provided.",
+                "# Policy Constraints",
+                json.dumps(
+                    context.policy_constraints,
+                    ensure_ascii=False,
+                    indent=2,
+                ),
                 "# Backend Tools",
                 json.dumps(
                     safe_runtime_payload["available_tools"],
@@ -135,13 +170,14 @@ class LLMRuntimeProvider:
             ]
         )
         return {
-            "model": self.settings.openai_model,
+            "model": self._model(),
             "input": [
                 {
                     "role": "system",
                     "content": (
                         "You are the controlled LLM runtime behind Hermes Pest "
-                        "Harness. Return only JSON. External effects are forbidden."
+                        "Harness. Return only JSON. External effects are forbidden. "
+                        "All actions are proposals; backend services decide and execute."
                     ),
                 },
                 {"role": "user", "content": prompt},
@@ -183,29 +219,43 @@ class LLMRuntimeProvider:
 
         raise ValueError("LLM response did not include output text.")
 
-    def _safe_fallback_response(self, fallback_reason: str) -> AgentResponse:
-        return AgentResponse(
-            reply=(
-                "Ahora mismo no he podido procesar correctamente tu solicitud. "
-                "He dejado constancia para que el equipo lo revise."
-            ),
-            action={
-                "type": "escalate_to_human",
-                "missing_fields": [],
-            },
-            incident={
-                "should_create": True,
-                "pest_type": None,
-                "location": None,
-                "affected_area": None,
-                "priority": "medium",
-                "summary": "Error procesando respuesta del agente. Requiere revisión humana.",
-            },
-            metadata={
+    async def _fallback_to_mock(
+        self,
+        context: ConversationContext,
+        fallback_reason: str,
+    ) -> AgentResponse:
+        if self.settings.llm_fallback_provider.casefold() != "mock":
+            logger.warning(
+                "llm_runtime_fallback_provider_unsupported trace_id=%s "
+                "fallback_provider=%s",
+                context.metadata.get("trace_id"),
+                self.settings.llm_fallback_provider,
+            )
+        response = await self.fallback_provider.process(context)
+        response.metadata.update(
+            {
                 "fallback_used": True,
                 "fallback_reason": fallback_reason,
-            },
+                "fallback_provider": "mock",
+                "llm_provider_failed": True,
+                "effective_agent_provider": "mock",
+            }
         )
+        logger.info(
+            "llm_runtime_fallback_to_mock trace_id=%s reason=%s",
+            context.metadata.get("trace_id"),
+            fallback_reason,
+        )
+        return response
+
+    def _api_key(self) -> str:
+        return (self.settings.llm_api_key or self.settings.openai_api_key).strip()
+
+    def _model(self) -> str:
+        return (self.settings.llm_model or self.settings.openai_model).strip()
+
+    def _timeout_seconds(self) -> float:
+        return self.settings.llm_timeout_seconds or self.settings.openai_timeout_seconds
 
     def _agent_response_json_schema(self) -> dict[str, Any]:
         return {

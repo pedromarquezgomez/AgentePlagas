@@ -149,7 +149,7 @@ async def test_llm_runtime_provider_returns_valid_agent_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_runtime_provider_uses_safe_fallback_on_invalid_response() -> None:
+async def test_llm_runtime_provider_falls_back_to_mock_on_invalid_response() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"output_text": "not-json"})
 
@@ -173,6 +173,7 @@ async def test_llm_runtime_provider_uses_safe_fallback_on_invalid_response() -> 
 
     response = await provider.process(context)
 
-    assert response.action.type == "escalate_to_human"
+    assert response.action.type == "collect_missing_data"
     assert response.metadata["fallback_used"] is True
     assert response.metadata["fallback_reason"] == "LLMProviderError:invalid_response"
+    assert response.metadata["fallback_provider"] == "mock"
