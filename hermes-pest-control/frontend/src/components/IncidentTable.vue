@@ -79,7 +79,14 @@ function slaMetric(incident: Incident): string {
               SLA
             </button>
           </th>
-          <th>Cola</th>
+          <th>Dispatch Bucket</th>
+          <th>
+            <button class="tableSortButton" type="button" @click="emit('sort', 'queue_position')">
+              Pos. Cola
+            </button>
+          </th>
+          <th>Score</th>
+          <th>Motivo Cola</th>
           <th>
             <button class="tableSortButton" type="button" @click="emit('sort', 'sla_status')">
               SLA Status
@@ -125,6 +132,18 @@ function slaMetric(incident: Incident): string {
           <td>{{ formatHours(incident.sla_hours) }}</td>
           <td>
             <span class="badge status">{{ formatDispatchBucket(incident.dispatch_bucket) }}</span>
+          </td>
+          <td>
+            <span v-if="incident.queue_position !== null && incident.queue_position !== undefined" class="badge priority-urgent">
+              #{{ incident.queue_position }}
+            </span>
+            <span v-else>—</span>
+          </td>
+          <td>
+            {{ incident.queue_score !== null && incident.queue_score !== undefined ? incident.queue_score.toFixed(2) : '—' }}
+          </td>
+          <td>
+            {{ incident.queue_reason || '—' }}
           </td>
           <td>
             <span class="badge" :class="badgeClass('sla', incident.sla_status)">

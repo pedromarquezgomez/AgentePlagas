@@ -76,6 +76,9 @@ export interface Incident {
   breach_hours?: number | null
   created_at?: string
   updated_at?: string
+  queue_position?: number | null
+  queue_score?: number | null
+  queue_reason?: string | null
 }
 
 export interface IncidentFilters {

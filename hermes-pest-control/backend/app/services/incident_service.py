@@ -75,9 +75,10 @@ class IncidentService:
             "incidents",
             filters=filters or None,
         )
+        queue_map = await self._get_global_queue_map()
         read_models = []
         for record in records:
-            read_model = self._to_read_model(record)
+            read_model = self._to_read_model(record, queue_map)
             await self._record_sla_breach_once(record, read_model)
             read_models.append(read_model.model_dump(mode="json"))
         read_models = self._filter_operational_incidents(
@@ -94,7 +95,8 @@ class IncidentService:
         incident = await self.firestore_service.get_document("incidents", incident_id)
         if incident is None:
             raise IncidentNotFoundError(f"Incident not found: {incident_id}")
-        read_model = self._to_read_model(incident)
+        queue_map = await self._get_global_queue_map()
+        read_model = self._to_read_model(incident, queue_map)
         await self._record_sla_breach_once(incident, read_model)
         return read_model.model_dump(mode="json")
 
@@ -122,11 +124,16 @@ class IncidentService:
         )
         if updated_incident is None:
             raise IncidentNotFoundError(f"Incident not found after update: {incident_id}")
-        read_model = self._to_read_model(updated_incident)
+        queue_map = await self._get_global_queue_map()
+        read_model = self._to_read_model(updated_incident, queue_map)
         await self._record_sla_breach_once(updated_incident, read_model)
         return read_model.model_dump(mode="json")
 
-    def _to_read_model(self, record: dict) -> IncidentRead:
+    def _to_read_model(
+        self,
+        record: dict,
+        queue_map: dict[str, tuple[int, float, str]] | None = None,
+    ) -> IncidentRead:
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
         classification = (
             metadata.get("classification")
@@ -145,8 +152,14 @@ class IncidentService:
             or metadata.get("operational_priority")
             or self._normalized_operational_priority(metadata.get("priority"))
         )
+
+        incident_id = record.get("id")
+        queue_position, queue_score, queue_reason = None, None, None
+        if queue_map and incident_id in queue_map:
+            queue_position, queue_score, queue_reason = queue_map[incident_id]
+
         return IncidentRead(
-            id=record.get("id"),
+            id=incident_id,
             conversation_id=record.get("conversation_id"),
             channel=record.get("channel", "telegram"),
             pest_type=record.get("pest_type") or classification.get("pest_type"),
@@ -172,6 +185,9 @@ class IncidentService:
             created_at=record.get("created_at"),
             updated_at=record.get("updated_at"),
             metadata=metadata,
+            queue_position=queue_position,
+            queue_score=queue_score,
+            queue_reason=queue_reason,
         )
 
     def _filter_operational_incidents(
@@ -217,7 +233,11 @@ class IncidentService:
         sort_by: str | None,
         sort_dir: str | None,
     ) -> list[dict]:
-        if sort_by not in {
+        effective_sort_by = sort_by
+        if not effective_sort_by:
+            effective_sort_by = "queue_position"
+
+        if effective_sort_by not in {
             "priority",
             "severity",
             "sla_hours",
@@ -225,6 +245,7 @@ class IncidentService:
             "breach_hours",
             "sla_status",
             "created_at",
+            "queue_position",
         }:
             return incidents
 
@@ -234,20 +255,26 @@ class IncidentService:
         sla_status_order = {"BREACHED": 0, "AT_RISK": 1, "ON_TRACK": 2, "COMPLETED": 3}
 
         def sort_key(incident: dict):
-            if sort_by == "priority":
+            if effective_sort_by == "queue_position":
+                val = incident.get("queue_position")
+                if val is None:
+                    # Mandar los elementos inactivos (None) al final del orden
+                    return 999999 if not reverse else -999999
+                return val
+            if effective_sort_by == "priority":
                 return priority_order.get(incident.get("operational_priority"), 99)
-            if sort_by == "severity":
+            if effective_sort_by == "severity":
                 return severity_order.get(incident.get("severity"), 99)
-            if sort_by == "sla_hours":
+            if effective_sort_by == "sla_hours":
                 value = incident.get("sla_hours")
                 return value if isinstance(value, (int, float)) else 999999
-            if sort_by == "remaining_hours":
+            if effective_sort_by == "remaining_hours":
                 value = incident.get("remaining_hours")
                 return value if isinstance(value, (int, float)) else 999999
-            if sort_by == "breach_hours":
+            if effective_sort_by == "breach_hours":
                 value = incident.get("breach_hours")
                 return value if isinstance(value, (int, float)) else 0
-            if sort_by == "sla_status":
+            if effective_sort_by == "sla_status":
                 return sla_status_order.get(incident.get("sla_status"), 99)
             return str(incident.get("created_at") or "")
 
@@ -327,3 +354,65 @@ class IncidentService:
         if value is None:
             return None
         return round(value, 2)
+
+    async def _get_global_queue_map(self) -> dict[str, tuple[int, float, str]]:
+        all_records = await self.firestore_service.list_documents("incidents")
+        return await self._calculate_work_queue(all_records)
+
+    async def _calculate_work_queue(self, records: list[dict]) -> dict[str, tuple[int, float, str]]:
+        from app.incidents.work_queue.engine import WorkQueueEngine
+
+        active_incidents_data = []
+        for record in records:
+            status = record.get("status", "pending_review")
+            # Excluir completados, cerrados y cancelados de la cola operativa activa
+            if status in {"completed", "closed", "cancelled"}:
+                continue
+
+            incident_id = record.get("id")
+            if not incident_id:
+                continue
+
+            sla_hours = record.get("sla_hours") or (record.get("metadata") or {}).get("sla_hours")
+            sla_assessment = self.sla_engine.assess(
+                incident_id=incident_id,
+                incident_created_at=self._parse_datetime(record.get("created_at")),
+                incident_status=status,
+                sla_hours=self._numeric_hours(sla_hours),
+            )
+            sla_status = sla_assessment.sla_status.value
+
+            metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+            operational_priority = (
+                record.get("operational_priority")
+                or metadata.get("operational_priority")
+                or self._normalized_operational_priority(metadata.get("priority"))
+                or record.get("priority", "medium")
+            )
+
+            severity = record.get("severity") or metadata.get("severity")
+            dispatch_bucket = record.get("dispatch_bucket") or metadata.get("dispatch_bucket")
+            created_at = record.get("created_at")
+
+            score_data = WorkQueueEngine.rank(
+                prioridad=operational_priority,
+                severidad=severity,
+                dispatch_bucket=dispatch_bucket,
+                sla_status=sla_status,
+                created_at=created_at,
+            )
+
+            active_incidents_data.append({
+                "id": incident_id,
+                "score": score_data.score,
+                "reason": score_data.reason,
+            })
+
+        # Ordenar por score descendente
+        active_incidents_data.sort(key=lambda x: x["score"], reverse=True)
+
+        positions_map = {}
+        for index, item in enumerate(active_incidents_data):
+            positions_map[item["id"]] = (index + 1, item["score"], item["reason"])
+
+        return positions_map

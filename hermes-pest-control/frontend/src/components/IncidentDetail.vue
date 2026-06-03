@@ -408,6 +408,31 @@ watch(
         </dl>
       </section>
 
+      <section class="detailPanel" aria-label="Cola de Trabajo (Work Queue)">
+        <h3>Cola de Trabajo (Work Queue)</h3>
+        <dl class="detailGrid">
+          <div>
+            <dt>Posición en Cola</dt>
+            <dd>
+              <span v-if="incident.queue_position !== null && incident.queue_position !== undefined" class="badge priority-urgent">
+                #{{ incident.queue_position }}
+              </span>
+              <span v-else>— (Inactiva)</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Puntuación (Score)</dt>
+            <dd>
+              {{ incident.queue_score !== null && incident.queue_score !== undefined ? incident.queue_score.toFixed(2) : '—' }}
+            </dd>
+          </div>
+          <div>
+            <dt>Motivo de Priorización</dt>
+            <dd>{{ incident.queue_reason || '—' }}</dd>
+          </div>
+        </dl>
+      </section>
+
       <form class="editPanel" aria-label="Actualizar incidencia" @submit.prevent="saveIncident">
         <label>
           Estado

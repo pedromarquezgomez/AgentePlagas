@@ -75,6 +75,9 @@ class IncidentRead(BaseModel):
     created_at: Any | None = None
     updated_at: Any | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    queue_position: int | None = None
+    queue_score: float | None = None
+    queue_reason: str | None = None
 
 
 class IncidentUpdate(BaseModel):
