@@ -23,11 +23,11 @@ yellow() { echo -e "\033[0;33m➜ $*\033[0m"; }
 check() {
     local label="$1"
     local result="$2"
-    if [[ "$result" == "true" ]]; then
+    if [[ "$result" == "True" ]]; then
         green "$label"
         ((PASS++)) || true
     else
-        red "$label"
+        red "$label  [got: $result]"
         ((FAIL++)) || true
     fi
 }
@@ -78,7 +78,7 @@ yellow ""
 yellow "=== Test 2: Verificar /config/status reporta agent_provider=llm ==="
 
 CONFIG=$(curl -fsS "${BASE_URL}/config/status")
-PROVIDER=$(echo "$CONFIG" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('agent_provider','') == 'llm' or d.get('hermes_mode','') == 'llm')" 2>/dev/null || echo "false")
+PROVIDER=$(echo "$CONFIG" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('agent_provider','') == 'llm')" 2>/dev/null || echo "False")
 check "Garantía 4 — /config/status reporta agent_provider=llm" "$PROVIDER"
 echo "Config: $(echo "$CONFIG" | python3 -m json.tool 2>/dev/null | head -20 || echo "$CONFIG")"
 
