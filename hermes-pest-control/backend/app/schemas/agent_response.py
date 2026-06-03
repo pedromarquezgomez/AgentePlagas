@@ -26,6 +26,10 @@ class AgentIncidentProposal(BaseModel):
     severity: str | None = None
     response_hours: int | None = None
     assessment_reason: str | None = None
+    visit_type: str | None = None
+    technician_level: str | None = None
+    dispatch_bucket: str | None = None
+    sla_hours: int | None = None
 
 
 

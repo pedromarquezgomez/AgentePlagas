@@ -6,6 +6,10 @@ class IncidentDashboardSummary(BaseModel):
     pending_review: int
     urgent: int
     ready_for_scheduling: int
+    urgent_24h: int
+    human_review: int
+    high_priority: int
+    pending_this_week: int
 
 
 class HumanReviewDashboardSummary(BaseModel):

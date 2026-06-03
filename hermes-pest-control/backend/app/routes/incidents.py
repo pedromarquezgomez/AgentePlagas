@@ -16,11 +16,19 @@ incident_service = IncidentService()
 async def list_incidents(
     status: str | None = None,
     priority: str | None = None,
+    pest_type: str | None = None,
+    dispatch_bucket: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None,
     limit: int | None = Query(default=50, ge=1, le=200),
 ) -> list[dict]:
     return await incident_service.list_incidents(
         status_filter=status,
         priority=priority,
+        pest_type=pest_type,
+        dispatch_bucket=dispatch_bucket,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         limit=limit,
     )
 

@@ -75,6 +75,10 @@ async def get_dashboard_summary() -> dict:
                 "status",
                 "ready_for_scheduling",
             ),
+            "urgent_24h": _count_by(incidents, "dispatch_bucket", "URGENT_24H"),
+            "human_review": _count_by(incidents, "dispatch_bucket", "MANUAL_REVIEW"),
+            "high_priority": _count_by(incidents, "operational_priority", "HIGH"),
+            "pending_this_week": _count_by(incidents, "dispatch_bucket", "THIS_WEEK"),
         },
         human_review={
             "open": _count_by(review_items, "status", "open"),

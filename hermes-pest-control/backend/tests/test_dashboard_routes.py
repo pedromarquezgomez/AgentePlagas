@@ -51,6 +51,9 @@ async def _seed_dashboard_data(
             affected_area="cocina",
             priority="urgent",
             summary="Aviso urgente pendiente de revisión.",
+            operational_priority="HIGH",
+            dispatch_bucket="URGENT_24H",
+            sla_hours=24,
         )
     )
     ready = await incident_service.create_incident(
@@ -62,6 +65,9 @@ async def _seed_dashboard_data(
             affected_area="garaje",
             priority="medium",
             summary="Aviso listo para agendar.",
+            operational_priority="LOW",
+            dispatch_bucket="THIS_WEEK",
+            sla_hours=72,
         )
     )
     await incident_service.update_incident(
@@ -156,6 +162,10 @@ def test_dashboard_summary_returns_expected_structure(monkeypatch) -> None:
             "pending_review": 0,
             "urgent": 0,
             "ready_for_scheduling": 0,
+            "urgent_24h": 0,
+            "human_review": 0,
+            "high_priority": 0,
+            "pending_this_week": 0,
         },
         "human_review": {
             "open": 0,
@@ -191,6 +201,10 @@ def test_dashboard_summary_counts_operational_data(monkeypatch) -> None:
         "pending_review": 1,
         "urgent": 1,
         "ready_for_scheduling": 1,
+        "urgent_24h": 1,
+        "human_review": 0,
+        "high_priority": 1,
+        "pending_this_week": 1,
     }
     assert body["human_review"] == {
         "open": 2,

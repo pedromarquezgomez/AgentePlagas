@@ -193,6 +193,15 @@ class ConversationService:
             "affected_area": response.incident.affected_area if response.incident else None,
             "priority": response.incident.priority if response.incident else "medium",
             "summary": response.incident.summary if response.incident else None,
+            "confidence": getattr(response.incident, "confidence", None) if response.incident else None,
+            "severity": getattr(response.incident, "severity", None) if response.incident else None,
+            "operational_priority": self._operational_priority_from_incident(response.incident) if response.incident else None,
+            "response_hours": getattr(response.incident, "response_hours", None) if response.incident else None,
+            "assessment_reason": getattr(response.incident, "assessment_reason", None) if response.incident else None,
+            "visit_type": getattr(response.incident, "visit_type", None) if response.incident else None,
+            "technician_level": getattr(response.incident, "technician_level", None) if response.incident else None,
+            "dispatch_bucket": getattr(response.incident, "dispatch_bucket", None) if response.incident else None,
+            "sla_hours": getattr(response.incident, "sla_hours", None) if response.incident else None,
             "metadata": {
                 "customer_name": response.metadata.get("customer_name")
                 or (getattr(response.incident, "metadata", {}) or {}).get("customer_name")
@@ -204,6 +213,10 @@ class ConversationService:
                 "priority": getattr(response.incident, "priority", None) if response.incident else None,
                 "response_hours": getattr(response.incident, "response_hours", None) if response.incident else None,
                 "assessment_reason": getattr(response.incident, "assessment_reason", None) if response.incident else None,
+                "visit_type": getattr(response.incident, "visit_type", None) if response.incident else None,
+                "technician_level": getattr(response.incident, "technician_level", None) if response.incident else None,
+                "dispatch_bucket": getattr(response.incident, "dispatch_bucket", None) if response.incident else None,
+                "sla_hours": getattr(response.incident, "sla_hours", None) if response.incident else None,
                 "classification": {
                     "pest_type": response.incident.pest_type if response.incident else None,
                     "confidence": getattr(response.incident, "confidence", None) if response.incident else None,
@@ -328,6 +341,14 @@ class ConversationService:
                 metadata["response_hours"] = incident_data.response_hours
             if getattr(incident_data, "assessment_reason", None):
                 metadata["assessment_reason"] = incident_data.assessment_reason
+            if getattr(incident_data, "visit_type", None):
+                metadata["visit_type"] = incident_data.visit_type
+            if getattr(incident_data, "technician_level", None):
+                metadata["technician_level"] = incident_data.technician_level
+            if getattr(incident_data, "dispatch_bucket", None):
+                metadata["dispatch_bucket"] = incident_data.dispatch_bucket
+            if getattr(incident_data, "sla_hours", None):
+                metadata["sla_hours"] = incident_data.sla_hours
 
             metadata["classification"] = {
                 "pest_type": incident_data.pest_type,
@@ -344,8 +365,28 @@ class ConversationService:
             affected_area=incident_data.affected_area if incident_data else None,
             priority=incident_data.priority if incident_data else "medium",
             summary=incident_data.summary if incident_data else None,
+            confidence=getattr(incident_data, "confidence", None) if incident_data else None,
+            severity=getattr(incident_data, "severity", None) if incident_data else None,
+            operational_priority=self._operational_priority_from_incident(incident_data) if incident_data else None,
+            response_hours=getattr(incident_data, "response_hours", None) if incident_data else None,
+            assessment_reason=getattr(incident_data, "assessment_reason", None) if incident_data else None,
+            visit_type=getattr(incident_data, "visit_type", None) if incident_data else None,
+            technician_level=getattr(incident_data, "technician_level", None) if incident_data else None,
+            dispatch_bucket=getattr(incident_data, "dispatch_bucket", None) if incident_data else None,
+            sla_hours=getattr(incident_data, "sla_hours", None) if incident_data else None,
             metadata=metadata,
         )
+
+    def _operational_priority_from_incident(self, incident_data) -> str | None:
+        priority = getattr(incident_data, "priority", None)
+        if not isinstance(priority, str):
+            return None
+        return {
+            "urgent": "URGENT",
+            "high": "HIGH",
+            "medium": "NORMAL",
+            "low": "LOW",
+        }.get(priority, priority if priority.isupper() else None)
 
     async def _get_hermes_response(
         self,

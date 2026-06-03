@@ -173,7 +173,7 @@ button:disabled {
 
 .incidentTable {
   border-collapse: collapse;
-  min-width: 1120px;
+  min-width: 1480px;
   width: 100%;
 }
 
@@ -190,6 +190,24 @@ th {
   color: #405060;
   font-size: 12px;
   font-weight: 800;
+}
+
+.tableSortButton {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+}
+
+.tableSortButton:hover,
+.tableSortButton:focus-visible {
+  color: #2e5f96;
+  text-decoration: underline;
 }
 
 td {
@@ -229,6 +247,31 @@ tbody tr:last-child td {
 }
 
 .priority-low {
+  background: #dff4e8;
+  color: #1e6841;
+}
+
+.priority-normal {
+  background: #fff1c7;
+  color: #755100;
+}
+
+.severity-critical {
+  background: #ffd6d6;
+  color: #8b1a1a;
+}
+
+.severity-high {
+  background: #ffe3d6;
+  color: #8a2f10;
+}
+
+.severity-medium {
+  background: #fff1c7;
+  color: #755100;
+}
+
+.severity-low {
   background: #dff4e8;
   color: #1e6841;
 }

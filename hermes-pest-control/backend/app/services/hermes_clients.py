@@ -80,6 +80,10 @@ class HermesMockClient:
                         "severity": state.severity,
                         "response_hours": state.response_hours,
                         "assessment_reason": state.assessment_reason,
+                        "visit_type": state.visit_type,
+                        "technician_level": state.technician_level,
+                        "dispatch_bucket": state.dispatch_bucket,
+                        "sla_hours": state.sla_hours,
                     },
                     metadata={
                         "customer_name": state.customer_name,
@@ -112,6 +116,10 @@ class HermesMockClient:
                         "severity": state.severity,
                         "response_hours": state.response_hours,
                         "assessment_reason": state.assessment_reason,
+                        "visit_type": state.visit_type,
+                        "technician_level": state.technician_level,
+                        "dispatch_bucket": state.dispatch_bucket,
+                        "sla_hours": state.sla_hours,
                     },
                 )
 

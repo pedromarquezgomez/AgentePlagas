@@ -21,10 +21,15 @@ import {
   type VisitStatus,
 } from '../services/api'
 import {
+  formatDispatchBucket,
   formatDocumentType,
   formatGeneratedBy,
+  formatPestType,
   formatPriority,
+  formatSeverity,
   formatStatus,
+  formatTechnicianLevel,
+  formatVisitType,
 } from '../utils/labels'
 
 const props = defineProps<{
@@ -89,6 +94,14 @@ function isIncidentPriority(value: string): value is IncidentPriority {
 
 function formatVisitDate(value: string | null | undefined): string {
   return formatDate(value ?? undefined)
+}
+
+function formatHours(value: number | null | undefined): string {
+  return typeof value === 'number' ? `${value}h` : 'Sin dato'
+}
+
+function operationalPriority(nextIncident: Incident): string | null {
+  return nextIncident.operational_priority || nextIncident.priority || null
 }
 
 function syncForm(nextIncident: Incident): void {
@@ -312,6 +325,66 @@ watch(
           <h3>Resumen</h3>
           <p>{{ formatValue(incident.summary) }}</p>
         </div>
+      </section>
+
+      <section class="detailPanel" aria-label="Evaluación operativa">
+        <h3>Evaluación Operativa</h3>
+        <dl class="detailGrid">
+          <div>
+            <dt>Plaga detectada</dt>
+            <dd>{{ formatPestType(incident.pest_type) }}</dd>
+          </div>
+          <div>
+            <dt>Confianza</dt>
+            <dd>{{ formatValue(incident.confidence) }}</dd>
+          </div>
+          <div>
+            <dt>Severidad</dt>
+            <dd>
+              <span class="badge" :class="`severity-${(incident.severity || '').toLowerCase()}`">
+                {{ formatSeverity(incident.severity) }}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>Prioridad operativa</dt>
+            <dd>
+              <span class="badge" :class="`priority-${(operationalPriority(incident) || '').toLowerCase()}`">
+                {{ formatPriority(operationalPriority(incident)) }}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>Tiempo recomendado</dt>
+            <dd>{{ formatHours(incident.response_hours) }}</dd>
+          </div>
+        </dl>
+        <div class="summaryBlock">
+          <h4>Motivo de evaluación</h4>
+          <p>{{ formatValue(incident.assessment_reason) }}</p>
+        </div>
+      </section>
+
+      <section class="detailPanel" aria-label="Dispatch Assessment">
+        <h3>Dispatch Assessment</h3>
+        <dl class="detailGrid">
+          <div>
+            <dt>Tipo de actuación</dt>
+            <dd>{{ formatVisitType(incident.visit_type) }}</dd>
+          </div>
+          <div>
+            <dt>Nivel técnico requerido</dt>
+            <dd>{{ formatTechnicianLevel(incident.technician_level) }}</dd>
+          </div>
+          <div>
+            <dt>SLA</dt>
+            <dd>{{ formatHours(incident.sla_hours) }}</dd>
+          </div>
+          <div>
+            <dt>Cola operativa</dt>
+            <dd><span class="badge status">{{ formatDispatchBucket(incident.dispatch_bucket) }}</span></dd>
+          </div>
+        </dl>
       </section>
 
       <form class="editPanel" aria-label="Actualizar incidencia" @submit.prevent="saveIncident">

@@ -26,6 +26,30 @@ const cards = [
     path: '/incidents',
   },
   {
+    title: 'Urgentes 24h',
+    section: 'incidents',
+    metric: 'urgent_24h',
+    path: '/incidents',
+  },
+  {
+    title: 'Alta prioridad',
+    section: 'incidents',
+    metric: 'high_priority',
+    path: '/incidents',
+  },
+  {
+    title: 'Pendientes esta semana',
+    section: 'incidents',
+    metric: 'pending_this_week',
+    path: '/incidents',
+  },
+  {
+    title: 'Revisión humana',
+    section: 'incidents',
+    metric: 'human_review',
+    path: '/human-review',
+  },
+  {
     title: 'Revisiones humanas abiertas',
     section: 'human_review',
     metric: 'open',
@@ -65,6 +89,14 @@ function metricValue(card: (typeof cards)[number]): number {
       return props.summary.incidents.pending_review
     case 'Incidencias urgentes':
       return props.summary.incidents.urgent
+    case 'Urgentes 24h':
+      return props.summary.incidents.urgent_24h
+    case 'Alta prioridad':
+      return props.summary.incidents.high_priority
+    case 'Pendientes esta semana':
+      return props.summary.incidents.pending_this_week
+    case 'Revisión humana':
+      return props.summary.incidents.human_review
     case 'Revisiones humanas abiertas':
       return props.summary.human_review.open
     case 'Visitas programadas':

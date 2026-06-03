@@ -23,6 +23,12 @@ export const INCIDENT_STATUSES = [
 ] as const
 
 export const INCIDENT_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
+export const OPERATIONAL_PRIORITIES = ['URGENT', 'HIGH', 'NORMAL', 'LOW'] as const
+export const INCIDENT_SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const
+export const PEST_TYPES = ['COCKROACH', 'RODENT', 'ANT', 'FLYING_INSECT', 'STORED_PRODUCT_INSECT', 'UNKNOWN'] as const
+export const VISIT_TYPES = ['URGENT_TREATMENT', 'TREATMENT', 'INSPECTION', 'FOLLOW_UP', 'HUMAN_REVIEW'] as const
+export const TECHNICIAN_LEVELS = ['JUNIOR', 'STANDARD', 'SENIOR', 'SPECIALIST'] as const
+export const DISPATCH_BUCKETS = ['URGENT_24H', 'NEXT_48H', 'THIS_WEEK', 'PLANNED', 'MANUAL_REVIEW'] as const
 export const HUMAN_REVIEW_STATUSES = ['open', 'in_review', 'resolved', 'dismissed'] as const
 export const VISIT_STATUSES = ['draft', 'scheduled', 'in_progress', 'completed', 'cancelled'] as const
 export const DOCUMENT_TYPES = [
@@ -36,6 +42,7 @@ export const TOOL_REVIEW_STATUSES = ['proposed', 'approved', 'rejected', 'needs_
 
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
 export type IncidentPriority = (typeof INCIDENT_PRIORITIES)[number]
+export type OperationalPriority = (typeof OPERATIONAL_PRIORITIES)[number]
 export type HumanReviewStatus = (typeof HUMAN_REVIEW_STATUSES)[number]
 export type VisitStatus = (typeof VISIT_STATUSES)[number]
 export type OperationalDocumentType = (typeof DOCUMENT_TYPES)[number]
@@ -50,9 +57,18 @@ export interface Incident {
   location: string | null
   affected_area: string | null
   priority: IncidentPriority | string
+  operational_priority?: OperationalPriority | string | null
   status: IncidentStatus | string
   summary: string | null
   internal_notes?: string | null
+  confidence?: string | null
+  severity?: string | null
+  response_hours?: number | null
+  assessment_reason?: string | null
+  visit_type?: string | null
+  technician_level?: string | null
+  dispatch_bucket?: string | null
+  sla_hours?: number | null
   created_at?: string
   updated_at?: string
 }
@@ -60,6 +76,10 @@ export interface Incident {
 export interface IncidentFilters {
   status?: string
   priority?: string
+  pest_type?: string
+  dispatch_bucket?: string
+  sort_by?: 'priority' | 'severity' | 'sla_hours' | 'created_at' | string
+  sort_dir?: 'asc' | 'desc' | string
   limit?: number
 }
 
@@ -262,6 +282,10 @@ export interface DashboardSummary {
     pending_review: number
     urgent: number
     ready_for_scheduling: number
+    urgent_24h: number
+    human_review: number
+    high_priority: number
+    pending_this_week: number
   }
   human_review: {
     open: number
@@ -538,6 +562,10 @@ export async function fetchIncidents(filters: IncidentFilters = {}): Promise<Inc
   const params = new URLSearchParams()
   if (filters.status) params.set('status', filters.status)
   if (filters.priority) params.set('priority', filters.priority)
+  if (filters.pest_type) params.set('pest_type', filters.pest_type)
+  if (filters.dispatch_bucket) params.set('dispatch_bucket', filters.dispatch_bucket)
+  if (filters.sort_by) params.set('sort_by', filters.sort_by)
+  if (filters.sort_dir) params.set('sort_dir', filters.sort_dir)
   if (filters.limit) params.set('limit', String(filters.limit))
 
   const query = params.toString()

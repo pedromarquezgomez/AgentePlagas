@@ -10,6 +10,49 @@ const priorityLabels: Record<string, string> = {
   medium: 'Media',
   high: 'Alta',
   urgent: 'Urgente',
+  LOW: 'Baja',
+  NORMAL: 'Normal',
+  HIGH: 'Alta',
+  URGENT: 'Urgente',
+}
+
+const severityLabels: Record<string, string> = {
+  CRITICAL: 'Crítica',
+  HIGH: 'Alta',
+  MEDIUM: 'Media',
+  LOW: 'Baja',
+}
+
+const pestTypeLabels: Record<string, string> = {
+  COCKROACH: 'Cucarachas',
+  RODENT: 'Roedores',
+  ANT: 'Hormigas',
+  FLYING_INSECT: 'Insectos voladores',
+  STORED_PRODUCT_INSECT: 'Insectos de producto almacenado',
+  UNKNOWN: 'Desconocida',
+}
+
+const visitTypeLabels: Record<string, string> = {
+  URGENT_TREATMENT: 'Tratamiento urgente',
+  TREATMENT: 'Tratamiento',
+  INSPECTION: 'Inspección',
+  FOLLOW_UP: 'Seguimiento',
+  HUMAN_REVIEW: 'Revisión humana',
+}
+
+const technicianLevelLabels: Record<string, string> = {
+  JUNIOR: 'Junior',
+  STANDARD: 'Estándar',
+  SENIOR: 'Senior',
+  SPECIALIST: 'Especialista',
+}
+
+const dispatchBucketLabels: Record<string, string> = {
+  URGENT_24H: 'Urgente 24h',
+  NEXT_48H: 'Próximas 48h',
+  THIS_WEEK: 'Esta semana',
+  PLANNED: 'Planificada',
+  MANUAL_REVIEW: 'Revisión manual',
 }
 
 const statusLabels: Record<string, string> = {
@@ -136,6 +179,26 @@ export function formatAction(value: string | null | undefined): string {
 
 export function formatPriority(value: string | null | undefined): string {
   return labelFromMap(value, priorityLabels)
+}
+
+export function formatSeverity(value: string | null | undefined): string {
+  return labelFromMap(value, severityLabels)
+}
+
+export function formatPestType(value: string | null | undefined): string {
+  return labelFromMap(value, pestTypeLabels)
+}
+
+export function formatVisitType(value: string | null | undefined): string {
+  return labelFromMap(value, visitTypeLabels)
+}
+
+export function formatTechnicianLevel(value: string | null | undefined): string {
+  return labelFromMap(value, technicianLevelLabels)
+}
+
+export function formatDispatchBucket(value: string | null | undefined): string {
+  return labelFromMap(value, dispatchBucketLabels)
 }
 
 export function formatStatus(value: string | null | undefined): string {

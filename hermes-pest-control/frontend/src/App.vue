@@ -29,8 +29,11 @@ import {
   fetchVisits,
   getStoredAuthIndicator,
   HUMAN_REVIEW_STATUSES,
+  DISPATCH_BUCKETS,
   INCIDENT_PRIORITIES,
   INCIDENT_STATUSES,
+  OPERATIONAL_PRIORITIES,
+  PEST_TYPES,
   isUnauthorizedError,
   loginWithCredentials,
   logoutCurrentUser,
@@ -52,7 +55,9 @@ import {
 import {
   formatAction,
   formatChannel,
+  formatDispatchBucket,
   formatDocumentType,
+  formatPestType,
   formatPriority,
   formatStatus,
   formatReviewStatus,
@@ -82,6 +87,10 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const statusFilter = ref('')
 const priorityFilter = ref('')
+const pestTypeFilter = ref('')
+const dispatchBucketFilter = ref('')
+const incidentSortBy = ref('priority')
+const incidentSortDir = ref<'asc' | 'desc'>('asc')
 const reviewStatusFilter = ref('')
 const reviewPriorityFilter = ref('')
 const technicianActiveFilter = ref('')
@@ -104,7 +113,14 @@ const adminApiKey = ref(getStoredAuthIndicator())
 const authMessage = ref<string | null>(null)
 let stopAuthObserver: (() => void) | null = null
 
-const hasFilters = computed(() => Boolean(statusFilter.value || priorityFilter.value))
+const hasFilters = computed(() => Boolean(
+  statusFilter.value ||
+  priorityFilter.value ||
+  pestTypeFilter.value ||
+  dispatchBucketFilter.value ||
+  incidentSortBy.value !== 'priority' ||
+  incidentSortDir.value !== 'asc',
+))
 const hasReviewFilters = computed(() => Boolean(reviewStatusFilter.value || reviewPriorityFilter.value))
 const hasTechnicianFilters = computed(() => Boolean(technicianActiveFilter.value))
 const hasVisitFilters = computed(() => Boolean(visitStatusFilter.value || visitTechnicianFilter.value))
@@ -189,6 +205,10 @@ async function loadIncidents(): Promise<void> {
     incidents.value = await fetchIncidents({
       status: statusFilter.value || undefined,
       priority: priorityFilter.value || undefined,
+      pest_type: pestTypeFilter.value || undefined,
+      dispatch_bucket: dispatchBucketFilter.value || undefined,
+      sort_by: incidentSortBy.value || undefined,
+      sort_dir: incidentSortDir.value || undefined,
       limit: 100,
     })
   } catch (err) {
@@ -360,6 +380,20 @@ async function loadToolExecutionRecords(): Promise<void> {
 function clearFilters(): void {
   statusFilter.value = ''
   priorityFilter.value = ''
+  pestTypeFilter.value = ''
+  dispatchBucketFilter.value = ''
+  incidentSortBy.value = 'priority'
+  incidentSortDir.value = 'asc'
+  void loadIncidents()
+}
+
+function sortIncidents(sortBy: string): void {
+  if (incidentSortBy.value === sortBy) {
+    incidentSortDir.value = incidentSortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    incidentSortBy.value = sortBy
+    incidentSortDir.value = sortBy === 'created_at' ? 'desc' : 'asc'
+  }
   void loadIncidents()
 }
 
@@ -1369,8 +1403,28 @@ onUnmounted(() => {
           Prioridad
           <select v-model="priorityFilter" @change="loadIncidents">
             <option value="">Todas</option>
-            <option v-for="priority in INCIDENT_PRIORITIES" :key="priority" :value="priority">
+            <option v-for="priority in OPERATIONAL_PRIORITIES" :key="priority" :value="priority">
               {{ formatPriority(priority) }}
+            </option>
+          </select>
+        </label>
+
+        <label>
+          Plaga
+          <select v-model="pestTypeFilter" @change="loadIncidents">
+            <option value="">Todas</option>
+            <option v-for="pestType in PEST_TYPES" :key="pestType" :value="pestType">
+              {{ formatPestType(pestType) }}
+            </option>
+          </select>
+        </label>
+
+        <label>
+          Cola
+          <select v-model="dispatchBucketFilter" @change="loadIncidents">
+            <option value="">Todas</option>
+            <option v-for="bucket in DISPATCH_BUCKETS" :key="bucket" :value="bucket">
+              {{ formatDispatchBucket(bucket) }}
             </option>
           </select>
         </label>
@@ -1386,7 +1440,7 @@ onUnmounted(() => {
         <div v-else-if="incidents.length === 0" class="stateMessage">
           No hay incidencias para los filtros seleccionados.
         </div>
-        <IncidentTable v-else :incidents="incidents" @open="openIncident" />
+        <IncidentTable v-else :incidents="incidents" @open="openIncident" @sort="sortIncidents" />
       </section>
     </template>
   </main>

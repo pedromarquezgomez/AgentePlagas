@@ -204,6 +204,15 @@ class ToolExecutionService:
                     affected_area=payload.get("affected_area"),
                     priority=payload.get("priority", "medium"),
                     summary=payload.get("summary"),
+                    confidence=payload.get("confidence"),
+                    severity=payload.get("severity"),
+                    operational_priority=payload.get("operational_priority"),
+                    response_hours=payload.get("response_hours"),
+                    assessment_reason=payload.get("assessment_reason"),
+                    visit_type=payload.get("visit_type"),
+                    technician_level=payload.get("technician_level"),
+                    dispatch_bucket=payload.get("dispatch_bucket"),
+                    sla_hours=payload.get("sla_hours"),
                     metadata=payload.get("metadata", {}),
                 )
                 incident = await incident_service.create_incident(draft)
