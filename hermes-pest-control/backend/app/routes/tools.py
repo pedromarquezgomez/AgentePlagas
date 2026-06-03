@@ -87,7 +87,7 @@ async def execute_tool_execution(execution_id: str) -> dict:
         policy_result = policy_engine.evaluate(_policy_context_from_record(current_record))
         decision_val = policy_result.decision.value
         if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW and current_record.get("review_status") == "approved":
-            if current_record.get("tool_name") == "gmail.create_draft":
+            if current_record.get("tool_name") in {"gmail.create_draft", "schedule_visit_tool"}:
                 decision_val = "ALLOW"
 
         _record_policy_evaluated(current_record, decision_val)
@@ -99,7 +99,7 @@ async def execute_tool_execution(execution_id: str) -> dict:
         if decision_val == "REQUIRE_HUMAN_REVIEW":
             _record_human_review_required(current_record)
             detail_msg = "Tool execution requires human review before execution."
-            if current_record.get("tool_name") == "gmail.create_draft" and current_record.get("review_status") != "approved":
+            if current_record.get("tool_name") in {"gmail.create_draft", "schedule_visit_tool"} and current_record.get("review_status") != "approved":
                 detail_msg = "Tool execution requires review_status=approved."
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

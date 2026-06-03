@@ -118,6 +118,13 @@ class ConversationService:
                     incident_id=incident_id,
                     response=response,
                 )
+                await self._propose_schedule_visit_tool(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    incident_id=incident_id,
+                    response=response,
+                )
         elif self._should_create_incident(response):
             incident = self._build_incident(message, conversation_id, response)
             created_incident = await self.incident_service.create_incident(incident)
@@ -128,6 +135,13 @@ class ConversationService:
                 response.incident.status = created_incident.status
             if incident_id:
                 await self._propose_gmail_draft_tool(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    incident_id=incident_id,
+                    response=response,
+                )
+                await self._propose_schedule_visit_tool(
                     message=message,
                     conversation_id=conversation_id,
                     trace_id=trace_id,
@@ -451,6 +465,170 @@ class ConversationService:
             provider="gmail",
             action="create_draft",
             risk_level=1,
+            requires_approval=requires_approval,
+            decision=decision_outcome,
+            execution_status=execution_status,
+            review_status=review_status,
+            approved_payload=tool_payload,
+            metadata={"payload": tool_payload},
+        )
+        await self.tool_execution_service.create_execution_record(record)
+
+    async def _propose_schedule_visit_tool(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+        incident_id: str,
+        response: AgentResponse,
+    ) -> None:
+        import re
+        from uuid import uuid4
+        from datetime import datetime, timedelta, timezone
+        from app.schemas.tool_harness import ToolExecutionRecord
+        from app.policies.contracts import PolicyContext, PolicyDecision
+        from app.audit.contracts import AuditEvent, AuditEventType
+        from app.incidents.intake_service import IncidentIntakeService
+        from app.calendar.calendar_service import HermesCalendarService
+        from app.calendar.availability_service import AvailabilityService
+
+        text = message.text or ""
+        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+        customer_email = email_match.group(0) if email_match else None
+        customer_name = IncidentIntakeService()._extract_customer_name(text) or "Pedro"
+
+        location = response.incident.location or "Calle Larios 5, Málaga"
+        visit_type = response.incident.visit_type
+        if hasattr(visit_type, "value"):
+            visit_type = visit_type.value
+        visit_type_str = str(visit_type or "TREATMENT")
+
+        # 1. Obtener slots ocupados
+        calendar_service = HermesCalendarService()
+        now = datetime.now(timezone.utc)
+        start_date = datetime(now.year, now.month, now.day, tzinfo=timezone.utc) + timedelta(days=1)
+        end_date = start_date + timedelta(days=14)
+
+        try:
+            busy_slots = await calendar_service.get_busy_slots(start_date.isoformat(), end_date.isoformat())
+        except Exception as exc:
+            logger.warning("Error getting busy slots, falling back to empty: %s", exc)
+            busy_slots = []
+
+        # 2. Calcular slots libres
+        proposed_slots = AvailabilityService.calculate_free_slots(
+            busy_slots=busy_slots,
+            start_date=start_date,
+            duration_minutes=60,
+            max_slots=3,
+        )
+
+        tool_name = "schedule_visit_tool"
+        tool_request_id = str(uuid4())
+        tool_decision_id = str(uuid4())
+        execution_id = str(uuid4())
+
+        tool_payload = {
+            "incident_id": incident_id,
+            "customer_name": customer_name,
+            "customer_email": customer_email,
+            "location": location,
+            "visit_type": visit_type_str,
+            "pest_type": response.incident.pest_type if response.incident else "COCKROACH",
+            "duration_minutes": 60,
+            "proposed_slots": proposed_slots,
+            "selected_slot": proposed_slots[0] if proposed_slots else None,
+        }
+
+        # Registrar propuesta en la auditoría
+        self.audit_service.record_event(
+            AuditEvent(
+                event_type=AuditEventType.TOOL_PROPOSED,
+                execution_id=execution_id,
+                tool_name=tool_name,
+                provider="calendar",
+                user_id=message.external_user_id,
+                channel=message.channel,
+                status="requested",
+                message="Tool execution requested.",
+                metadata={
+                    "action": "schedule_visit",
+                    "risk_level": 3,
+                    "requires_approval": True,
+                },
+            )
+        )
+
+        # Evaluar la política
+        policy_context = PolicyContext(
+            channel=message.channel,
+            user_id=message.external_user_id,
+            requested_tool=tool_name,
+            requested_action="schedule_visit",
+            source_provider="calendar",
+            incident_id=incident_id,
+        )
+        policy_result = self.policy_engine.evaluate(policy_context)
+
+        # Registrar la evaluación en auditoría
+        self.audit_service.record_event(
+            AuditEvent(
+                event_type=AuditEventType.POLICY_EVALUATED,
+                execution_id=execution_id,
+                tool_name=tool_name,
+                provider="calendar",
+                user_id=message.external_user_id,
+                channel=message.channel,
+                policy_decision=policy_result.decision.value,
+                status=policy_result.decision.value,
+                message="Policy Engine evaluated tool execution.",
+                metadata={"action": "schedule_visit"},
+            )
+        )
+
+        # Registrar si requiere revisión humana
+        if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW:
+            self.audit_service.record_event(
+                AuditEvent(
+                    event_type=AuditEventType.HUMAN_REVIEW_REQUIRED,
+                    execution_id=execution_id,
+                    tool_name=tool_name,
+                    provider="calendar",
+                    user_id=message.external_user_id,
+                    channel=message.channel,
+                    policy_decision=policy_result.decision.value,
+                    status="requires_human_review",
+                    message="Policy requires human review before tool execution.",
+                    metadata={"action": "schedule_visit"},
+                )
+            )
+
+        decision_outcome = "require_human_approval"
+        execution_status = "pending_human_approval"
+        review_status = "proposed"
+        requires_approval = True
+
+        if policy_result.decision == PolicyDecision.ALLOW:
+            decision_outcome = "allow"
+            execution_status = "allowed_not_executed"
+            review_status = "approved"
+            requires_approval = False
+        elif policy_result.decision == PolicyDecision.DENY:
+            decision_outcome = "deny"
+            execution_status = "blocked"
+            review_status = "dismissed"
+            requires_approval = False
+
+        record = ToolExecutionRecord(
+            id=execution_id,
+            tool_request_id=tool_request_id,
+            tool_decision_id=tool_decision_id,
+            trace_id=trace_id,
+            conversation_id=conversation_id,
+            tool_name=tool_name,
+            provider="calendar",
+            action="schedule_visit",
+            risk_level=3,
             requires_approval=requires_approval,
             decision=decision_outcome,
             execution_status=execution_status,

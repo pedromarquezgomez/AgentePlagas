@@ -10,4 +10,5 @@ DEFAULT_TOOL_POLICY_RULES: dict[str, PolicyDecision] = {
     # Controlled Gmail draft execution requires approval.
     "gmail.create_draft": PolicyDecision.REQUIRE_HUMAN_REVIEW,
     "gmail.send_email": PolicyDecision.DENY,
+    "schedule_visit_tool": PolicyDecision.REQUIRE_HUMAN_REVIEW,
 }

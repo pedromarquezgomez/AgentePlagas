@@ -173,16 +173,17 @@ class ToolExecutionService:
             )
         is_gmail = self._is_gmail_create_draft(current_record)
         is_incident = current_record.get("tool_name") == "create_incident_tool"
+        is_schedule_visit = current_record.get("tool_name") == "schedule_visit_tool"
 
-        if not (is_gmail or is_incident):
+        if not (is_gmail or is_incident or is_schedule_visit):
             execution_error = self._execution_error(
                 execution_request,
                 error_code="unsupported_tool",
-                error_message="Only gmail.create_draft and create_incident_tool can be executed in this sprint.",
+                error_message="Only gmail.create_draft, create_incident_tool, and schedule_visit_tool can be executed in this sprint.",
             )
             self._record_execution_failed(current_record, execution_error)
             raise ToolExecutionUnsupportedError(
-                "Only gmail.create_draft and create_incident_tool can be executed in this sprint."
+                "Only gmail.create_draft, create_incident_tool, and schedule_visit_tool can be executed in this sprint."
             )
 
         self._record_execution_started(current_record)
@@ -191,6 +192,62 @@ class ToolExecutionService:
             if is_gmail:
                 executor = gmail_executor or GmailToolExecutor()
                 executor_result = await executor.create_draft(execution_request.payload)
+            elif is_schedule_visit:
+                from datetime import datetime, timedelta
+                from app.calendar.calendar_service import HermesCalendarService
+                from app.calendar.contracts import CalendarEventDraft
+
+                payload = execution_request.payload
+                start_time = payload.get("selected_slot")
+                if not start_time:
+                    raise ValueError("selected_slot is required in the payload to schedule a visit.")
+
+                duration_minutes = payload.get("duration_minutes", 60)
+                # Normalizar Z a +00:00 para fromisoformat
+                start_str = start_time.replace("Z", "+00:00")
+                start_dt = datetime.fromisoformat(start_str)
+                end_dt = start_dt + timedelta(minutes=duration_minutes)
+
+                customer_name = payload.get("customer_name") or "Pedro"
+                pest_type = payload.get("pest_type") or "COCKROACH"
+                incident_id = payload.get("incident_id") or "unknown-incident"
+                location = payload.get("location") or "Calle Larios 5, Málaga"
+                visit_type = payload.get("visit_type") or "TREATMENT"
+                customer_email = payload.get("customer_email")
+
+                title = f"Visita de Control de Plagas - {customer_name} - {pest_type}"
+                description = (
+                    f"Incidencia ID: {incident_id}\n"
+                    f"Cliente: {customer_name}\n"
+                    f"Plaga: {pest_type}\n"
+                    f"Ubicación: {location}\n"
+                    f"Tipo de Visita: {visit_type}"
+                )
+                if customer_email:
+                    description += f"\nEmail Cliente: {customer_email}"
+
+                attendees = [customer_email] if customer_email else []
+
+                draft = CalendarEventDraft(
+                    title=title,
+                    start_time=start_time,
+                    end_time=end_dt.isoformat(),
+                    location=location,
+                    description=description,
+                    attendees=attendees,
+                )
+
+                calendar_service = HermesCalendarService()
+                event_id = await calendar_service.create_event(draft)
+                executor_result = {
+                    "event_id": event_id,
+                    "title": title,
+                    "start_time": start_time,
+                    "end_time": end_dt.isoformat(),
+                    "location": location,
+                    "description": description,
+                    "attendees": attendees,
+                }
             else:
                 from app.schemas.incident import IncidentDraft
                 from app.services.incident_service import IncidentService

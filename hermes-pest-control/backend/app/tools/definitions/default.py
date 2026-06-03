@@ -52,4 +52,14 @@ DEFAULT_BACKEND_TOOLS = [
         execution_policy="review_required",
         notes="Visit creation and calendar writes require backend/human control.",
     ),
+    BackendTool(
+        name="schedule_visit_tool",
+        description="Schedule a customer visit in Google Calendar.",
+        service_owner="CalendarService",
+        allowed_actions=["schedule_visit"],
+        risk_level=3,
+        requires_approval=True,
+        execution_policy="review_required",
+        notes="Google Calendar scheduling, requires human review.",
+    ),
 ]

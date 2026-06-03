@@ -12,6 +12,7 @@ def test_default_tool_registry_contains_initial_backend_tools() -> None:
         "list_incidents_tool",
         "escalate_to_human_tool",
         "suggest_visit_tool",
+        "schedule_visit_tool",
     }
 
 
