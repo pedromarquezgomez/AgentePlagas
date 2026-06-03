@@ -120,7 +120,7 @@ class ConversationService:
                 "priority": response.incident.priority if response.incident else "medium",
                 "summary": response.incident.summary if response.incident else None,
                 "metadata": {
-                    "customer_name": response.metadata.get("customer_name") or (response.incident.metadata.get("customer_name") if response.incident and response.incident.metadata else None),
+                    "customer_name": response.metadata.get("customer_name") or (getattr(response.incident, "metadata", {}) or {}).get("customer_name") if response.incident else None,
                     **(response.metadata if response.metadata else {}),
                 }
             }
@@ -187,7 +187,8 @@ class ConversationService:
             await self.tool_execution_service.create_execution_record(record)
 
             if policy_result.decision == PolicyDecision.ALLOW:
-                execution_record = await self.tool_execution_service.execute_execution_record(execution_id)
+                execute_fn = getattr(self.tool_execution_service, "execute_execution_record")
+                execution_record = await execute_fn(execution_id)
                 created_incident_data = execution_record.get("execution_result")
                 if created_incident_data:
                     incident_id = created_incident_data.get("id")
