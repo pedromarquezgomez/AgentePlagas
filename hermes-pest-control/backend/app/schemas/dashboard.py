@@ -10,6 +10,10 @@ class IncidentDashboardSummary(BaseModel):
     human_review: int
     high_priority: int
     pending_this_week: int
+    sla_breached: int
+    sla_at_risk: int
+    sla_on_track: int
+    sla_completed: int
 
 
 class HumanReviewDashboardSummary(BaseModel):

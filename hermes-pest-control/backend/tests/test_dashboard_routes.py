@@ -166,6 +166,10 @@ def test_dashboard_summary_returns_expected_structure(monkeypatch) -> None:
             "human_review": 0,
             "high_priority": 0,
             "pending_this_week": 0,
+            "sla_breached": 0,
+            "sla_at_risk": 0,
+            "sla_on_track": 0,
+            "sla_completed": 0,
         },
         "human_review": {
             "open": 0,
@@ -205,6 +209,10 @@ def test_dashboard_summary_counts_operational_data(monkeypatch) -> None:
         "human_review": 0,
         "high_priority": 1,
         "pending_this_week": 1,
+        "sla_breached": 0,
+        "sla_at_risk": 0,
+        "sla_on_track": 2,
+        "sla_completed": 0,
     }
     assert body["human_review"] == {
         "open": 2,

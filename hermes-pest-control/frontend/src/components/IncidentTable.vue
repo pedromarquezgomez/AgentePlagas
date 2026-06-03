@@ -6,6 +6,7 @@ import {
   formatPestType,
   formatPriority,
   formatSeverity,
+  formatSlaStatus,
   formatStatus,
   formatTechnicianLevel,
   formatVisitType,
@@ -45,6 +46,11 @@ function badgeClass(prefix: string, value: string | null | undefined): string {
 function formatHours(value: number | null | undefined): string {
   return typeof value === 'number' ? `${value}h` : 'Sin dato'
 }
+
+function slaMetric(incident: Incident): string {
+  if (incident.sla_status === 'BREACHED') return formatHours(incident.breach_hours)
+  return formatHours(incident.remaining_hours)
+}
 </script>
 
 <template>
@@ -74,6 +80,16 @@ function formatHours(value: number | null | undefined): string {
             </button>
           </th>
           <th>Cola</th>
+          <th>
+            <button class="tableSortButton" type="button" @click="emit('sort', 'sla_status')">
+              SLA Status
+            </button>
+          </th>
+          <th>
+            <button class="tableSortButton" type="button" @click="emit('sort', 'remaining_hours')">
+              Restante/Vencido
+            </button>
+          </th>
           <th>Estado</th>
           <th>Canal</th>
           <th>
@@ -110,6 +126,12 @@ function formatHours(value: number | null | undefined): string {
           <td>
             <span class="badge status">{{ formatDispatchBucket(incident.dispatch_bucket) }}</span>
           </td>
+          <td>
+            <span class="badge" :class="badgeClass('sla', incident.sla_status)">
+              {{ formatSlaStatus(incident.sla_status) }}
+            </span>
+          </td>
+          <td>{{ slaMetric(incident) }}</td>
           <td>
             <span class="badge status">{{ formatStatus(incident.status) }}</span>
           </td>

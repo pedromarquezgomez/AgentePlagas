@@ -55,6 +55,13 @@ const dispatchBucketLabels: Record<string, string> = {
   MANUAL_REVIEW: 'Revisión manual',
 }
 
+const slaStatusLabels: Record<string, string> = {
+  ON_TRACK: 'Dentro de SLA',
+  AT_RISK: 'En riesgo',
+  BREACHED: 'Vencida',
+  COMPLETED: 'Completada',
+}
+
 const statusLabels: Record<string, string> = {
   new: 'Nueva',
   pending_review: 'Pendiente de revisión',
@@ -199,6 +206,10 @@ export function formatTechnicianLevel(value: string | null | undefined): string 
 
 export function formatDispatchBucket(value: string | null | undefined): string {
   return labelFromMap(value, dispatchBucketLabels)
+}
+
+export function formatSlaStatus(value: string | null | undefined): string {
+  return labelFromMap(value, slaStatusLabels)
 }
 
 export function formatStatus(value: string | null | undefined): string {

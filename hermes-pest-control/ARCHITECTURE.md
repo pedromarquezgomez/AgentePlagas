@@ -380,6 +380,27 @@ high
 urgent
 ```
 
+### SLA Monitoring
+
+Location: `backend/app/incidents/sla/`
+
+SLA monitoring is a dynamic domain calculation. The system persists only the
+incident creation time, current incident status, and assigned `sla_hours`.
+`SLAEngine` computes the live status on read:
+
+```text
+ON_TRACK
+AT_RISK
+BREACHED
+COMPLETED
+```
+
+No cron job, worker, queue, or scheduler is required for the current phase.
+The API exposes calculated fields such as `sla_status`, `elapsed_hours`,
+`remaining_hours`, and `breach_hours`. The first transition observed as
+`BREACHED` records an `INCIDENT_SLA_BREACHED` audit event and marks only that
+the breach was audited, not the SLA state itself.
+
 ### DecisionAuditService
 
 Location: `backend/app/services/decision_audit_service.py`

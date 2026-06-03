@@ -34,6 +34,7 @@ import {
   INCIDENT_STATUSES,
   OPERATIONAL_PRIORITIES,
   PEST_TYPES,
+  SLA_STATUSES,
   isUnauthorizedError,
   loginWithCredentials,
   logoutCurrentUser,
@@ -62,6 +63,7 @@ import {
   formatStatus,
   formatReviewStatus,
   formatRiskLevel,
+  formatSlaStatus,
   formatToolDecision,
   formatToolName,
   formatToolProvider,
@@ -89,6 +91,7 @@ const statusFilter = ref('')
 const priorityFilter = ref('')
 const pestTypeFilter = ref('')
 const dispatchBucketFilter = ref('')
+const slaStatusFilter = ref('')
 const incidentSortBy = ref('priority')
 const incidentSortDir = ref<'asc' | 'desc'>('asc')
 const reviewStatusFilter = ref('')
@@ -118,6 +121,7 @@ const hasFilters = computed(() => Boolean(
   priorityFilter.value ||
   pestTypeFilter.value ||
   dispatchBucketFilter.value ||
+  slaStatusFilter.value ||
   incidentSortBy.value !== 'priority' ||
   incidentSortDir.value !== 'asc',
 ))
@@ -207,6 +211,7 @@ async function loadIncidents(): Promise<void> {
       priority: priorityFilter.value || undefined,
       pest_type: pestTypeFilter.value || undefined,
       dispatch_bucket: dispatchBucketFilter.value || undefined,
+      sla_status: slaStatusFilter.value || undefined,
       sort_by: incidentSortBy.value || undefined,
       sort_dir: incidentSortDir.value || undefined,
       limit: 100,
@@ -382,6 +387,7 @@ function clearFilters(): void {
   priorityFilter.value = ''
   pestTypeFilter.value = ''
   dispatchBucketFilter.value = ''
+  slaStatusFilter.value = ''
   incidentSortBy.value = 'priority'
   incidentSortDir.value = 'asc'
   void loadIncidents()
@@ -1425,6 +1431,16 @@ onUnmounted(() => {
             <option value="">Todas</option>
             <option v-for="bucket in DISPATCH_BUCKETS" :key="bucket" :value="bucket">
               {{ formatDispatchBucket(bucket) }}
+            </option>
+          </select>
+        </label>
+
+        <label>
+          SLA
+          <select v-model="slaStatusFilter" @change="loadIncidents">
+            <option value="">Todos</option>
+            <option v-for="slaStatus in SLA_STATUSES" :key="slaStatus" :value="slaStatus">
+              {{ formatSlaStatus(slaStatus) }}
             </option>
           </select>
         </label>

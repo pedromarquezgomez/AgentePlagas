@@ -27,6 +27,7 @@ import {
   formatPestType,
   formatPriority,
   formatSeverity,
+  formatSlaStatus,
   formatStatus,
   formatTechnicianLevel,
   formatVisitType,
@@ -379,6 +380,26 @@ watch(
           <div>
             <dt>SLA</dt>
             <dd>{{ formatHours(incident.sla_hours) }}</dd>
+          </div>
+          <div>
+            <dt>Estado SLA</dt>
+            <dd>
+              <span class="badge" :class="`sla-${(incident.sla_status || '').toLowerCase()}`">
+                {{ formatSlaStatus(incident.sla_status) }}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>Horas transcurridas</dt>
+            <dd>{{ formatHours(incident.elapsed_hours) }}</dd>
+          </div>
+          <div>
+            <dt>Horas restantes</dt>
+            <dd>{{ formatHours(incident.remaining_hours) }}</dd>
+          </div>
+          <div>
+            <dt>Horas vencida</dt>
+            <dd>{{ formatHours(incident.breach_hours) }}</dd>
           </div>
           <div>
             <dt>Cola operativa</dt>

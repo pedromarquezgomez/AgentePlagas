@@ -20,6 +20,7 @@ class AuditEventType(str, Enum):
     HUMAN_REVIEW_REQUIRED = "human_review_required"
     INCIDENT_PRIORITIZED = "incident_prioritized"
     INCIDENT_DISPATCH_ASSESSED = "incident_dispatch_assessed"
+    INCIDENT_SLA_BREACHED = "incident_sla_breached"
 
 
 

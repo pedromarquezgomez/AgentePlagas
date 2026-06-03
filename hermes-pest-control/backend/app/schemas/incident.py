@@ -68,6 +68,10 @@ class IncidentRead(BaseModel):
     technician_level: str | None = None
     dispatch_bucket: str | None = None
     sla_hours: int | None = None
+    sla_status: str | None = None
+    elapsed_hours: float | None = None
+    remaining_hours: float | None = None
+    breach_hours: float | None = None
     created_at: Any | None = None
     updated_at: Any | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

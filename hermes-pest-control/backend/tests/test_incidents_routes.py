@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from datetime import datetime, timedelta, timezone
 
 from app.main import app
 from app.routes import incidents as incidents_route
@@ -220,6 +221,67 @@ def test_get_incidents_sorts_by_sla_hours(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert [item["sla_hours"] for item in response.json()] == [24, 24, 72]
+
+
+def test_get_incidents_exposes_and_filters_sla_status(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    import anyio
+
+    urgent_id, week_id, _ = anyio.run(_seed_operational_incidents, service)
+    anyio.run(
+        firestore_service.update_document,
+        "incidents",
+        urgent_id,
+        {"created_at": datetime.now(timezone.utc) - timedelta(hours=30)},
+    )
+    anyio.run(
+        firestore_service.update_document,
+        "incidents",
+        week_id,
+        {"created_at": datetime.now(timezone.utc) - timedelta(hours=70)},
+    )
+
+    breached_response = client.get("/incidents?sla_status=BREACHED")
+    at_risk_response = client.get("/incidents?sla_status=AT_RISK")
+
+    assert breached_response.status_code == 200
+    assert [item["id"] for item in breached_response.json()] == [urgent_id]
+    assert breached_response.json()[0]["sla_status"] == "BREACHED"
+    assert breached_response.json()[0]["breach_hours"] > 0
+    assert at_risk_response.status_code == 200
+    assert [item["id"] for item in at_risk_response.json()] == [week_id]
+    assert at_risk_response.json()[0]["remaining_hours"] <= 18
+
+
+def test_get_incidents_sorts_by_remaining_hours(monkeypatch) -> None:
+    firestore_service = MockFirestoreService()
+    service = IncidentService(firestore_service)
+    monkeypatch.setattr(incidents_route, "incident_service", service)
+
+    import anyio
+
+    urgent_id, week_id, _ = anyio.run(_seed_operational_incidents, service)
+    anyio.run(
+        firestore_service.update_document,
+        "incidents",
+        urgent_id,
+        {"created_at": datetime.now(timezone.utc) - timedelta(hours=10)},
+    )
+    anyio.run(
+        firestore_service.update_document,
+        "incidents",
+        week_id,
+        {"created_at": datetime.now(timezone.utc) - timedelta(hours=60)},
+    )
+
+    response = client.get("/incidents?sort_by=remaining_hours&sort_dir=asc")
+
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.json()]
+    assert ids.index(week_id) < ids.index(urgent_id)
 
 
 def test_get_incident_returns_404_for_missing_incident(monkeypatch) -> None:

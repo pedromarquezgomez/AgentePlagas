@@ -50,6 +50,30 @@ const cards = [
     path: '/human-review',
   },
   {
+    title: 'SLA vencidas',
+    section: 'incidents',
+    metric: 'sla_breached',
+    path: '/incidents',
+  },
+  {
+    title: 'SLA en riesgo',
+    section: 'incidents',
+    metric: 'sla_at_risk',
+    path: '/incidents',
+  },
+  {
+    title: 'Dentro de SLA',
+    section: 'incidents',
+    metric: 'sla_on_track',
+    path: '/incidents',
+  },
+  {
+    title: 'SLA completadas',
+    section: 'incidents',
+    metric: 'sla_completed',
+    path: '/incidents',
+  },
+  {
     title: 'Revisiones humanas abiertas',
     section: 'human_review',
     metric: 'open',
@@ -97,6 +121,14 @@ function metricValue(card: (typeof cards)[number]): number {
       return props.summary.incidents.pending_this_week
     case 'Revisión humana':
       return props.summary.incidents.human_review
+    case 'SLA vencidas':
+      return props.summary.incidents.sla_breached
+    case 'SLA en riesgo':
+      return props.summary.incidents.sla_at_risk
+    case 'Dentro de SLA':
+      return props.summary.incidents.sla_on_track
+    case 'SLA completadas':
+      return props.summary.incidents.sla_completed
     case 'Revisiones humanas abiertas':
       return props.summary.human_review.open
     case 'Visitas programadas':

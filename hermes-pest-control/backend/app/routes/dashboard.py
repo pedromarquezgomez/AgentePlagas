@@ -79,6 +79,10 @@ async def get_dashboard_summary() -> dict:
             "human_review": _count_by(incidents, "dispatch_bucket", "MANUAL_REVIEW"),
             "high_priority": _count_by(incidents, "operational_priority", "HIGH"),
             "pending_this_week": _count_by(incidents, "dispatch_bucket", "THIS_WEEK"),
+            "sla_breached": _count_by(incidents, "sla_status", "BREACHED"),
+            "sla_at_risk": _count_by(incidents, "sla_status", "AT_RISK"),
+            "sla_on_track": _count_by(incidents, "sla_status", "ON_TRACK"),
+            "sla_completed": _count_by(incidents, "sla_status", "COMPLETED"),
         },
         human_review={
             "open": _count_by(review_items, "status", "open"),

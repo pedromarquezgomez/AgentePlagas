@@ -594,9 +594,43 @@ Items are created automatically for:
 Current limitations:
 
 - no user identity beyond optional `assigned_to`;
-- no SLA or reminder logic;
+- no scheduled reminders or background workers yet;
 - no audit history of status changes yet;
 - no dedicated metrics dashboard for review backlog.
+
+### SLA Monitoring
+
+Status: implemented as dynamic read-time assessment.
+
+SLA modules live under:
+
+```text
+backend/app/incidents/sla/
+```
+
+`SLAEngine` uses only:
+
+```text
+incident.created_at
+incident.sla_hours
+incident.status
+current_time
+```
+
+It returns:
+
+```text
+ON_TRACK
+AT_RISK
+BREACHED
+COMPLETED
+```
+
+The system does not persist `sla_status` because time changes continuously.
+Incident APIs calculate and expose `sla_status`, `elapsed_hours`,
+`remaining_hours`, and `breach_hours` dynamically. The first observed breach
+creates one `INCIDENT_SLA_BREACHED` audit event and stores only a lightweight
+`metadata.sla_breach_audited` marker to avoid duplicate events.
 
 ### Tool Permissions
 

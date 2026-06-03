@@ -29,6 +29,7 @@ export const PEST_TYPES = ['COCKROACH', 'RODENT', 'ANT', 'FLYING_INSECT', 'STORE
 export const VISIT_TYPES = ['URGENT_TREATMENT', 'TREATMENT', 'INSPECTION', 'FOLLOW_UP', 'HUMAN_REVIEW'] as const
 export const TECHNICIAN_LEVELS = ['JUNIOR', 'STANDARD', 'SENIOR', 'SPECIALIST'] as const
 export const DISPATCH_BUCKETS = ['URGENT_24H', 'NEXT_48H', 'THIS_WEEK', 'PLANNED', 'MANUAL_REVIEW'] as const
+export const SLA_STATUSES = ['ON_TRACK', 'AT_RISK', 'BREACHED', 'COMPLETED'] as const
 export const HUMAN_REVIEW_STATUSES = ['open', 'in_review', 'resolved', 'dismissed'] as const
 export const VISIT_STATUSES = ['draft', 'scheduled', 'in_progress', 'completed', 'cancelled'] as const
 export const DOCUMENT_TYPES = [
@@ -69,6 +70,10 @@ export interface Incident {
   technician_level?: string | null
   dispatch_bucket?: string | null
   sla_hours?: number | null
+  sla_status?: string | null
+  elapsed_hours?: number | null
+  remaining_hours?: number | null
+  breach_hours?: number | null
   created_at?: string
   updated_at?: string
 }
@@ -78,7 +83,8 @@ export interface IncidentFilters {
   priority?: string
   pest_type?: string
   dispatch_bucket?: string
-  sort_by?: 'priority' | 'severity' | 'sla_hours' | 'created_at' | string
+  sla_status?: string
+  sort_by?: 'priority' | 'severity' | 'sla_hours' | 'remaining_hours' | 'breach_hours' | 'sla_status' | 'created_at' | string
   sort_dir?: 'asc' | 'desc' | string
   limit?: number
 }
@@ -286,6 +292,10 @@ export interface DashboardSummary {
     human_review: number
     high_priority: number
     pending_this_week: number
+    sla_breached: number
+    sla_at_risk: number
+    sla_on_track: number
+    sla_completed: number
   }
   human_review: {
     open: number
@@ -564,6 +574,7 @@ export async function fetchIncidents(filters: IncidentFilters = {}): Promise<Inc
   if (filters.priority) params.set('priority', filters.priority)
   if (filters.pest_type) params.set('pest_type', filters.pest_type)
   if (filters.dispatch_bucket) params.set('dispatch_bucket', filters.dispatch_bucket)
+  if (filters.sla_status) params.set('sla_status', filters.sla_status)
   if (filters.sort_by) params.set('sort_by', filters.sort_by)
   if (filters.sort_dir) params.set('sort_dir', filters.sort_dir)
   if (filters.limit) params.set('limit', String(filters.limit))
