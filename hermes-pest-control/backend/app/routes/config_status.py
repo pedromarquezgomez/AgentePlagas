@@ -35,6 +35,8 @@ async def config_status() -> dict[str, bool | str]:
         "llm_api_key_configured": bool(settings.llm_api_key or settings.openai_api_key),
         "llm_model_configured": bool(settings.llm_model or settings.openai_model),
         "llm_fallback_provider": settings.llm_fallback_provider,
+        "fallback_provider": settings.llm_fallback_provider,
+        "shadow_mode": settings.hermes_shadow_mode,
         "openai_api_key_configured": bool(settings.openai_api_key),
         "openai_model_configured": bool(settings.openai_model),
         "agent_max_output_tokens_configured": bool(settings.agent_max_output_tokens),

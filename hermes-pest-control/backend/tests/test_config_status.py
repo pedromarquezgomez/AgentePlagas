@@ -88,6 +88,8 @@ def test_config_status_returns_safe_configuration(monkeypatch) -> None:
         "llm_api_key_configured": True,
         "llm_model_configured": True,
         "llm_fallback_provider": "mock",
+        "fallback_provider": "mock",
+        "shadow_mode": True,
         "openai_api_key_configured": True,
         "openai_model_configured": True,
         "agent_max_output_tokens_configured": True,

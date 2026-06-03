@@ -85,17 +85,25 @@ async def execute_tool_execution(execution_id: str) -> dict:
         current_record = await tool_execution_service.get_execution_record(execution_id)
         _record_tool_execution_requested(current_record)
         policy_result = policy_engine.evaluate(_policy_context_from_record(current_record))
-        _record_policy_evaluated(current_record, policy_result.decision.value)
-        if policy_result.decision == PolicyDecision.DENY:
+        decision_val = policy_result.decision.value
+        if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW and current_record.get("review_status") == "approved":
+            if current_record.get("tool_name") == "gmail.create_draft":
+                decision_val = "ALLOW"
+
+        _record_policy_evaluated(current_record, decision_val)
+        if decision_val == "DENY":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Tool execution blocked by policy: tool is not allowed.",
             )
-        if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW:
+        if decision_val == "REQUIRE_HUMAN_REVIEW":
             _record_human_review_required(current_record)
+            detail_msg = "Tool execution requires human review before execution."
+            if current_record.get("tool_name") == "gmail.create_draft" and current_record.get("review_status") != "approved":
+                detail_msg = "Tool execution requires review_status=approved."
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Tool execution requires human review before execution.",
+                detail=detail_msg,
             )
         return await tool_execution_service.execute_execution_record(
             execution_id,

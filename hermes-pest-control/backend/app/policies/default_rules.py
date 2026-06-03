@@ -7,7 +7,7 @@ DEFAULT_TOOL_POLICY_RULES: dict[str, PolicyDecision] = {
     "list_incidents_tool": PolicyDecision.ALLOW,
     "suggest_visit_tool": PolicyDecision.REQUIRE_HUMAN_REVIEW,
     "escalate_to_human_tool": PolicyDecision.ALLOW,
-    # Compatibility for Sprint 25 controlled Gmail draft execution. This is
-    # still guarded by review_status=approved and Gmail feature flags.
-    "gmail.create_draft": PolicyDecision.ALLOW,
+    # Controlled Gmail draft execution requires approval.
+    "gmail.create_draft": PolicyDecision.REQUIRE_HUMAN_REVIEW,
+    "gmail.send_email": PolicyDecision.DENY,
 }

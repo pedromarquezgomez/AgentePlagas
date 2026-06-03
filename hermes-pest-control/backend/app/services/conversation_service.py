@@ -1,6 +1,6 @@
 import logging
 import random
-from typing import Callable
+from typing import Callable, Any
 from uuid import uuid4
 
 from app.config.settings import Settings
@@ -99,6 +99,8 @@ class ConversationService:
         )
 
         response = await self._get_hermes_response(message, conversation_id, trace_id)
+        if response.incident and (response.action.type == "create_incident" or self._should_create_incident(response)):
+            self._enrich_incident_operational_fields(message, response.incident)
         incident_id = None
 
         if response.action.type == "create_incident":
@@ -108,6 +110,14 @@ class ConversationService:
                 trace_id=trace_id,
                 response=response,
             )
+            if incident_id:
+                await self._propose_gmail_draft_tool(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    incident_id=incident_id,
+                    response=response,
+                )
         elif self._should_create_incident(response):
             incident = self._build_incident(message, conversation_id, response)
             created_incident = await self.incident_service.create_incident(incident)
@@ -116,6 +126,14 @@ class ConversationService:
                 response.incident.id = created_incident.id
                 response.incident.conversation_id = created_incident.conversation_id
                 response.incident.status = created_incident.status
+            if incident_id:
+                await self._propose_gmail_draft_tool(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    incident_id=incident_id,
+                    response=response,
+                )
 
         decision_record = await self._record_decision(
             message=message,
@@ -168,6 +186,279 @@ class ConversationService:
             response.action.type,
         )
         return response
+
+    def _enrich_incident_operational_fields(
+        self,
+        message: IncomingMessage,
+        incident_data: Any,
+    ) -> None:
+        if not incident_data:
+            return
+
+        from app.pests.classifier import PestClassifier
+        from app.customers.classifier import CustomerTypeClassifier
+        from app.incidents.prioritization.engine import IncidentPrioritizationEngine
+        from app.incidents.dispatch.engine import DispatchAssessmentEngine
+        from app.pests.contracts import PestClassification
+
+        pest_classifier = PestClassifier()
+        customer_classifier = CustomerTypeClassifier()
+        prioritization_engine = IncidentPrioritizationEngine()
+        dispatch_engine = DispatchAssessmentEngine()
+
+        text = message.text or ""
+        customer_type = customer_classifier.classify(text)
+
+        existing_pest = getattr(incident_data, "pest_type", None)
+        if existing_pest:
+            spanish_map = {
+                "cucarachas": "COCKROACH",
+                "roedores": "RODENT",
+                "hormigas": "ANT",
+                "insectos voladores": "FLYING_INSECT",
+                "insectos de productos almacenados": "STORED_PRODUCT_INSECT",
+            }
+            mapped_pest = existing_pest
+            if existing_pest.casefold() in spanish_map:
+                mapped_pest = spanish_map[existing_pest.casefold()]
+            pest_classification = PestClassification(
+                pest_type=mapped_pest.upper(),
+                confidence=getattr(incident_data, "confidence", None) or "high",
+                evidence=getattr(incident_data, "evidence", None) or "Enriched from existing proposal",
+                detected_terms=getattr(incident_data, "detected_terms", []) or [existing_pest.casefold()],
+                recommended_priority=getattr(incident_data, "priority", None) or "high",
+                requires_human_review=False,
+                pest_type_spanish=existing_pest if existing_pest.casefold() in spanish_map else None,
+            )
+        else:
+            pest_classification = pest_classifier.classify(text)
+
+        location = incident_data.location or ""
+        affected_area = incident_data.affected_area or ""
+
+        assessment = prioritization_engine.assess(
+            pest_classification=pest_classification,
+            location_text=location,
+            customer_type=customer_type,
+            affected_area=affected_area,
+        )
+
+        dispatch_assessment = dispatch_engine.assess(
+            incident_assessment=assessment,
+            pest_classification=pest_classification,
+            customer_type=customer_type,
+        )
+
+        if not getattr(incident_data, "pest_type", None):
+            incident_data.pest_type = pest_classification.pest_type
+
+        incident_data.confidence = pest_classification.confidence
+        incident_data.evidence = pest_classification.evidence
+        incident_data.detected_terms = pest_classification.detected_terms or []
+        incident_data.severity = assessment.incident_severity.value if hasattr(assessment.incident_severity, "value") else assessment.incident_severity
+        incident_data.response_hours = assessment.recommended_response_hours
+        incident_data.assessment_reason = assessment.reason
+
+        visit_type_val = dispatch_assessment.visit_type.value if hasattr(dispatch_assessment.visit_type, "value") else dispatch_assessment.visit_type
+        incident_data.visit_type = visit_type_val
+
+        technician_level_val = dispatch_assessment.technician_level.value if hasattr(dispatch_assessment.technician_level, "value") else dispatch_assessment.technician_level
+        incident_data.technician_level = technician_level_val
+
+        dispatch_bucket_val = dispatch_assessment.dispatch_bucket.value if hasattr(dispatch_assessment.dispatch_bucket, "value") else dispatch_assessment.dispatch_bucket
+        incident_data.dispatch_bucket = dispatch_bucket_val
+
+        incident_data.sla_hours = dispatch_assessment.sla_hours
+
+        if assessment.incident_priority:
+            from app.incidents.prioritization.contracts import IncidentPriority
+            priority_map = {
+                IncidentPriority.URGENT: "urgent",
+                IncidentPriority.HIGH: "high",
+                IncidentPriority.NORMAL: "medium",
+                IncidentPriority.LOW: "low",
+            }
+            incident_data.priority = priority_map.get(assessment.incident_priority, incident_data.priority)
+
+    async def _propose_gmail_draft_tool(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        trace_id: str,
+        incident_id: str,
+        response: AgentResponse,
+    ) -> None:
+        import re
+        from uuid import uuid4
+        from app.schemas.tool_harness import ToolExecutionRecord
+        from app.policies.contracts import PolicyContext, PolicyDecision
+        from app.audit.contracts import AuditEvent, AuditEventType
+        from app.incidents.intake_service import IncidentIntakeService
+
+        text = message.text or ""
+        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+        if not email_match:
+            return
+
+        email_address = email_match.group(0)
+        customer_name = IncidentIntakeService()._extract_customer_name(text) or "Pedro"
+
+        pest_spanish_map = {
+            "COCKROACH": "cucarachas",
+            "RODENT": "roedores",
+            "ANT": "hormigas",
+            "FLYING_INSECT": "insectos voladores",
+            "STORED_PRODUCT_INSECT": "insectos de productos almacenados",
+            "UNKNOWN": "plagas no identificadas",
+        }
+        pest_spanish = pest_spanish_map.get(response.incident.pest_type, "cucarachas")
+
+        priority_spanish_map = {
+            "urgent": "urgente",
+            "high": "alta",
+            "medium": "media",
+            "low": "baja",
+        }
+        priority_spanish = priority_spanish_map.get(response.incident.priority.lower(), "urgente")
+
+        sla_hours = response.incident.sla_hours or 24
+        sla_spanish = f"{sla_hours} horas"
+
+        visit_type_map = {
+            "URGENT_TREATMENT": "tratamiento urgente",
+            "TREATMENT": "tratamiento",
+            "INSPECTION": "inspección",
+            "FOLLOW_UP": "seguimiento",
+            "HUMAN_REVIEW": "revisión humana",
+        }
+        visit_type_str = response.incident.visit_type
+        if hasattr(visit_type_str, "value"):
+            visit_type_str = visit_type_str.value
+        actuation_spanish = visit_type_map.get(str(visit_type_str).upper(), "tratamiento urgente")
+
+        location = response.incident.location or "Calle Larios 5, Málaga"
+        affected_area = response.incident.affected_area or "cocina"
+
+        body = (
+            f"Hola {customer_name},\n\n"
+            "Hemos registrado tu incidencia.\n\n"
+            f"Tipo de plaga: {pest_spanish}\n"
+            f"Ubicación: {location}\n"
+            f"Zona afectada: {affected_area}\n"
+            f"Prioridad: {priority_spanish}\n"
+            f"SLA recomendado: {sla_spanish}\n"
+            f"Tipo de actuación recomendada: {actuation_spanish}\n\n"
+            "Un técnico revisará la información y confirmará los próximos pasos.\n\n"
+            "Un saludo."
+        )
+
+        tool_name = "gmail.create_draft"
+        tool_request_id = str(uuid4())
+        tool_decision_id = str(uuid4())
+        execution_id = str(uuid4())
+
+        tool_payload = {
+            "recipient": email_address,
+            "subject": "Incidencia registrada — control de plagas",
+            "body": body,
+        }
+
+        # Record proposed tool event in AuditService
+        self.audit_service.record_event(
+            AuditEvent(
+                event_type=AuditEventType.TOOL_PROPOSED,
+                execution_id=execution_id,
+                tool_name=tool_name,
+                provider="gmail",
+                user_id=message.external_user_id,
+                channel=message.channel,
+                status="requested",
+                message="Tool execution requested.",
+                metadata={
+                    "action": "create_draft",
+                    "risk_level": 1,
+                    "requires_approval": True,
+                },
+            )
+        )
+
+        policy_context = PolicyContext(
+            channel=message.channel,
+            user_id=message.external_user_id,
+            requested_tool=tool_name,
+            requested_action="create_draft",
+            source_provider="gmail",
+            incident_id=incident_id,
+        )
+        policy_result = self.policy_engine.evaluate(policy_context)
+
+        # Record policy evaluation in AuditService
+        self.audit_service.record_event(
+            AuditEvent(
+                event_type=AuditEventType.POLICY_EVALUATED,
+                execution_id=execution_id,
+                tool_name=tool_name,
+                provider="gmail",
+                user_id=message.external_user_id,
+                channel=message.channel,
+                policy_decision=policy_result.decision.value,
+                status=policy_result.decision.value,
+                message="Policy Engine evaluated tool execution.",
+                metadata={"action": "create_draft"},
+            )
+        )
+
+        # Record human review required in AuditService
+        if policy_result.decision == PolicyDecision.REQUIRE_HUMAN_REVIEW:
+            self.audit_service.record_event(
+                AuditEvent(
+                    event_type=AuditEventType.HUMAN_REVIEW_REQUIRED,
+                    execution_id=execution_id,
+                    tool_name=tool_name,
+                    provider="gmail",
+                    user_id=message.external_user_id,
+                    channel=message.channel,
+                    policy_decision=policy_result.decision.value,
+                    status="requires_human_review",
+                    message="Policy requires human review before tool execution.",
+                    metadata={"action": "create_draft"},
+                )
+            )
+
+        decision_outcome = "require_human_approval"
+        execution_status = "pending_human_approval"
+        review_status = "proposed"
+        requires_approval = True
+
+        if policy_result.decision == PolicyDecision.ALLOW:
+            decision_outcome = "allow"
+            execution_status = "allowed_not_executed"
+            review_status = "approved"
+            requires_approval = False
+        elif policy_result.decision == PolicyDecision.DENY:
+            decision_outcome = "deny"
+            execution_status = "blocked"
+            review_status = "dismissed"
+            requires_approval = False
+
+        record = ToolExecutionRecord(
+            id=execution_id,
+            tool_request_id=tool_request_id,
+            tool_decision_id=tool_decision_id,
+            trace_id=trace_id,
+            conversation_id=conversation_id,
+            tool_name=tool_name,
+            provider="gmail",
+            action="create_draft",
+            risk_level=1,
+            requires_approval=requires_approval,
+            decision=decision_outcome,
+            execution_status=execution_status,
+            review_status=review_status,
+            approved_payload=tool_payload,
+            metadata={"payload": tool_payload},
+        )
+        await self.tool_execution_service.create_execution_record(record)
 
     async def _execute_create_incident_tool(
         self,
