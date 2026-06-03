@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     firebase_credentials_json: str = ""
     use_firestore_emulator: bool = False
     firestore_emulator_host: str = ""
+    agent_provider: str = ""
     hermes_mode: str = "mock"
     hermes_api_url: str = ""
     hermes_api_key: str = ""

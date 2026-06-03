@@ -887,19 +887,37 @@ The agent runtime is encapsulated behind neutral provider contracts under:
 backend/app/harness/
 backend/app/harness/runtime.py
 backend/app/harness/contracts.py
+backend/app/harness/providers/llm_provider.py
 backend/app/harness/providers/mock_provider.py
 backend/app/harness/providers/hermes_http_provider.py
 ```
 
 `HermesService` remains the stable service facade used by
 `ConversationService`, evals, shadow mode, and pilot mode. Internally it now
-routes `HERMES_MODE=mock` to `MockAgentRuntimeProvider` and `HERMES_MODE=real`
-to `HermesHttpRuntimeProvider`.
+routes:
+
+```text
+AGENT_PROVIDER=llm         -> LLMRuntimeProvider, primary path
+AGENT_PROVIDER=mock        -> MockAgentRuntimeProvider
+AGENT_PROVIDER=nous_hermes -> HermesHttpRuntimeProvider, experimental
+```
+
+Legacy compatibility remains while deployments migrate:
+
+```text
+HERMES_MODE=mock -> mock provider when AGENT_PROVIDER is unset
+HERMES_MODE=real -> nous_hermes provider when AGENT_PROVIDER is unset
+```
 
 This keeps Hermes Agent, Nous-style runtimes, HTTP wrappers, skills, and future
 providers out of the orchestrator. Providers must return `AgentResponse`; tool
 use remains mediated separately through `ToolRequest`, `ToolDecision`, audit,
 and backend services.
+
+Hermes Pest Harness is the core product architecture. `LLMRuntimeProvider` is
+the primary inference adapter; Nous/Hermes Agent remains an experimental
+provider until comparative evals, shadow stability, pilot approval, and rollback
+criteria justify a broader role.
 
 ### Stage 5: Production Governance
 

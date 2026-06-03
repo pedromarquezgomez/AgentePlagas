@@ -131,22 +131,35 @@ fallback.
 
 Current modes:
 
-- `HERMES_MODE=mock`: deterministic local behavior.
-- `HERMES_MODE=real`: HTTP runtime provider prepared for Hermes Agent.
+- `AGENT_PROVIDER=llm`: primary standard LLM runtime provider.
+- `AGENT_PROVIDER=mock`: deterministic local/test behavior.
+- `AGENT_PROVIDER=nous_hermes`: experimental HTTP runtime provider for
+  Hermes/Nous-compatible wrappers.
+
+Temporary compatibility remains:
+
+- `HERMES_MODE=mock`: maps to the mock provider when `AGENT_PROVIDER` is unset.
+- `HERMES_MODE=real`: maps to the experimental `nous_hermes` provider when
+  `AGENT_PROVIDER` is unset.
 
 Runtime abstractions live under `backend/app/harness/`:
 
 - `runtime.py`: provider protocol and legacy-client compatibility adapter.
 - `contracts.py`: neutral `AgentRuntimeRequest` passed to providers.
+- `providers/llm_provider.py`: primary standard LLM provider.
 - `providers/mock_provider.py`: deterministic provider for local/test behavior.
-- `providers/hermes_http_provider.py`: HTTP provider for Hermes Agent-compatible
-  wrappers.
+- `providers/hermes_http_provider.py`: experimental HTTP provider for
+  Hermes/Nous-compatible wrappers.
 
 `ConversationService` depends on `HermesService`, not on Hermes Agent, Nous,
 HTTP endpoints, skills, or wrapper internals. Hermes Agent is therefore an
 optional provider behind the same AgentResponse contract. Firestore remains the
 source of truth, and agents only propose responses/actions; backend services
 perform persistence and controlled execution.
+
+The architectural core is the Hermes Pest Harness: schemas, orchestration,
+decision audit, human review, tool review, and backend business services. Runtime
+providers are replaceable inference adapters behind that harness.
 
 Sprint 10A adds a development-only fake Hermes HTTP server at
 `backend/scripts/fake_hermes_server.py`. It is not part of the production

@@ -4,6 +4,7 @@ from typing import Any
 from app.config.settings import Settings
 from app.harness.contracts import AgentRuntimeRequest
 from app.harness.providers.hermes_http_provider import HermesHttpRuntimeProvider
+from app.harness.providers.llm_provider import LLMRuntimeProvider
 from app.harness.providers.mock_provider import MockAgentRuntimeProvider
 from app.harness.runtime import AgentRuntimeProvider, LegacyClientRuntimeProvider
 from app.schemas.agent_response import AgentResponse
@@ -26,7 +27,8 @@ class HermesService:
         provider: AgentRuntimeProvider | None = None,
     ) -> None:
         self.settings = settings or Settings()
-        self.hermes_mode = self.settings.hermes_mode.casefold()
+        self.agent_provider = self._resolve_agent_provider()
+        self.hermes_mode = self._legacy_hermes_mode_for_provider()
         self.provider = provider or self._build_provider(client)
         self.client = client or getattr(self.provider, "client", self.provider)
 
@@ -42,11 +44,12 @@ class HermesService:
         )
         logger.info(
             "hermes_request_started hermes_mode=%s channel=%s message_type=%s "
-            "attachment_count=%s",
+            "attachment_count=%s agent_provider=%s",
             self.hermes_mode,
             incoming_message.channel,
             incoming_message.message_type,
             len(incoming_message.attachments),
+            self.agent_provider,
         )
 
         try:
@@ -93,9 +96,28 @@ class HermesService:
                 name=f"{self.hermes_mode}_legacy_client",
                 mode=self.hermes_mode,
             )
-        if self.hermes_mode == "real":
+        if self.agent_provider == "llm":
+            return LLMRuntimeProvider(self.settings)
+        if self.agent_provider == "nous_hermes":
             return HermesHttpRuntimeProvider(self.settings)
         return MockAgentRuntimeProvider()
+
+    def _resolve_agent_provider(self) -> str:
+        configured_provider = self.settings.agent_provider.strip().casefold()
+        if configured_provider:
+            return configured_provider
+
+        legacy_mode = self.settings.hermes_mode.casefold()
+        if legacy_mode == "real":
+            return "nous_hermes"
+        return "mock"
+
+    def _legacy_hermes_mode_for_provider(self) -> str:
+        if not self.settings.agent_provider.strip():
+            return self.settings.hermes_mode.casefold()
+        if self.agent_provider == "mock":
+            return "mock"
+        return self.agent_provider
 
     @classmethod
     def for_shadow(cls, settings: Settings) -> "HermesService":

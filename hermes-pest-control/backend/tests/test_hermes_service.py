@@ -4,6 +4,9 @@ import httpx
 import pytest
 
 from app.config.settings import Settings
+from app.harness.providers.hermes_http_provider import HermesHttpRuntimeProvider
+from app.harness.providers.llm_provider import LLMRuntimeProvider
+from app.harness.providers.mock_provider import MockAgentRuntimeProvider
 from app.schemas.incoming_message import IncomingMessage
 from app.services.hermes_clients import HermesClientError, HermesRealClient
 from app.services.hermes_service import HermesService
@@ -19,6 +22,42 @@ def _incoming_message(text: str) -> IncomingMessage:
         attachments=[],
         metadata={},
     )
+
+
+def test_hermes_service_selects_mock_provider() -> None:
+    service = HermesService(Settings(agent_provider="mock", hermes_mode="real"))
+
+    assert service.agent_provider == "mock"
+    assert service.hermes_mode == "mock"
+    assert isinstance(service.provider, MockAgentRuntimeProvider)
+
+
+def test_hermes_service_selects_llm_provider_as_primary_path() -> None:
+    service = HermesService(Settings(agent_provider="llm", hermes_mode="mock"))
+
+    assert service.agent_provider == "llm"
+    assert service.hermes_mode == "llm"
+    assert isinstance(service.provider, LLMRuntimeProvider)
+
+
+def test_hermes_service_selects_nous_hermes_provider_as_experimental_path() -> None:
+    service = HermesService(
+        Settings(agent_provider="nous_hermes", hermes_api_url="https://agent.test/agent")
+    )
+
+    assert service.agent_provider == "nous_hermes"
+    assert service.hermes_mode == "nous_hermes"
+    assert isinstance(service.provider, HermesHttpRuntimeProvider)
+
+
+def test_hermes_mode_real_maps_to_nous_hermes_legacy_provider() -> None:
+    service = HermesService(
+        Settings(agent_provider="", hermes_mode="real", hermes_api_url="https://agent.test")
+    )
+
+    assert service.agent_provider == "nous_hermes"
+    assert service.hermes_mode == "real"
+    assert isinstance(service.provider, HermesHttpRuntimeProvider)
 
 
 @pytest.mark.asyncio

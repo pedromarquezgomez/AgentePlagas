@@ -8,7 +8,7 @@ from app.services.hermes_clients import HermesRealClient
 
 class HermesHttpRuntimeProvider:
     name = "hermes_http_provider"
-    mode = "real"
+    mode = "nous_hermes"
 
     def __init__(
         self,
