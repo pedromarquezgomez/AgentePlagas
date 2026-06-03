@@ -39,12 +39,26 @@ class ConversationService:
         random_func: Callable[[], float] | None = None,
     ) -> None:
         self.settings = settings or Settings()
-        self.hermes_service = hermes_service or HermesService()
         self.firestore_service = (
             firestore_service
             or getattr(incident_service, "firestore_service", None)
             or get_firestore_service()
         )
+        if hermes_service is None:
+            from app.context.manager import ContextManager
+            from app.policies.engine import PolicyEngine
+            policy_engine = PolicyEngine()
+            ctx_manager = ContextManager(
+                firestore_service=self.firestore_service,
+                policy_engine=policy_engine,
+                settings=self.settings,
+            )
+            self.hermes_service = HermesService(
+                settings=self.settings,
+                context_manager=ctx_manager,
+            )
+        else:
+            self.hermes_service = hermes_service
         self.incident_service = incident_service or IncidentService(self.firestore_service)
         self.decision_audit_service = decision_audit_service or DecisionAuditService(
             self.firestore_service
@@ -59,6 +73,14 @@ class ConversationService:
         self.pilot_hermes_service = pilot_hermes_service
         self.pilot_gate = pilot_gate or HermesPilotGate()
         self.random_func = random_func or random.random
+
+        from app.services.tool_execution_service import ToolExecutionService
+        from app.policies.engine import PolicyEngine
+        from app.audit.service import default_audit_service
+
+        self.tool_execution_service = ToolExecutionService(self.firestore_service)
+        self.policy_engine = PolicyEngine()
+        self.audit_service = default_audit_service()
 
     async def handle_incoming_message(self, message: IncomingMessage) -> AgentResponse:
         trace_id = self.build_trace_id()
@@ -79,7 +101,101 @@ class ConversationService:
         response = await self._get_hermes_response(message, conversation_id, trace_id)
         incident_id = None
 
-        if self._should_create_incident(response):
+        if response.action.type == "create_incident":
+            from app.schemas.tool_harness import ToolExecutionRecord
+            from app.policies.contracts import PolicyContext, PolicyDecision
+            from app.audit.contracts import AuditEvent, AuditEventType
+
+            tool_name = "create_incident_tool"
+            tool_request_id = str(uuid4())
+            tool_decision_id = str(uuid4())
+            execution_id = str(uuid4())
+
+            tool_payload = {
+                "conversation_id": conversation_id,
+                "channel": message.channel,
+                "pest_type": response.incident.pest_type if response.incident else None,
+                "location": response.incident.location if response.incident else None,
+                "affected_area": response.incident.affected_area if response.incident else None,
+                "priority": response.incident.priority if response.incident else "medium",
+                "summary": response.incident.summary if response.incident else None,
+                "metadata": {
+                    "customer_name": response.metadata.get("customer_name") or (response.incident.metadata.get("customer_name") if response.incident and response.incident.metadata else None),
+                    **(response.metadata if response.metadata else {}),
+                }
+            }
+
+            self.audit_service.record_event(
+                AuditEvent(
+                    event_type=AuditEventType.TOOL_PROPOSED,
+                    execution_id=execution_id,
+                    tool_name=tool_name,
+                    provider="mock_provider",
+                    user_id=message.external_user_id,
+                    channel=message.channel,
+                    status="requested",
+                    message="Tool execution requested.",
+                    metadata={
+                        "action": "create_incident",
+                        "risk_level": 2,
+                        "requires_approval": False,
+                    },
+                )
+            )
+
+            policy_context = PolicyContext(
+                channel=message.channel,
+                user_id=message.external_user_id,
+                requested_tool=tool_name,
+                requested_action="create_incident",
+                source_provider="mock_provider",
+            )
+            policy_result = self.policy_engine.evaluate(policy_context)
+
+            self.audit_service.record_event(
+                AuditEvent(
+                    event_type=AuditEventType.POLICY_EVALUATED,
+                    execution_id=execution_id,
+                    tool_name=tool_name,
+                    provider="mock_provider",
+                    user_id=message.external_user_id,
+                    channel=message.channel,
+                    policy_decision=policy_result.decision.value,
+                    status=policy_result.decision.value,
+                    message="Policy Engine evaluated tool execution.",
+                    metadata={"action": "create_incident"},
+                )
+            )
+
+            record = ToolExecutionRecord(
+                id=execution_id,
+                tool_request_id=tool_request_id,
+                tool_decision_id=tool_decision_id,
+                trace_id=trace_id,
+                conversation_id=conversation_id,
+                tool_name=tool_name,
+                provider="mock_provider",
+                action="create_incident",
+                risk_level=2,
+                requires_approval=False,
+                decision="allow" if policy_result.decision == PolicyDecision.ALLOW else "deny",
+                execution_status="allowed_not_executed" if policy_result.decision == PolicyDecision.ALLOW else "blocked",
+                review_status="approved" if policy_result.decision == PolicyDecision.ALLOW else "dismissed",
+                approved_payload=tool_payload,
+                metadata={"payload": tool_payload},
+            )
+            await self.tool_execution_service.create_execution_record(record)
+
+            if policy_result.decision == PolicyDecision.ALLOW:
+                execution_record = await self.tool_execution_service.execute_execution_record(execution_id)
+                created_incident_data = execution_record.get("execution_result")
+                if created_incident_data:
+                    incident_id = created_incident_data.get("id")
+                    if response.incident is not None:
+                        response.incident.id = incident_id
+                        response.incident.conversation_id = conversation_id
+                        response.incident.status = created_incident_data.get("status")
+        elif self._should_create_incident(response):
             incident = self._build_incident(message, conversation_id, response)
             created_incident = await self.incident_service.create_incident(incident)
             incident_id = created_incident.id

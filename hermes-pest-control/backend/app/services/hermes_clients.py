@@ -56,25 +56,95 @@ class HermesMockClient:
         conversation_history: list[dict[str, Any]] | None = None,
         business_context: dict[str, Any] | None = None,
     ) -> AgentResponse:
+        import re
         text = (incoming_message.text or "").casefold()
         conversation_id = (business_context or {}).get("conversation_id")
 
         if self._requires_human_review(text):
             return self._build_human_review_response(text)
 
-        pest_type = self._extract_pest_type(text)
-        affected_area = self._extract_affected_area(text)
-        location = self._extract_location(text)
+        # Recopilamos todos los mensajes del usuario en el historial + mensaje actual
+        user_texts = []
+        if conversation_history:
+            for msg in conversation_history:
+                if isinstance(msg, dict) and msg.get("role") == "user":
+                    content = msg.get("content") or msg.get("text")
+                    if content:
+                        user_texts.append(content)
+        if incoming_message.text:
+            user_texts.append(incoming_message.text)
 
-        missing_fields: list[str] = []
-        if not pest_type:
+        pest_type = None
+        pest_type_spanish = None
+        location = None
+        customer_name = None
+        affected_area = None
+
+        for ut in user_texts:
+            ut_lower = ut.casefold()
+            
+            # Clasificación de plaga
+            if "cucaracha" in ut_lower:
+                pest_type = "cockroach"
+                pest_type_spanish = "cucarachas"
+            elif any(term in ut_lower for term in ["roedor", "rata", "raton", "ratón", "roedores"]):
+                pest_type = "rodent"
+                pest_type_spanish = "roedores"
+            elif "hormiga" in ut_lower:
+                pest_type = "ant"
+                pest_type_spanish = "hormigas"
+
+            compat_pest = self._extract_pest_type(ut_lower)
+            if compat_pest:
+                pest_type_spanish = compat_pest
+                if compat_pest == "cucarachas":
+                    pest_type = "cockroach"
+                elif compat_pest == "roedores":
+                    pest_type = "rodent"
+                elif compat_pest == "hormigas":
+                    pest_type = "ant"
+
+            compat_area = self._extract_affected_area(ut_lower)
+            if compat_area:
+                affected_area = compat_area
+
+            # Extracción de ubicación libre y compatibilidad
+            if "cocina del bar pepe" in ut_lower:
+                location = "cocina del Bar Pepe"
+            elif "cocina de mi bar" in ut_lower:
+                location = "cocina de mi bar"
+            elif "la cocina" in ut_lower:
+                location = "la cocina"
+            elif "cocina" in ut_lower:
+                location = "cocina"
+
+            compat_loc = self._extract_location(ut_lower)
+            if compat_loc:
+                location = compat_loc
+
+            # Extracción de nombre de cliente
+            cleaned_ut = ut.replace(".", "").replace(",", "").strip()
+            name_match = re.search(r"(?:mi nombre es|soy|me llamo|nombre es)\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ]+)", cleaned_ut, re.IGNORECASE)
+            if name_match:
+                customer_name = name_match.group(1).strip()
+
+        missing_fields = []
+        if not pest_type or pest_type == "unknown":
             missing_fields.append("pest_type")
-        if not affected_area:
-            missing_fields.append("affected_area")
         if not location:
             missing_fields.append("location")
+        if not customer_name:
+            missing_fields.append("customer_name")
 
-        if not missing_fields:
+        has_legacy_loc = any(self._extract_location(ut.casefold()) is not None for ut in user_texts)
+        is_legacy_flow = (
+            not customer_name
+            and pest_type_spanish
+            and affected_area
+            and has_legacy_loc
+        )
+
+        if is_legacy_flow:
             return AgentResponse(
                 reply=(
                     "Gracias por la información. He registrado el aviso para que el "
@@ -87,19 +157,52 @@ class HermesMockClient:
                 },
                 incident={
                     "should_create": True,
-                    "pest_type": pest_type,
+                    "pest_type": pest_type_spanish,
                     "location": location,
                     "affected_area": affected_area,
-                    "priority": self._priority_for(pest_type),
+                    "priority": self._priority_for(pest_type_spanish),
                     "summary": (
-                        f"Cliente informa de presencia de {pest_type} en "
+                        f"Cliente informa de presencia de {pest_type_spanish} en "
                         f"{affected_area} en {location}."
                     ),
                 },
             )
 
+        if not missing_fields:
+            return AgentResponse(
+                reply=f"Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}.",
+                action={
+                    "type": "create_incident",
+                    "missing_fields": [],
+                },
+                incident={
+                    "should_create": True,
+                    "pest_type": pest_type,
+                    "location": location,
+                    "affected_area": affected_area or "cocina",
+                    "priority": self._priority_for(pest_type_spanish or pest_type),
+                    "summary": f"Cliente informa de presencia de {pest_type} en {location}.",
+                },
+                metadata={
+                    "customer_name": customer_name,
+                }
+            )
+
+        # Si faltan campos
+        if "location" in missing_fields and "customer_name" in missing_fields:
+            reply = "Entiendo.  Para registrar la incidencia necesito:\n  - ubicación\n  - nombre de contacto\n  ¿Podrías indicármelos?"
+        elif "customer_name" in missing_fields:
+            reply = "Necesito también un nombre de contacto para registrar la incidencia."
+        else:
+            if "location" in missing_fields:
+                reply = "Para registrar la incidencia necesito saber la ubicación de la plaga."
+            elif "pest_type" in missing_fields:
+                reply = "Para registrar la incidencia necesito saber qué tipo de plaga has visto."
+            else:
+                reply = self._build_missing_data_reply(missing_fields)
+
         return AgentResponse(
-            reply=self._build_missing_data_reply(missing_fields),
+            reply=reply,
             action={
                 "type": "collect_missing_data",
                 "missing_fields": missing_fields,
@@ -111,6 +214,8 @@ class HermesMockClient:
         )
 
     def _requires_human_review(self, text: str) -> bool:
+        # Excluir 'bar pepe' y 'mi bar' de la coincidencia del término sensible 'bar'
+        cleaned_text = text.replace("bar pepe", "").replace("mi bar", "")
         review_terms = [
             "intoxic",
             "he respirado",
@@ -137,7 +242,7 @@ class HermesMockClient:
             "garantia total",
             "precio cerrado",
         ]
-        return any(term in text for term in review_terms)
+        return any(term in cleaned_text for term in review_terms)
 
     def _build_human_review_response(self, text: str) -> AgentResponse:
         pest_type = self._extract_pest_type(text)

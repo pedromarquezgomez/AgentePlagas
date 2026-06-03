@@ -171,22 +171,43 @@ class ToolExecutionService:
             raise ToolExecutionAlreadyExecutedError(
                 "Tool execution record has already been executed."
             )
-        if not self._is_gmail_create_draft(current_record):
+        is_gmail = self._is_gmail_create_draft(current_record)
+        is_incident = current_record.get("tool_name") == "create_incident_tool"
+
+        if not (is_gmail or is_incident):
             execution_error = self._execution_error(
                 execution_request,
                 error_code="unsupported_tool",
-                error_message="Only gmail.create_draft can be executed in this sprint.",
+                error_message="Only gmail.create_draft and create_incident_tool can be executed in this sprint.",
             )
             self._record_execution_failed(current_record, execution_error)
             raise ToolExecutionUnsupportedError(
-                "Only gmail.create_draft can be executed in this sprint."
+                "Only gmail.create_draft and create_incident_tool can be executed in this sprint."
             )
 
-        executor = gmail_executor or GmailToolExecutor()
         self._record_execution_started(current_record)
 
         try:
-            executor_result = await executor.create_draft(execution_request.payload)
+            if is_gmail:
+                executor = gmail_executor or GmailToolExecutor()
+                executor_result = await executor.create_draft(execution_request.payload)
+            else:
+                from app.schemas.incident import IncidentDraft
+                from app.services.incident_service import IncidentService
+                incident_service = IncidentService(self.firestore_service)
+                payload = execution_request.payload
+                draft = IncidentDraft(
+                    conversation_id=execution_request.conversation_id or payload.get("conversation_id"),
+                    channel=payload.get("channel") or "telegram",
+                    pest_type=payload.get("pest_type"),
+                    location=payload.get("location"),
+                    affected_area=payload.get("affected_area"),
+                    priority=payload.get("priority", "medium"),
+                    summary=payload.get("summary"),
+                    metadata=payload.get("metadata", {}),
+                )
+                incident = await incident_service.create_incident(draft)
+                executor_result = incident.model_dump()
         except GmailToolDisabledError as exc:
             self._record_execution_failed(
                 current_record,
@@ -213,6 +234,16 @@ class ToolExecutionService:
                 self._execution_error(
                     execution_request,
                     error_code="gmail_execution_failed",
+                    error_message=str(exc),
+                ),
+            )
+            raise
+        except Exception as exc:
+            self._record_execution_failed(
+                current_record,
+                self._execution_error(
+                    execution_request,
+                    error_code="execution_failed",
                     error_message=str(exc),
                 ),
             )

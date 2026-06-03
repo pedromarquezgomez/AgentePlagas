@@ -9,9 +9,9 @@ DEFAULT_PRODUCT_SKILLS = [
         forbidden_effects=["database_write", "channel_send", "tool_execution"],
         risk_level="low",
         instructions=(
-            "Normalize common pest names such as cucarachas, hormigas, roedores, "
-            "chinches, and avispas. If uncertain, leave pest_type null and ask "
-            "for more information."
+            "Classify the pest type into cockroach, rodent, ant, or unknown. "
+            "Normalize common terms: cucarachas -> cockroach, roedores/ratas/ratones -> rodent, "
+            "hormigas -> ant. If uncertain, leave as unknown."
         ),
     ),
     ProductSkill(
@@ -21,7 +21,7 @@ DEFAULT_PRODUCT_SKILLS = [
         forbidden_effects=["database_write", "channel_send", "tool_execution"],
         risk_level="low",
         instructions=(
-            "Required intake fields are pest_type, affected_area, and location. "
+            "Required intake fields are pest_type, location, and customer_name. "
             "Preserve known fields and ask only for missing or uncertain data."
         ),
     ),
