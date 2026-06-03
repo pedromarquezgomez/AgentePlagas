@@ -117,25 +117,6 @@ class ConversationService:
                 response.incident.conversation_id = created_incident.conversation_id
                 response.incident.status = created_incident.status
 
-            # Registrar evento de priorización en auditoría
-            from app.audit.contracts import AuditEvent, AuditEventType
-            self.audit_service.record_event(
-                AuditEvent(
-                    event_type=AuditEventType.INCIDENT_PRIORITIZED,
-                    execution_id=trace_id,
-                    user_id=message.external_user_id,
-                    channel=message.channel,
-                    status="completed",
-                    message="Incident prioritization completed.",
-                    metadata={
-                        "severity": response.incident.severity if response.incident else None,
-                        "priority": response.incident.priority if response.incident else None,
-                        "reason": response.incident.assessment_reason if response.incident else None,
-                        "response_hours": response.incident.response_hours if response.incident else None,
-                    },
-                )
-            )
-
         decision_record = await self._record_decision(
             message=message,
             conversation_id=conversation_id,
@@ -158,7 +139,28 @@ class ConversationService:
             trace_id=trace_id,
             primary_response=response,
         )
+        # Registrar evento de priorización en auditoría al final si existe assessment real
+        if response.incident and response.incident.severity:
+            from app.audit.contracts import AuditEvent, AuditEventType
+            self.audit_service.record_event(
+                AuditEvent(
+                    event_type=AuditEventType.INCIDENT_PRIORITIZED,
+                    execution_id=trace_id,
+                    user_id=message.external_user_id,
+                    channel=message.channel,
+                    status="completed",
+                    message="Incident prioritization completed.",
+                    metadata={
+                        "severity": response.incident.severity,
+                        "priority": response.incident.priority,
+                        "reason": response.incident.assessment_reason,
+                        "response_hours": response.incident.response_hours,
+                    },
+                )
+            )
+
         await self._store_outbound_message(message, conversation_id, trace_id, response)
+
         logger.info(
             "conversation_completed trace_id=%s conversation_id=%s action_type=%s",
             trace_id,
@@ -195,6 +197,19 @@ class ConversationService:
                 "customer_name": response.metadata.get("customer_name")
                 or (getattr(response.incident, "metadata", {}) or {}).get("customer_name")
                 if response.incident else None,
+                "confidence": getattr(response.incident, "confidence", None) if response.incident else None,
+                "evidence": getattr(response.incident, "evidence", None) if response.incident else None,
+                "detected_terms": getattr(response.incident, "detected_terms", []) if response.incident else [],
+                "severity": getattr(response.incident, "severity", None) if response.incident else None,
+                "priority": getattr(response.incident, "priority", None) if response.incident else None,
+                "response_hours": getattr(response.incident, "response_hours", None) if response.incident else None,
+                "assessment_reason": getattr(response.incident, "assessment_reason", None) if response.incident else None,
+                "classification": {
+                    "pest_type": response.incident.pest_type if response.incident else None,
+                    "confidence": getattr(response.incident, "confidence", None) if response.incident else None,
+                    "evidence": getattr(response.incident, "evidence", None) if response.incident else None,
+                    "detected_terms": getattr(response.incident, "detected_terms", []) if response.incident else [],
+                } if response.incident else None,
                 **(response.metadata if response.metadata else {}),
             }
         }

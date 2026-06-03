@@ -68,8 +68,8 @@ async def test_prioritization_case_1() -> None:
     state = await service.process_intake(message)
 
     assert state.pest_type == "COCKROACH"
-    assert state.severity == "HIGH"
-    assert state.priority == "URGENT"
+    assert state.severity == IncidentSeverity.HIGH
+    assert state.priority == IncidentPriority.URGENT
     assert state.response_hours == 24
     assert state.assessment_reason == "Posible riesgo alimentario."
     assert state.requires_human_review is False
@@ -84,8 +84,8 @@ async def test_prioritization_case_2() -> None:
     state = await service.process_intake(message)
 
     assert state.pest_type == "RODENT"
-    assert state.severity == "HIGH"
-    assert state.priority == "URGENT"
+    assert state.severity == IncidentSeverity.HIGH
+    assert state.priority == IncidentPriority.URGENT
     assert state.response_hours == 24
     assert state.assessment_reason == "Posible riesgo sanitario."
     assert state.requires_human_review is False
@@ -100,8 +100,8 @@ async def test_prioritization_case_3() -> None:
     state = await service.process_intake(message)
 
     assert state.pest_type == "ANT"
-    assert state.severity == "LOW"
-    assert state.priority == "NORMAL"
+    assert state.severity == IncidentSeverity.LOW
+    assert state.priority == IncidentPriority.NORMAL
     assert state.response_hours == 72
     assert state.assessment_reason == "Presencia de hormigas."
     assert state.requires_human_review is False
@@ -116,8 +116,8 @@ async def test_prioritization_case_4() -> None:
     state = await service.process_intake(message)
 
     assert state.pest_type == "FLYING_INSECT"
-    assert state.severity == "MEDIUM"
-    assert state.priority == "NORMAL"
+    assert state.severity == IncidentSeverity.MEDIUM
+    assert state.priority == IncidentPriority.NORMAL
     assert state.response_hours == 48
     assert state.assessment_reason == "Presencia de insectos voladores."
     assert state.requires_human_review is False
@@ -133,6 +133,103 @@ async def test_prioritization_case_5() -> None:
 
     assert state.pest_type == "UNKNOWN"
     assert state.requires_human_review is True
-    assert state.severity == "MEDIUM"
-    assert state.priority == "HIGH"
+    assert state.severity == IncidentSeverity.MEDIUM
+    assert state.priority == IncidentPriority.HIGH
     assert state.assessment_reason == "Plaga desconocida que requiere revisión humana."
+
+
+# --- Nuevos Tests Específicos Exigidos ---
+
+@pytest.mark.asyncio
+async def test_unknown_escalates_to_human_flow() -> None:
+    # Validar que plagas UNKNOWN (bichos raros) escalen directamente a revisión humana
+    from app.services.conversation_service import ConversationService
+    from app.services.mock_firestore_service import MockFirestoreService
+
+    firestore = MockFirestoreService()
+    service = ConversationService(firestore_service=firestore)
+    service.audit_service.repository.clear()
+
+    message = _incoming_message("Tengo unos bichos raros en la pared. Mi nombre es Carlos.")
+    response = await service.handle_incoming_message(message)
+
+    assert response.action.type == "escalate_to_human"
+    assert response.incident is not None
+    assert response.incident.severity == "MEDIUM"
+    assert response.incident.priority == "high"  # Piso de prioridad para revisión humana es high
+    assert response.incident.assessment_reason == "Plaga desconocida que requiere revisión humana."
+
+
+@pytest.mark.asyncio
+async def test_metadata_persisted_in_incident_draft() -> None:
+    # Validar que los metadatos de priorización se guarden en metadata de IncidentDraft
+    from app.services.conversation_service import ConversationService
+    from app.services.mock_firestore_service import MockFirestoreService
+
+    firestore = MockFirestoreService()
+    service = ConversationService(firestore_service=firestore)
+    service.audit_service.repository.clear()
+    message = _incoming_message("Tengo cucarachas en la cocina del local central. Mi nombre es Carlos.")
+
+    response = await service.handle_incoming_message(message)
+
+    assert response.action.type == "create_incident"
+    assert response.incident is not None
+    assert response.incident.id is not None
+
+    # Recuperar de la base de datos simulada
+    incident_in_db = await service.incident_service.get_incident(response.incident.id)
+    assert incident_in_db is not None
+
+    metadata = incident_in_db.get("metadata", {})
+    assert "classification" in metadata
+    assert metadata["classification"]["pest_type"] == "COCKROACH"
+    assert metadata["severity"] == "HIGH"
+    assert metadata["priority"] == "urgent"
+    assert metadata["response_hours"] == 24
+    assert metadata["assessment_reason"] == "Posible riesgo alimentario."
+
+
+@pytest.mark.asyncio
+async def test_audit_incident_prioritized() -> None:
+    # Validar que se emita el evento de auditoría INCIDENT_PRIORITIZED con metadatos cuando hay assessment real
+    from app.services.conversation_service import ConversationService
+    from app.services.mock_firestore_service import MockFirestoreService
+    from app.audit.contracts import AuditEventType
+
+    firestore = MockFirestoreService()
+    service = ConversationService(firestore_service=firestore)
+    service.audit_service.repository.clear()
+    message = _incoming_message("Tengo cucarachas en la cocina del local central. Mi nombre es Carlos.")
+
+    await service.handle_incoming_message(message)
+
+    events = service.audit_service.list_events()
+    prioritized_events = [e for e in events if e.event_type == AuditEventType.INCIDENT_PRIORITIZED]
+
+    assert len(prioritized_events) == 1
+    event = prioritized_events[0]
+    assert event.metadata["severity"] == "HIGH"
+    assert event.metadata["priority"] == "urgent"
+    assert event.metadata["reason"] == "Posible riesgo alimentario."
+    assert event.metadata["response_hours"] == 24
+
+
+@pytest.mark.asyncio
+async def test_audit_not_prioritized_without_assessment() -> None:
+    # Validar que NO se emita el evento de auditoría INCIDENT_PRIORITIZED si no hay un assessment real de plaga
+    from app.services.conversation_service import ConversationService
+    from app.services.mock_firestore_service import MockFirestoreService
+    from app.audit.contracts import AuditEventType
+
+    firestore = MockFirestoreService()
+    service = ConversationService(firestore_service=firestore)
+    service.audit_service.repository.clear()
+    message = _incoming_message("Hola, buenas tardes.")
+
+    await service.handle_incoming_message(message)
+
+    events = service.audit_service.list_events()
+    prioritized_events = [e for e in events if e.event_type == AuditEventType.INCIDENT_PRIORITIZED]
+
+    assert len(prioritized_events) == 0

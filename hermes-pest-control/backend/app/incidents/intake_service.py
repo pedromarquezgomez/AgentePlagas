@@ -183,9 +183,11 @@ class IncidentIntakeService:
         from app.customers.classifier import CustomerTypeClassifier
         from app.incidents.prioritization.engine import IncidentPrioritizationEngine
         from app.pests.contracts import PestClassification
+        from app.incidents.dispatch.engine import DispatchAssessmentEngine
 
         customer_classifier = CustomerTypeClassifier()
         prioritization_engine = IncidentPrioritizationEngine()
+        dispatch_engine = DispatchAssessmentEngine()
 
         all_user_text = " ".join(user_texts)
         customer_type = customer_classifier.classify(all_user_text)
@@ -207,11 +209,17 @@ class IncidentIntakeService:
             affected_area=affected_area,
         )
 
-        severity = assessment.incident_severity.value
-        priority = assessment.incident_priority.value
+        severity = assessment.incident_severity
+        priority = assessment.incident_priority
         requires_human_review = requires_human_review or assessment.requires_human_review
         response_hours = assessment.recommended_response_hours
         assessment_reason = assessment.reason
+
+        dispatch_assessment = dispatch_engine.assess(
+            incident_assessment=assessment,
+            pest_classification=pest_classification,
+            customer_type=customer_type,
+        )
 
         return IncidentIntakeState(
             pest_type=pest_type,
@@ -231,4 +239,8 @@ class IncidentIntakeService:
             priority=priority,
             response_hours=response_hours,
             assessment_reason=assessment_reason,
+            visit_type=dispatch_assessment.visit_type,
+            technician_level=dispatch_assessment.technician_level,
+            dispatch_bucket=dispatch_assessment.dispatch_bucket,
+            sla_hours=dispatch_assessment.sla_hours,
         )

@@ -53,6 +53,10 @@ class HermesMockClient:
             conversation_id=conversation_id,
         )
 
+        if state.requires_human_review:
+            return self._build_human_review_response(incoming_message.text or "")
+
+
         missing_fields = state.missing_fields
 
         if not missing_fields:

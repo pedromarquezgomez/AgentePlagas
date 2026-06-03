@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field
+from app.incidents.prioritization.contracts import IncidentSeverity, IncidentPriority
+from app.incidents.dispatch.contracts import VisitType, TechnicianLevel, DispatchBucket
 
 
 class IncidentIntakeState(BaseModel):
@@ -18,9 +20,15 @@ class IncidentIntakeState(BaseModel):
     recommended_priority: str | None = None
     requires_human_review: bool = False
 
-    # Metadatos de priorizacion del Sprint 12
-    severity: str | None = None
-    priority: str | None = None
+    # Metadatos de priorizacion del Sprint 12 (Enums)
+    severity: IncidentSeverity | None = None
+    priority: IncidentPriority | None = None
     response_hours: int | None = None
     assessment_reason: str | None = None
+
+    # Metadatos de dispatch del Sprint 13 (Enums)
+    visit_type: VisitType | None = None
+    technician_level: TechnicianLevel | None = None
+    dispatch_bucket: DispatchBucket | None = None
+    sla_hours: int | None = None
 
