@@ -28,19 +28,24 @@ class LLMRuntimeProvider:
         self.fallback_provider = MockAgentRuntimeProvider()
 
     async def process(self, context: ConversationContext) -> AgentResponse:
+        import time
+        start_time = time.perf_counter()
+
         if self.settings.llm_provider.casefold() != "openai":
             return await self._fallback_to_mock(
                 context,
-                f"LLMProviderError:unsupported_provider:{self.settings.llm_provider}"
+                f"LLMProviderError:unsupported_provider:{self.settings.llm_provider}",
+                start_time,
             )
         api_key = self._api_key()
         model = self._model()
         if not api_key:
-            return await self._fallback_to_mock(context, "LLMProviderError:not_configured")
+            return await self._fallback_to_mock(context, "LLMProviderError:not_configured", start_time)
         if not model:
             return await self._fallback_to_mock(
                 context,
                 "LLMProviderError:model_not_configured",
+                start_time,
             )
 
         payload = self._build_payload(context)
@@ -67,7 +72,7 @@ class LLMRuntimeProvider:
                 trace_id,
                 exc.__class__.__name__,
             )
-            return await self._fallback_to_mock(context, "LLMProviderError:timeout")
+            return await self._fallback_to_mock(context, "LLMProviderError:timeout", start_time)
         except httpx.HTTPError as exc:
             logger.warning(
                 "llm_runtime_request_failed trace_id=%s error_type=request_failed "
@@ -78,6 +83,7 @@ class LLMRuntimeProvider:
             return await self._fallback_to_mock(
                 context,
                 "LLMProviderError:request_failed",
+                start_time,
             )
 
         if response.status_code >= 400:
@@ -90,12 +96,47 @@ class LLMRuntimeProvider:
             )
             return await self._fallback_to_mock(
                 context,
-                f"LLMProviderError:http_{response.status_code}"
+                f"LLMProviderError:http_{response.status_code}",
+                start_time,
             )
 
         try:
-            response_text = self._extract_response_text(response.json())
-            return AgentResponse.model_validate(json.loads(response_text))
+            response_json = response.json()
+            response_text = self._extract_response_text(response_json)
+            agent_response = AgentResponse.model_validate(json.loads(response_text))
+
+            # Extraer tokens si el proveedor los devuelve
+            usage = response_json.get("usage")
+            tokens_used = None
+            if isinstance(usage, dict):
+                tokens_used = {
+                    "prompt_tokens": usage.get("prompt_tokens"),
+                    "completion_tokens": usage.get("completion_tokens"),
+                    "total_tokens": usage.get("total_tokens"),
+                }
+
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+            from app.evaluation.runtime_stats import stats_collector
+            stats_collector.record(
+                provider="llm",
+                model=model,
+                latency_ms=latency_ms,
+                fallback_used=False,
+                tokens_used=tokens_used,
+            )
+
+            agent_response.metadata.update(
+                {
+                    "provider_used": "llm",
+                    "model_used": model,
+                    "fallback_used": False,
+                    "latency_ms": latency_ms,
+                    "tokens_used": tokens_used,
+                }
+            )
+            return agent_response
+
         except (ValueError, ValidationError) as exc:
             logger.warning(
                 "llm_runtime_response_invalid trace_id=%s error_class=%s",
@@ -105,6 +146,7 @@ class LLMRuntimeProvider:
             return await self._fallback_to_mock(
                 context,
                 "LLMProviderError:invalid_response",
+                start_time,
             )
 
     def _build_payload(self, context: ConversationContext) -> dict[str, Any]:
@@ -223,6 +265,7 @@ class LLMRuntimeProvider:
         self,
         context: ConversationContext,
         fallback_reason: str,
+        start_time: float,
     ) -> AgentResponse:
         if self.settings.llm_fallback_provider.casefold() != "mock":
             logger.warning(
@@ -232,6 +275,23 @@ class LLMRuntimeProvider:
                 self.settings.llm_fallback_provider,
             )
         response = await self.fallback_provider.process(context)
+
+        import time
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+        try:
+            model = self._model()
+        except Exception:
+            model = "unknown"
+
+        from app.evaluation.runtime_stats import stats_collector
+        stats_collector.record(
+            provider="llm",
+            model=model or "unknown",
+            latency_ms=latency_ms,
+            fallback_used=True,
+        )
+
         response.metadata.update(
             {
                 "fallback_used": True,
@@ -239,6 +299,10 @@ class LLMRuntimeProvider:
                 "fallback_provider": "mock",
                 "llm_provider_failed": True,
                 "effective_agent_provider": "mock",
+                "provider_used": "mock",
+                "model_used": model or "unknown",
+                "latency_ms": latency_ms,
+                "tokens_used": None,
             }
         )
         logger.info(

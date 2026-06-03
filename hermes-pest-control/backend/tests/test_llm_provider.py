@@ -42,7 +42,7 @@ def _make_context(text: str = "Tengo cucarachas en la cocina de mi restaurante. 
     )
 
 
-def _valid_llm_response_body(reply: str = "He registrado tu aviso.") -> bytes:
+def _valid_llm_response_body(reply: str = "He registrado tu aviso.", include_usage: bool = True) -> bytes:
     """Simula la estructura de respuesta de OpenAI /v1/responses."""
     payload = {
         "output": [
@@ -73,6 +73,12 @@ def _valid_llm_response_body(reply: str = "He registrado tu aviso.") -> bytes:
             }
         ]
     }
+    if include_usage:
+        payload["usage"] = {
+            "prompt_tokens": 150,
+            "completion_tokens": 40,
+            "total_tokens": 190
+        }
     return json.dumps(payload).encode()
 
 
@@ -111,6 +117,17 @@ async def test_llm_provider_valid_response_returns_agent_response() -> None:
     assert response.incident.pest_type == "COCKROACH"
     # El LLM solo propone — no marca fallback_used
     assert not response.metadata.get("fallback_used", False)
+
+    # Nuevos campos de instrumentación
+    assert response.metadata.get("provider_used") == "llm"
+    assert response.metadata.get("model_used") == "gpt-4.1-mini"
+    assert isinstance(response.metadata.get("latency_ms"), float)
+    assert response.metadata.get("latency_ms") >= 0.0
+    assert response.metadata.get("tokens_used") == {
+        "prompt_tokens": 150,
+        "completion_tokens": 40,
+        "total_tokens": 190
+    }
 
 
 @pytest.mark.asyncio
