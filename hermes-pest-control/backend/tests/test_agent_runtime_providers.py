@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.config.settings import Settings
-from app.harness.contracts import AgentRuntimeRequest
+from app.context.contracts import ConversationContext
 from app.harness.providers.hermes_http_provider import HermesHttpRuntimeProvider
 from app.harness.providers.llm_provider import LLMRuntimeProvider
 from app.harness.providers.mock_provider import MockAgentRuntimeProvider
@@ -28,14 +28,16 @@ def _incoming_message(text: str) -> IncomingMessage:
 @pytest.mark.asyncio
 async def test_mock_runtime_provider_returns_agent_response() -> None:
     provider = MockAgentRuntimeProvider()
-    request = AgentRuntimeRequest(
-        incoming_message=_incoming_message(
-            "Tengo cucarachas en la cocina en Torremolinos"
-        ),
-        business_context={"conversation_id": "telegram:runtime-user"},
+    message = _incoming_message("Tengo cucarachas en la cocina en Torremolinos")
+    context = ConversationContext(
+        message=message,
+        channel=message.channel,
+        user_id=message.external_user_id,
+        conversation_id=f"{message.channel}:{message.external_user_id}",
+        metadata={"conversation_id": "telegram:runtime-user"},
     )
 
-    response = await provider.process(request)
+    response = await provider.process(context)
 
     assert provider.mode == "mock"
     assert response.action.type == "create_incident"
@@ -66,15 +68,20 @@ async def test_hermes_http_runtime_provider_uses_agent_response_contract() -> No
         ),
         transport=httpx.MockTransport(handler),
     )
-    request = AgentRuntimeRequest(
-        incoming_message=_incoming_message("Tengo cucarachas"),
-        conversation_history=[],
-        business_context={"domain": "pest_control"},
+    
+    message = _incoming_message("Tengo cucarachas")
+    context = ConversationContext(
+        message=message,
+        channel=message.channel,
+        user_id=message.external_user_id,
+        conversation_id=f"{message.channel}:{message.external_user_id}",
+        history=[],
+        metadata={"domain": "pest_control"},
         available_skills=default_skill_registry().list_skills(),
         available_tools=default_tool_registry().list_tools(),
     )
 
-    response = await provider.process(request)
+    response = await provider.process(context)
 
     assert provider.mode == "nous_hermes"
     assert response.reply == "Respuesta desde provider HTTP."
@@ -117,15 +124,20 @@ async def test_llm_runtime_provider_returns_valid_agent_response() -> None:
         ),
         transport=httpx.MockTransport(handler),
     )
-    request = AgentRuntimeRequest(
-        incoming_message=_incoming_message("Tengo cucarachas"),
-        conversation_history=[],
-        business_context={"trace_id": "trace-runtime"},
+    
+    message = _incoming_message("Tengo cucarachas")
+    context = ConversationContext(
+        message=message,
+        channel=message.channel,
+        user_id=message.external_user_id,
+        conversation_id=f"{message.channel}:{message.external_user_id}",
+        history=[],
+        metadata={"trace_id": "trace-runtime"},
         available_skills=default_skill_registry().list_skills(),
         available_tools=default_tool_registry().list_tools(),
     )
 
-    response = await provider.process(request)
+    response = await provider.process(context)
 
     assert provider.mode == "llm"
     assert response.reply == "Respuesta desde LLM."
@@ -151,9 +163,15 @@ async def test_llm_runtime_provider_uses_safe_fallback_on_invalid_response() -> 
         transport=httpx.MockTransport(handler),
     )
 
-    response = await provider.process(
-        AgentRuntimeRequest(incoming_message=_incoming_message("Tengo cucarachas"))
+    message = _incoming_message("Tengo cucarachas")
+    context = ConversationContext(
+        message=message,
+        channel=message.channel,
+        user_id=message.external_user_id,
+        conversation_id=f"{message.channel}:{message.external_user_id}",
     )
+
+    response = await provider.process(context)
 
     assert response.action.type == "escalate_to_human"
     assert response.metadata["fallback_used"] is True

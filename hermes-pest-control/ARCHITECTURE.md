@@ -161,9 +161,25 @@ The architectural core is the Hermes Pest Harness: schemas, orchestration,
 decision audit, human review, tool review, and backend business services. Runtime
 providers are replaceable inference adapters behind that harness.
 
+### Context Manager Layer
+
+Location: `backend/app/context/`
+
+The Context Manager Layer decouples the preparation of the business context from the runtime providers. 
+Instead of providers collecting and formatting context information individually, the orchestration layer relies on `ContextManager` to build a unified `ConversationContext`.
+
+This layer includes specialized builders:
+- `HistoryBuilder` (loads past conversation history from Firestore or parameters).
+- `IncidentBuilder` (queries Firestore for active/pending incidents to resume intake).
+- `SkillsBuilder` (retrieves the active product skills from registry).
+- `ToolsBuilder` (retrieves the available tools from registry).
+
+It also queries `PolicyEngine` to populate `policy_constraints` for the target provider. Providers receive the resulting `ConversationContext` unchangeably.
+
 ### Product Skills
 
 Location: `backend/app/skills/`
+
 
 Skills are product-owned capability definitions, not Nous/Hermes Agent
 framework assets. The neutral `SkillRegistry` exposes declarative skills such

@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 from app.config.settings import Settings
-from app.harness.contracts import AgentRuntimeRequest
+from app.context.manager import ContextManager
 from app.harness.providers.hermes_http_provider import HermesHttpRuntimeProvider
 from app.harness.providers.llm_provider import LLMRuntimeProvider
 from app.harness.providers.mock_provider import MockAgentRuntimeProvider
@@ -29,12 +29,18 @@ class HermesService:
         provider: AgentRuntimeProvider | None = None,
         skill_registry: SkillRegistry | None = None,
         tool_registry: ToolRegistry | None = None,
+        context_manager: ContextManager | None = None,
     ) -> None:
         self.settings = settings or Settings()
         self.agent_provider = self._resolve_agent_provider()
         self.hermes_mode = self._legacy_hermes_mode_for_provider()
         self.skill_registry = skill_registry or default_skill_registry()
         self.tool_registry = tool_registry or default_tool_registry()
+        self.context_manager = context_manager or ContextManager(
+            skill_registry=self.skill_registry,
+            tool_registry=self.tool_registry,
+            settings=self.settings,
+        )
         self.provider = provider or self._build_provider(client)
         self.client = client or getattr(self.provider, "client", self.provider)
 
@@ -59,15 +65,12 @@ class HermesService:
         )
 
         try:
-            response = await self.provider.process(
-                AgentRuntimeRequest(
-                    incoming_message=incoming_message,
-                    conversation_history=conversation_history,
-                    business_context=business_context,
-                    available_skills=self.skill_registry.list_skills(),
-                    available_tools=self.tool_registry.list_tools(),
-                )
+            context = await self.context_manager.build_context(
+                incoming_message=incoming_message,
+                conversation_history=conversation_history,
+                business_context=business_context,
             )
+            response = await self.provider.process(context)
             logger.info(
                 "hermes_request_completed hermes_mode=%s action_type=%s",
                 self.hermes_mode,

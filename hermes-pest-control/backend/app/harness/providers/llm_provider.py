@@ -6,7 +6,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.config.settings import Settings
-from app.harness.contracts import AgentRuntimeRequest
+from app.context.contracts import ConversationContext
 from app.schemas.agent_response import AgentResponse
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class LLMRuntimeProvider:
         self.settings = settings or Settings()
         self.transport = transport
 
-    async def process(self, request: AgentRuntimeRequest) -> AgentResponse:
+    async def process(self, context: ConversationContext) -> AgentResponse:
         if self.settings.llm_provider.casefold() != "openai":
             return self._safe_fallback_response(
                 f"LLMProviderError:unsupported_provider:{self.settings.llm_provider}"
@@ -35,12 +35,12 @@ class LLMRuntimeProvider:
         if not self.settings.openai_model:
             return self._safe_fallback_response("LLMProviderError:model_not_configured")
 
-        payload = self._build_payload(request)
+        payload = self._build_payload(context)
         headers = {
             "Authorization": f"Bearer {self.settings.openai_api_key.strip()}",
             "Content-Type": "application/json",
         }
-        trace_id = request.business_context.get("trace_id")
+        trace_id = context.metadata.get("trace_id")
 
         try:
             async with httpx.AsyncClient(
@@ -92,21 +92,30 @@ class LLMRuntimeProvider:
             )
             return self._safe_fallback_response("LLMProviderError:invalid_response")
 
-    def _build_payload(self, request: AgentRuntimeRequest) -> dict[str, Any]:
+    def _build_payload(self, context: ConversationContext) -> dict[str, Any]:
+        business_context = {
+            **context.metadata,
+            "channel": context.channel,
+            "user_id": context.user_id,
+            "conversation_id": context.conversation_id,
+            "incident_id": context.incident_id,
+            "incident_summary": context.incident_summary,
+            "policy_constraints": context.policy_constraints,
+        }
         safe_runtime_payload = {
-            "message": request.incoming_message.model_dump(mode="json"),
-            "conversation_history": request.conversation_history,
-            "business_context": request.business_context,
+            "message": context.message.model_dump(mode="json"),
+            "conversation_history": context.history,
+            "business_context": business_context,
             "available_skills": [
-                skill.model_dump(mode="json") for skill in request.available_skills
+                skill.model_dump(mode="json") for skill in context.available_skills
             ],
             "available_tools": [
-                tool.as_runtime_metadata() for tool in request.available_tools
+                tool.as_runtime_metadata() for tool in context.available_tools
             ],
             "response_contract": "AgentResponse",
         }
         skill_sections = "\n\n".join(
-            skill.as_prompt_section() for skill in request.available_skills
+            skill.as_prompt_section() for skill in context.available_skills
         )
         prompt = "\n\n".join(
             [

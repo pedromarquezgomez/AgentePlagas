@@ -123,6 +123,25 @@ Role in the harness:
 - IncidentService executes incident lifecycle behavior;
 - persistence services store data without domain-specific branching.
 
+### Context Manager
+
+Implemented:
+
+- `ConversationContext`
+- `ContextManager`
+- `HistoryBuilder`
+- `IncidentBuilder`
+- `SkillsBuilder`
+- `ToolsBuilder`
+
+Role in the harness:
+
+- isolates business context construction from the providers;
+- loads recent conversation history and active incidents from Firestore;
+- queries active skills and tools registries;
+- maps `PolicyEngine` rules into `policy_constraints`;
+- provides an unchangeable input context to the provider layer.
+
 ### Logging and Diagnostics
 
 Implemented:
