@@ -53,12 +53,29 @@ class HermesMockClient:
             conversation_id=conversation_id,
         )
 
-        is_sprint10_flow = state.is_sprint10_flow
-        is_legacy_test = not is_sprint10_flow
         missing_fields = state.missing_fields
 
         if not missing_fields:
-            if is_legacy_test:
+            if state.customer_name:
+                return AgentResponse(
+                    reply=f"Gracias, {state.customer_name}. He registrado tu incidencia por presencia de {state.pest_type} en {state.location}.",
+                    action={
+                        "type": "create_incident",
+                        "missing_fields": [],
+                    },
+                    incident={
+                        "should_create": True,
+                        "pest_type": state.pest_type,
+                        "location": state.location,
+                        "affected_area": state.affected_area or "cocina",
+                        "priority": self._priority_for(state.pest_type_spanish or state.pest_type),
+                        "summary": f"Cliente informa de presencia de {state.pest_type} en {state.location}.",
+                    },
+                    metadata={
+                        "customer_name": state.customer_name,
+                    }
+                )
+            else:
                 return AgentResponse(
                     reply=(
                         "Gracias por la información. He registrado el aviso para que el "
@@ -81,28 +98,10 @@ class HermesMockClient:
                         ),
                     },
                 )
-            else:
-                return AgentResponse(
-                    reply=f"Gracias, {state.customer_name}. He registrado tu incidencia por presencia de {state.pest_type} en {state.location}.",
-                    action={
-                        "type": "create_incident",
-                        "missing_fields": [],
-                    },
-                    incident={
-                        "should_create": True,
-                        "pest_type": state.pest_type,
-                        "location": state.location,
-                        "affected_area": state.affected_area or "cocina",
-                        "priority": self._priority_for(state.pest_type_spanish or state.pest_type),
-                        "summary": f"Cliente informa de presencia de {state.pest_type} en {state.location}.",
-                    },
-                    metadata={
-                        "customer_name": state.customer_name,
-                    }
-                )
 
-        # Si faltan campos
-        if not is_sprint10_flow:
+        is_legacy_flow = state.is_legacy_flow
+
+        if is_legacy_flow:
             reply = self._build_missing_data_reply(missing_fields)
         elif "location" in missing_fields and "customer_name" in missing_fields:
             reply = "Entiendo.  Para registrar la incidencia necesito:\n  - ubicación\n  - nombre de contacto\n  ¿Podrías indicármelos?"

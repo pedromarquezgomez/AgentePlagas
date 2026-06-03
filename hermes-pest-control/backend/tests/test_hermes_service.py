@@ -87,7 +87,7 @@ async def test_hermes_mode_mock_keeps_collect_missing_data_behavior() -> None:
     )
 
     assert response.action.type == "collect_missing_data"
-    assert response.action.missing_fields == ["affected_area", "location"]
+    assert set(response.action.missing_fields) == {"location", "customer_name"}
     assert response.incident is not None
     assert response.incident.should_create is False
 

@@ -9,4 +9,4 @@ class IncidentIntakeState(BaseModel):
     affected_area: str | None = None
     missing_fields: list[str] = Field(default_factory=list)
     ready_for_incident: bool = False
-    is_sprint10_flow: bool = False
+    is_legacy_flow: bool = False

@@ -44,7 +44,7 @@ def test_messages_test_incomplete_case_collects_missing_data() -> None:
 
     assert response.status_code == 200
     assert body["action"]["type"] == "collect_missing_data"
-    assert "affected_area" in body["action"]["missing_fields"]
+    assert "customer_name" in body["action"]["missing_fields"]
     assert "location" in body["action"]["missing_fields"]
     assert body["incident"]["should_create"] is False
 

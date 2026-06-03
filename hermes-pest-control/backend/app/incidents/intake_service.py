@@ -107,46 +107,38 @@ class IncidentIntakeService:
         conversation_history: list[dict[str, Any]] | None = None,
         conversation_id: str | None = None,
     ) -> IncidentIntakeState:
-        # 1. Determinar si es Sprint 10 flow
-        has_name_mention = False
-        temp_texts = []
-        if incoming_message.text:
-            temp_texts.append(incoming_message.text)
+        all_messages = []
         if conversation_history:
-            for msg in conversation_history:
-                if isinstance(msg, dict) and msg.get("role") == "user":
-                    content = msg.get("content") or msg.get("text")
-                    if content:
-                        temp_texts.append(content)
+            all_messages.extend(conversation_history)
 
-        for t_text in temp_texts:
-            t_lower = t_text.casefold()
-            if any(term in t_lower for term in ["soy", "nombre", "llamo", "pedro"]):
-                has_name_mention = True
+        all_messages.append({
+            "role": "user",
+            "text": incoming_message.text or "",
+            "direction": "inbound"
+        })
 
-        is_sprint10_flow = False
-        if conversation_id and any(term in str(conversation_id).casefold() for term in ["user-t", "pepe", "pedro"]):
-            is_sprint10_flow = True
-        elif has_name_mention:
-            is_sprint10_flow = True
+        cutoff_index = -1
+        for i, msg in enumerate(all_messages):
+            role = msg.get("role")
+            text = (msg.get("content") or msg.get("text") or "").casefold()
+            if (role in ("assistant", "outbound", "bot") or msg.get("direction") == "outbound") and "registrad" in text:
+                cutoff_index = i
 
-        # 2. Recopilar mensajes del usuario
         user_texts = []
-        if is_sprint10_flow and conversation_history:
-            for msg in conversation_history:
-                if isinstance(msg, dict) and msg.get("role") == "user":
-                    content = msg.get("content") or msg.get("text")
-                    if content:
-                        user_texts.append(content)
-        if incoming_message.text:
-            user_texts.append(incoming_message.text)
+        for msg in all_messages[cutoff_index + 1:]:
+            role = msg.get("role")
+            direction = msg.get("direction")
+            if role == "user" or direction == "inbound":
+                content = msg.get("content") or msg.get("text")
+                if content:
+                    user_texts.append(content)
 
-        # 3. Procesar y acumular información
         pest_type = None
         pest_type_spanish = None
         location = None
         customer_name = None
         affected_area = None
+        localidad_detectada = None
 
         for ut in user_texts:
             p_type, p_spanish = self._extract_pest_type(ut)
@@ -162,34 +154,43 @@ class IncidentIntakeService:
             if c_name:
                 customer_name = c_name
 
-            if is_sprint10_flow:
-                free_loc = self._extract_free_location(ut)
-                if free_loc:
-                    location = free_loc
-                compat_loc = self._extract_location_legacy(ut)
-                if compat_loc:
-                    location = compat_loc
-            else:
-                compat_loc = self._extract_location_legacy(ut)
-                if compat_loc:
-                    location = compat_loc
+            loc_leg = self._extract_location_legacy(ut)
+            if loc_leg:
+                localidad_detectada = loc_leg
 
-        # 4. Campos faltantes
+            free_loc = self._extract_free_location(ut)
+            if free_loc:
+                location = free_loc
+
+        if localidad_detectada:
+            location = localidad_detectada
+
+        if location and affected_area and location.casefold() == affected_area.casefold():
+            if not customer_name and not localidad_detectada:
+                location = None
+
+        # Identificar flujo a evaluar
+        is_legacy_flow = False
+        if not customer_name:
+            has_valid_free_location = location and (not affected_area or location.casefold() != affected_area.casefold())
+            if localidad_detectada or (affected_area and not has_valid_free_location):
+                is_legacy_flow = True
+
         missing_fields = []
-        if is_sprint10_flow:
+        if is_legacy_flow:
+            if not pest_type_spanish:
+                missing_fields.append("pest_type")
+            if not location:
+                missing_fields.append("location")
+            if not affected_area:
+                missing_fields.append("affected_area")
+        else:
             if not pest_type or pest_type == "unknown":
                 missing_fields.append("pest_type")
             if not location:
                 missing_fields.append("location")
             if not customer_name:
                 missing_fields.append("customer_name")
-        else:
-            if not pest_type_spanish:
-                missing_fields.append("pest_type")
-            if not affected_area:
-                missing_fields.append("affected_area")
-            if not location:
-                missing_fields.append("location")
 
         ready_for_incident = not missing_fields
 
@@ -201,5 +202,5 @@ class IncidentIntakeService:
             affected_area=affected_area,
             missing_fields=missing_fields,
             ready_for_incident=ready_for_incident,
-            is_sprint10_flow=is_sprint10_flow,
+            is_legacy_flow=is_legacy_flow,
         )
