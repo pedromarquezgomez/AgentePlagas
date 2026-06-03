@@ -97,13 +97,21 @@ class LLMRuntimeProvider:
             "message": request.incoming_message.model_dump(mode="json"),
             "conversation_history": request.conversation_history,
             "business_context": request.business_context,
+            "available_skills": [
+                skill.model_dump(mode="json") for skill in request.available_skills
+            ],
             "response_contract": "AgentResponse",
         }
+        skill_sections = "\n\n".join(
+            skill.as_prompt_section() for skill in request.available_skills
+        )
         prompt = "\n\n".join(
             [
                 "Return only strict JSON compatible with AgentResponse.",
                 "Do not call tools, databases, Telegram, WhatsApp, Gmail, or Calendar.",
                 "Do not create incidents directly. Only propose a structured response.",
+                "# Product Skills",
+                skill_sections or "No product skills were provided.",
                 json.dumps(safe_runtime_payload, ensure_ascii=False, indent=2),
             ]
         )

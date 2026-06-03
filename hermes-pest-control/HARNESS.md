@@ -919,6 +919,40 @@ the primary inference adapter; Nous/Hermes Agent remains an experimental
 provider until comparative evals, shadow stability, pilot approval, and rollback
 criteria justify a broader role.
 
+### Product Skill Registry
+
+Status: implemented.
+
+Product skills live under:
+
+```text
+backend/app/skills/
+backend/app/skills/contracts.py
+backend/app/skills/registry.py
+backend/app/skills/definitions/
+```
+
+These skills are owned by Hermes Pest Harness, not by Nous/Hermes Agent. The
+initial registry contains:
+
+- `classify_pest`;
+- `request_missing_info`;
+- `create_incident`;
+- `escalate_to_human`;
+- `suggest_visit`;
+- `summarize_case`.
+
+`HermesService` attaches the registry output to `AgentRuntimeRequest` so any
+runtime provider can use the same product capabilities. Skills are declarative:
+they describe allowed outputs, forbidden effects, risk level, and instructions.
+They do not write to Firestore, create incidents, schedule visits, send channel
+messages, or execute tools. Backend services remain responsible for all real
+effects.
+
+The older markdown skills under `hermes/skills` are retained for experimental
+HTTP-wrapper compatibility only. They should be treated as adapter material,
+not as the long-term source of product capability definitions.
+
 ### Stage 5: Production Governance
 
 Status: pending.

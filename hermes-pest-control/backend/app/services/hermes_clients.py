@@ -259,11 +259,13 @@ class HermesRealClient:
 
         business_context = business_context or default_business_context()
         trace_id = business_context.get("trace_id")
+        available_skills = business_context.pop("available_skills", [])
 
         payload = {
             "message": incoming_message.model_dump(mode="json"),
             "conversation_history": conversation_history or [],
             "business_context": business_context,
+            "available_skills": available_skills,
             "response_contract": "AgentResponse",
         }
         headers = {"Content-Type": "application/json"}

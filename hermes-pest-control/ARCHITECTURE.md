@@ -161,6 +161,30 @@ The architectural core is the Hermes Pest Harness: schemas, orchestration,
 decision audit, human review, tool review, and backend business services. Runtime
 providers are replaceable inference adapters behind that harness.
 
+### Product Skills
+
+Location: `backend/app/skills/`
+
+Skills are product-owned capability definitions, not Nous/Hermes Agent
+framework assets. The neutral `SkillRegistry` exposes declarative skills such
+as:
+
+- `classify_pest`;
+- `request_missing_info`;
+- `create_incident`;
+- `escalate_to_human`;
+- `suggest_visit`;
+- `summarize_case`.
+
+Runtime providers receive the available skills through `AgentRuntimeRequest`.
+Providers may use them to structure replies or proposed actions, but skills do
+not execute side effects. Firestore writes, incident creation, visits,
+documents, messages, and tools remain controlled by backend services.
+
+Legacy markdown files under `hermes/skills` may still be used by the
+experimental HTTP wrapper while it is migrated, but they are no longer the
+architectural source of product capability definitions.
+
 Sprint 10A adds a development-only fake Hermes HTTP server at
 `backend/scripts/fake_hermes_server.py`. It is not part of the production
 runtime; it exists to verify the real-mode HTTP boundary, response validation,

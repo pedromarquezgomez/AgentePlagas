@@ -9,6 +9,7 @@ from app.harness.providers.mock_provider import MockAgentRuntimeProvider
 from app.harness.runtime import AgentRuntimeProvider, LegacyClientRuntimeProvider
 from app.schemas.agent_response import AgentResponse
 from app.schemas.incoming_message import IncomingMessage
+from app.skills.registry import SkillRegistry, default_skill_registry
 from app.services.hermes_clients import (
     HermesClientError,
     HermesMockClient,
@@ -25,10 +26,12 @@ class HermesService:
         settings: Settings | None = None,
         client: HermesMockClient | HermesRealClient | None = None,
         provider: AgentRuntimeProvider | None = None,
+        skill_registry: SkillRegistry | None = None,
     ) -> None:
         self.settings = settings or Settings()
         self.agent_provider = self._resolve_agent_provider()
         self.hermes_mode = self._legacy_hermes_mode_for_provider()
+        self.skill_registry = skill_registry or default_skill_registry()
         self.provider = provider or self._build_provider(client)
         self.client = client or getattr(self.provider, "client", self.provider)
 
@@ -58,6 +61,7 @@ class HermesService:
                     incoming_message=incoming_message,
                     conversation_history=conversation_history,
                     business_context=business_context,
+                    available_skills=self.skill_registry.list_skills(),
                 )
             )
             logger.info(

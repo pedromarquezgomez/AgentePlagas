@@ -9,6 +9,7 @@ from app.harness.providers.hermes_http_provider import HermesHttpRuntimeProvider
 from app.harness.providers.llm_provider import LLMRuntimeProvider
 from app.harness.providers.mock_provider import MockAgentRuntimeProvider
 from app.schemas.incoming_message import IncomingMessage
+from app.skills.registry import default_skill_registry
 
 
 def _incoming_message(text: str) -> IncomingMessage:
@@ -68,6 +69,7 @@ async def test_hermes_http_runtime_provider_uses_agent_response_contract() -> No
         incoming_message=_incoming_message("Tengo cucarachas"),
         conversation_history=[],
         business_context={"domain": "pest_control"},
+        available_skills=default_skill_registry().list_skills(),
     )
 
     response = await provider.process(request)
@@ -76,6 +78,7 @@ async def test_hermes_http_runtime_provider_uses_agent_response_contract() -> No
     assert response.reply == "Respuesta desde provider HTTP."
     assert captured_payload["response_contract"] == "AgentResponse"
     assert captured_payload["message"]["channel"] == "telegram"
+    assert captured_payload["available_skills"][0]["name"] == "classify_pest"
 
 
 @pytest.mark.asyncio
@@ -115,6 +118,7 @@ async def test_llm_runtime_provider_returns_valid_agent_response() -> None:
         incoming_message=_incoming_message("Tengo cucarachas"),
         conversation_history=[],
         business_context={"trace_id": "trace-runtime"},
+        available_skills=default_skill_registry().list_skills(),
     )
 
     response = await provider.process(request)
@@ -124,6 +128,7 @@ async def test_llm_runtime_provider_returns_valid_agent_response() -> None:
     assert response.action.type == "collect_missing_data"
     assert captured_payload["model"] == "gpt-test"
     assert captured_payload["text"]["format"]["name"] == "AgentResponse"
+    assert "classify_pest" in captured_payload["input"][1]["content"]
 
 
 @pytest.mark.asyncio
