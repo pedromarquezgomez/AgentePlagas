@@ -992,6 +992,46 @@ Service  = backend owner that changes real state
 Firestore remains the source of truth. Tool execution must pass through backend
 services and the existing review/audit controls.
 
+### Tool Execution Lifecycle
+
+Status: implemented as an internal contract.
+
+Execution contracts live under:
+
+```text
+backend/app/tools/execution_contracts.py
+```
+
+Every tool execution should be representable as:
+
+```text
+ToolExecutionRequest -> ToolExecutionResult | ToolExecutionError
+```
+
+The formal lifecycle states are:
+
+```text
+PENDING -> APPROVED -> EXECUTED
+PENDING -> DENIED
+PENDING -> REQUIRES_HUMAN_REVIEW
+PENDING -> APPROVED -> FAILED
+```
+
+`ToolExecutionService` owns the lifecycle. Providers do not construct execution
+results, policies do not execute, and skills do not decide authorization.
+
+Each execution contract answers:
+
+- which tool was requested;
+- who or what provider proposed it;
+- what payload was proposed;
+- what status the execution reached;
+- what result or error was produced.
+
+The public `ToolExecutionRecord` API remains compatible with the existing panel,
+while the internal request/result/error contracts prepare the harness for Gmail,
+Calendar, CRM, WhatsApp, agenda, presupuesto, and future audit records.
+
 ### Policy Engine
 
 Status: implemented.

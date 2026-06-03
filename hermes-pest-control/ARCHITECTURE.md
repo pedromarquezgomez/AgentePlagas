@@ -206,6 +206,32 @@ but providers are forbidden callers. Providers can only propose intent or
 structured actions. Actual state changes remain with services such as
 IncidentService, HumanReviewService, VisitService, and ToolExecutionService.
 
+#### Tool Execution Lifecycle
+
+Location: `backend/app/tools/execution_contracts.py`
+
+All current and future tool executions share an internal lifecycle contract:
+
+```text
+ToolExecutionRequest -> ToolExecutionResult | ToolExecutionError
+```
+
+The formal statuses are:
+
+```text
+PENDING -> APPROVED -> EXECUTED
+PENDING -> DENIED
+PENDING -> REQUIRES_HUMAN_REVIEW
+PENDING -> APPROVED -> FAILED
+```
+
+`ToolExecutionRequest` captures what tool is being requested, who or what
+provider requested it, and the payload proposed for execution. `ToolExecution`
+results and errors standardize successful execution and failure reporting.
+Public API records remain backward compatible, but the service layer now has a
+single internal contract for execution lifecycle, audit preparation, and future
+tool integrations.
+
 The boundary is:
 
 ```text

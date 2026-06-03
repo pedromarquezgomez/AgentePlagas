@@ -8,6 +8,12 @@ from app.services.gmail_tool_executor import (
     GmailToolExecutor,
     GmailToolPayloadError,
 )
+from app.tools.execution_contracts import (
+    ToolExecutionError,
+    ToolExecutionRequest,
+    ToolExecutionResult,
+    ToolExecutionStatus,
+)
 
 
 class ToolExecutionRecordNotFoundError(LookupError):
@@ -137,24 +143,39 @@ class ToolExecutionService:
                 f"Tool execution record not found: {execution_id}"
             )
 
+        execution_request = self._execution_request_from_record(current_record)
         if current_record.get("review_status") != "approved":
+            self._execution_error(
+                execution_request,
+                error_code="not_approved",
+                error_message="Tool execution requires review_status=approved.",
+            )
             raise ToolExecutionNotApprovedError(
                 "Tool execution requires review_status=approved."
             )
         if current_record.get("executed") is True:
+            self._execution_error(
+                execution_request,
+                error_code="already_executed",
+                error_message="Tool execution record has already been executed.",
+            )
             raise ToolExecutionAlreadyExecutedError(
                 "Tool execution record has already been executed."
             )
         if not self._is_gmail_create_draft(current_record):
+            self._execution_error(
+                execution_request,
+                error_code="unsupported_tool",
+                error_message="Only gmail.create_draft can be executed in this sprint.",
+            )
             raise ToolExecutionUnsupportedError(
                 "Only gmail.create_draft can be executed in this sprint."
             )
 
-        payload = self._execution_payload(current_record)
         executor = gmail_executor or GmailToolExecutor()
 
         try:
-            result = await executor.create_draft(payload)
+            executor_result = await executor.create_draft(execution_request.payload)
         except GmailToolDisabledError:
             raise
         except GmailToolPayloadError:
@@ -162,16 +183,24 @@ class ToolExecutionService:
         except GmailToolExecutionError:
             raise
 
+        execution_result = ToolExecutionResult(
+            execution_id=execution_request.execution_id,
+            tool_name=execution_request.tool_name,
+            status=ToolExecutionStatus.EXECUTED,
+            message="Tool execution completed.",
+            result=executor_result,
+        )
+
         await self.firestore_service.update_document(
             self.collection_name,
             execution_id,
             {
                 "executed": True,
                 "external_effect": True,
-                "execution_status": "executed",
-                "execution_result": result,
+                "execution_status": execution_result.status.value,
+                "execution_result": execution_result.result,
                 "execution_error": None,
-                "executed_at": datetime.now(timezone.utc),
+                "executed_at": execution_result.executed_at,
             },
         )
 
@@ -199,3 +228,43 @@ class ToolExecutionService:
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
         payload = metadata.get("payload")
         return dict(payload) if isinstance(payload, dict) else {}
+
+    def _execution_request_from_record(self, record: dict) -> ToolExecutionRequest:
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        requested_by = (
+            record.get("reviewed_by")
+            or metadata.get("proposed_by")
+            or metadata.get("requested_by")
+            or record.get("provider")
+            or "unknown"
+        )
+        return ToolExecutionRequest(
+            execution_id=str(record.get("id") or ""),
+            tool_name=str(record.get("tool_name") or ""),
+            requested_by=str(requested_by),
+            provider=str(record.get("provider") or "unknown"),
+            payload=self._execution_payload(record),
+            created_at=record.get("created_at") or datetime.now(timezone.utc),
+            trace_id=record.get("trace_id"),
+            conversation_id=record.get("conversation_id"),
+            metadata={
+                "decision": record.get("decision"),
+                "review_status": record.get("review_status"),
+                "risk_level": record.get("risk_level"),
+                "requires_approval": record.get("requires_approval"),
+            },
+        )
+
+    def _execution_error(
+        self,
+        execution_request: ToolExecutionRequest,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> ToolExecutionError:
+        return ToolExecutionError(
+            execution_id=execution_request.execution_id,
+            tool_name=execution_request.tool_name,
+            error_code=error_code,
+            error_message=error_message,
+        )
