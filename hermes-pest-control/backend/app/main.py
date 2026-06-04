@@ -22,6 +22,7 @@ from app.routes import (
     visits,
     whatsapp,
     evaluation,
+    analytics,
 )
 
 logging.basicConfig(
@@ -76,3 +77,4 @@ app.include_router(messages_test.router)
 app.include_router(telegram.router)
 app.include_router(whatsapp.router)
 app.include_router(evaluation.router)
+app.include_router(analytics.router)

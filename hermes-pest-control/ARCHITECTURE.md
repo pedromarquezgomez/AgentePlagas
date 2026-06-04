@@ -682,3 +682,26 @@ testing. Automated frontend component or E2E tests are intentionally deferred.
 
 As of Sprint 6.5, the architecture remains correctly separated for the current
 scope. No critical architecture issue was found in the reviewed code.
+
+## Production Observability Layer
+
+Introducida en el Sprint 22, esta capa permite dotar al sistema de telemetría y medición en tiempo real de KPIs operativos para el piloto en producción, sin modificar la lógica de negocio ni el flujo de ejecución principal.
+
+### 1. Componentes Clave
+* **AnalyticsService (`backend/app/analytics/service.py`)**:
+  Servicio encargado de recopilar de forma dinámica y bajo demanda métricas agregadas desde las colecciones de Firestore (`conversations`, `incidents`, `tool_execution_records`, `audit_events`) y combinarlas con las estadísticas en memoria proporcionadas por `RuntimeStatsCollector`.
+* **RuntimeStatsCollector (`backend/app/evaluation/runtime_stats.py`)**:
+  Componente global en memoria que recolecta métricas de latencia de las llamadas del LLM, fallas a mock (fallbacks) y acumula de forma segura los tokens consumidos (tanto en prompts como en completions y total).
+* **CostEstimator (`backend/app/analytics/service.py`)**:
+  Módulo de utilidades que calcula el costo financiero estimado del uso del LLM en USD basándose en los tokens reales acumulados y multiplicándolos por los precios parametrizados en variables de entorno (`LLM_INPUT_COST_PER_1M_TOKENS` y `LLM_OUTPUT_COST_PER_1M_TOKENS`).
+* **Endpoints de API (`backend/app/routes/analytics.py`)**:
+  Expone la ruta protegida `GET /analytics/overview` bajo el requerimiento de autenticación `require_admin_auth` para devolver el modelo unificado `BusinessMetrics`.
+
+### 2. Panel Analytics en el Frontend
+* **Ruta `/analytics`**:
+  Una pantalla dedicada en el dashboard del panel de control que presenta de forma premium KPI cards con las métricas de negocio.
+* **Alertas Operativas Visuales**:
+  El panel procesa activamente umbrales de alerta:
+  - **Amarillo**: Si hay ocurrencia de fallbacks a mock (`fallback_count > 0`).
+  - **Naranja**: Si la latencia media de las respuestas de IA supera el umbral límite (`avg_llm_latency_ms > 5000 ms`).
+  - **Rojo**: Si existen incidentes que incumplieron los tiempos de SLA acordados (`sla_breaches > 0`).

@@ -1249,3 +1249,21 @@ Status: pending.
 The current system is ready to continue toward a fuller agent harness. The most
 important next step is not adding new channels, but improving evaluation,
 traceability, and auditability around Hermes decisions.
+
+## Production Observability Layer
+
+El arnés incorpora soporte para telemetría y monitoreo de métricas operativas de negocio.
+
+### Componentes de Telemetría
+* **AnalyticsService**: Reúne dinámicamente datos del volumen de conversaciones, incidentes (creados, cancelados y cerrados), ejecuciones de herramientas de agenda y de borradores de correo (propuestos y aprobados) y brechas de SLA.
+* **RuntimeStatsCollector**: Almacena en memoria métricas de latencia de IA, número de fallbacks a mock y acumuladores de tokens (`prompt_tokens`, `completion_tokens`, `total_tokens`).
+* **CostEstimator**: Proporciona estimaciones financieras del uso del LLM multiplicando los tokens reales por los costos parametrizados en variables de entorno:
+  - `LLM_INPUT_COST_PER_1M_TOKENS` (default `$0.40`)
+  - `LLM_OUTPUT_COST_PER_1M_TOKENS` (default `$1.60`)
+
+### API de Observabilidad
+* **Endpoint `GET /analytics/overview`**: Retorna el contrato `BusinessMetrics` con todos los KPIs calculados en tiempo real. Está protegido por `require_admin_auth` para asegurar la confidencialidad de la operación en producción.
+* **Dashboard Analytics**: Pantalla del panel de control que visualiza tarjetas KPI y activa alertas visuales basadas en condiciones del sistema:
+  - **Alerta Amarilla**: `fallback_count > 0`
+  - **Alerta Naranja**: `avg_llm_latency_ms > 5000`
+  - **Alerta Roja**: `sla_breaches > 0`

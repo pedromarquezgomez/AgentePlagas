@@ -915,3 +915,27 @@ export async function executeToolExecutionRecord(
     'No se pudo ejecutar la acción IA',
   )
 }
+
+export interface BusinessMetrics {
+  total_conversations: number
+  incidents_created: number
+  visits_proposed: number
+  visits_confirmed: number
+  gmail_drafts_proposed: number
+  gmail_drafts_approved: number
+  human_reviews_required: number
+  human_reviews_completed: number
+  fallback_count: number
+  sla_breaches: number
+  cancelled_incidents: number
+  closed_incidents: number
+  avg_llm_latency_ms: number
+  estimated_prompt_tokens: number
+  estimated_completion_tokens: number
+  estimated_total_tokens: number
+  estimated_llm_cost_usd: number
+}
+
+export async function fetchBusinessMetrics(): Promise<BusinessMetrics> {
+  return apiFetch<BusinessMetrics>('/analytics/overview', {}, 'No se pudieron cargar las métricas operativas')
+}

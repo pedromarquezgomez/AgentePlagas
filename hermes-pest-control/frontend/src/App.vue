@@ -52,6 +52,8 @@ import {
   type ToolExecutionRecord,
   TOOL_REVIEW_STATUSES,
   VISIT_STATUSES,
+  fetchBusinessMetrics,
+  type BusinessMetrics,
 } from './services/api'
 import {
   formatAction,
@@ -79,6 +81,7 @@ const DOCUMENT_TYPE_OPTIONS = [
 
 const incidents = ref<Incident[]>([])
 const dashboardSummary = ref<DashboardSummary | null>(null)
+const businessMetrics = ref<BusinessMetrics | null>(null)
 const reviewItems = ref<HumanReviewItem[]>([])
 const technicians = ref<Technician[]>([])
 const visits = ref<Visit[]>([])
@@ -143,6 +146,7 @@ const isLoginPath = computed(() => currentPath.value === '/login')
 const hasAccess = computed(() => !REQUIRE_LOGIN || Boolean(adminApiKey.value))
 const isDashboardPath = computed(() => currentPath.value === '/dashboard' || currentPath.value === '/')
 const isCalendarPath = computed(() => currentPath.value === '/calendar')
+const isAnalyticsPath = computed(() => currentPath.value === '/analytics')
 const isDocumentListPath = computed(() => currentPath.value === '/documents')
 const isShadowDecisionListPath = computed(() => currentPath.value === '/audit/shadow-decisions')
 const isToolExecutionListPath = computed(() => currentPath.value === '/tools/executions')
@@ -194,6 +198,26 @@ async function loadDashboardSummary(): Promise<void> {
     }
     error.value = err instanceof Error ? err.message : 'No se pudo cargar el dashboard'
     dashboardSummary.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadAnalytics(): Promise<void> {
+  if (!hasAccess.value) return
+
+  loading.value = true
+  error.value = null
+
+  try {
+    businessMetrics.value = await fetchBusinessMetrics()
+  } catch (err) {
+    if (isUnauthorizedError(err)) {
+      handleUnauthorized()
+      return
+    }
+    error.value = err instanceof Error ? err.message : 'No se pudieron cargar las métricas'
+    businessMetrics.value = null
   } finally {
     loading.value = false
   }
@@ -456,6 +480,7 @@ function syncPath(): void {
   if (isDocumentListPath.value) void loadDocuments()
   if (isShadowDecisionListPath.value) void loadShadowDecisionRecords()
   if (isToolExecutionListPath.value) void loadToolExecutionRecords()
+  if (isAnalyticsPath.value) void loadAnalytics()
 }
 
 function navigate(path: string): void {
@@ -516,6 +541,11 @@ function openCalendar(): void {
   navigate('/calendar')
 }
 
+function openAnalytics(): void {
+  navigate('/analytics')
+  void loadAnalytics()
+}
+
 function openDocument(documentId: string): void {
   navigate(`/documents/${encodeURIComponent(documentId)}`)
 }
@@ -572,6 +602,7 @@ function handleLogout(): void {
   void logoutCurrentUser()
   adminApiKey.value = ''
   dashboardSummary.value = null
+  businessMetrics.value = null
   incidents.value = []
   reviewItems.value = []
   technicians.value = []
@@ -587,6 +618,7 @@ function handleUnauthorized(): void {
   void logoutCurrentUser()
   adminApiKey.value = ''
   dashboardSummary.value = null
+  businessMetrics.value = null
   incidents.value = []
   reviewItems.value = []
   technicians.value = []
@@ -650,6 +682,10 @@ onMounted(() => {
   }
   if (hasAccess.value && isToolExecutionListPath.value) {
     void loadToolExecutionRecords()
+    return
+  }
+  if (hasAccess.value && isAnalyticsPath.value) {
+    void loadAnalytics()
     return
   }
   if (hasAccess.value && isIncidentListPath.value) {
@@ -756,6 +792,9 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openToolExecutionList">
               Acciones IA
             </button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">
+              Analíticas
+            </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadDashboardSummary">
             Actualizar
@@ -811,6 +850,9 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openToolExecutionList">
               Acciones IA
             </button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">
+              Analíticas
+            </button>
           </nav>
           <button
             v-if="REQUIRE_LOGIN"
@@ -846,6 +888,7 @@ onUnmounted(() => {
             <button class="primaryButton" type="button" disabled>Documentos</button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
             <button class="secondaryButton" type="button" @click="openToolExecutionList">Acciones IA</button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">Analíticas</button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadDocuments">
             Actualizar
@@ -909,6 +952,7 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
             <button class="primaryButton" type="button" disabled>Evaluación IA</button>
             <button class="secondaryButton" type="button" @click="openToolExecutionList">Acciones IA</button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">Analíticas</button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadShadowDecisionRecords">
             Actualizar
@@ -995,6 +1039,7 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
             <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
             <button class="primaryButton" type="button" disabled>Acciones IA</button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">Analíticas</button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadToolExecutionRecords">
             Actualizar
@@ -1107,6 +1152,146 @@ onUnmounted(() => {
       </section>
     </template>
 
+    <template v-else-if="isAnalyticsPath">
+      <header class="topBar">
+        <div>
+          <p class="eyebrow">Hermes Pest Control</p>
+          <h1>Analíticas y Métricas de Negocio</h1>
+        </div>
+        <div class="topActions">
+          <nav class="sectionNav" aria-label="Navegación del panel">
+            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
+            <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
+            <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
+            <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
+            <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
+            <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
+            <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
+            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
+            <button class="secondaryButton" type="button" @click="openToolExecutionList">Acciones IA</button>
+            <button class="primaryButton" type="button" disabled>Analíticas</button>
+          </nav>
+          <button class="primaryButton" type="button" :disabled="loading" @click="loadAnalytics">
+            Actualizar
+          </button>
+          <button v-if="REQUIRE_LOGIN" class="secondaryButton" type="button" @click="handleLogout">
+            Salir
+          </button>
+        </div>
+      </header>
+
+      <!-- Alertas Operativas -->
+      <section v-if="businessMetrics" class="filters" style="margin-bottom: 24px; display: flex; width: 100%;">
+        <div v-if="businessMetrics.sla_breaches > 0" class="badge severity-critical" style="padding: 12px 18px; font-size: 14px; border-radius: 8px; width: 100%; text-align: center; justify-content: center; font-weight: 800; border: 1px solid #f1b9aa; display: flex; align-items: center; gap: 8px;">
+          🔴 ALERTA ROJA: Se han detectado {{ businessMetrics.sla_breaches }} incumplimientos de SLA en incidentes.
+        </div>
+        <div v-else-if="businessMetrics.avg_llm_latency_ms > 5000" class="badge" style="padding: 12px 18px; font-size: 14px; border-radius: 8px; width: 100%; text-align: center; justify-content: center; font-weight: 800; background: #ffe3d6; color: #8a2f10; border: 1px solid #fed7aa; display: flex; align-items: center; gap: 8px;">
+          ⚠️ ALERTA NARANJA: Latencia media del LLM alta ({{ businessMetrics.avg_llm_latency_ms }} ms).
+        </div>
+        <div v-else-if="businessMetrics.fallback_count > 0" class="badge" style="padding: 12px 18px; font-size: 14px; border-radius: 8px; width: 100%; text-align: center; justify-content: center; font-weight: 800; background: #fffde7; color: #856404; border: 1px solid #ffeeba; display: flex; align-items: center; gap: 8px;">
+          ⚠️ ALERTA AMARILLA: Se han registrado {{ businessMetrics.fallback_count }} fallbacks del LLM a mock.
+        </div>
+      </section>
+
+      <!-- Grid Principal de KPIs -->
+      <section class="contentBand">
+        <div v-if="loading" class="stateMessage">Cargando métricas...</div>
+        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
+        <div v-else-if="!businessMetrics" class="stateMessage">No se pudieron obtener las métricas de negocio.</div>
+        <div v-else>
+          <div class="dashboardLayout" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+
+            <!-- Card Conversaciones -->
+            <div class="metricCard" style="min-height: 120px;">
+              <span class="metricTitle">CONVERSACIONES TOTALES</span>
+              <span class="metricValue">{{ businessMetrics.total_conversations }}</span>
+            </div>
+
+            <!-- Card Incidencias -->
+            <div class="metricCard" style="min-height: 120px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <span class="metricTitle" style="display: block;">INCIDENCIAS CREADAS</span>
+                <span class="metricValue">{{ businessMetrics.incidents_created }}</span>
+              </div>
+              <div style="font-size: 13px; color: #5c6773; font-weight: 700; margin-top: 10px; display: flex; gap: 12px;">
+                <span>Canceladas: <strong style="color: #8a2f10;">{{ businessMetrics.cancelled_incidents }}</strong></span>
+                <span>Cerradas: <strong style="color: #273442;">{{ businessMetrics.closed_incidents }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Card Visitas -->
+            <div class="metricCard" style="min-height: 120px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <span class="metricTitle" style="display: block;">VISITAS PROPUESTAS</span>
+                <span class="metricValue">{{ businessMetrics.visits_proposed }}</span>
+              </div>
+              <div style="font-size: 13px; color: #5c6773; font-weight: 700; margin-top: 10px;">
+                <span>Confirmadas: <strong style="color: #1e6841;">{{ businessMetrics.visits_confirmed }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Card Borradores de Gmail -->
+            <div class="metricCard" style="min-height: 120px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <span class="metricTitle" style="display: block;">BORRADORES GMAIL</span>
+                <span class="metricValue">{{ businessMetrics.gmail_drafts_proposed }}</span>
+              </div>
+              <div style="font-size: 13px; color: #5c6773; font-weight: 700; margin-top: 10px;">
+                <span>Aprobados: <strong style="color: #1e6841;">{{ businessMetrics.gmail_drafts_approved }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Card Revisiones Humanas -->
+            <div class="metricCard" style="min-height: 120px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <span class="metricTitle" style="display: block;">REVISIÓN HUMANA</span>
+                <span class="metricValue">{{ businessMetrics.human_reviews_required }}</span>
+              </div>
+              <div style="font-size: 13px; color: #5c6773; font-weight: 700; margin-top: 10px;">
+                <span>Completadas: <strong style="color: #1e6841;">{{ businessMetrics.human_reviews_completed }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Card SLA breaches -->
+            <div class="metricCard" :class="{'sla-breached': businessMetrics.sla_breaches > 0}" style="min-height: 120px;">
+              <span class="metricTitle" :style="{color: businessMetrics.sla_breaches > 0 ? '#8b1a1a' : '#405060'}">SLA INCUMPLIDOS</span>
+              <span class="metricValue" :style="{color: businessMetrics.sla_breaches > 0 ? '#8b1a1a' : '#235b8c'}">{{ businessMetrics.sla_breaches }}</span>
+            </div>
+
+            <!-- Card Latencia LLM -->
+            <div class="metricCard" style="min-height: 120px;">
+              <span class="metricTitle">LATENCIA MEDIA LLM</span>
+              <span class="metricValue">{{ businessMetrics.avg_llm_latency_ms }} <span style="font-size: 16px; font-weight: 700; color: #5c6773;">ms</span></span>
+            </div>
+
+            <!-- Card Coste LLM -->
+            <div class="metricCard" style="min-height: 120px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <span class="metricTitle" style="display: block;">COSTE ACUMULADO LLM</span>
+                <span class="metricValue">${{ businessMetrics.estimated_llm_cost_usd.toFixed(4) }}</span>
+              </div>
+              <div style="font-size: 13px; color: #5c6773; font-weight: 700; margin-top: 10px;">
+                <span>Fallbacks a Mock: <strong style="color: #8a2f10;">{{ businessMetrics.fallback_count }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Card Tokens Consumidos -->
+            <div class="metricCard" style="min-height: 120px; display: flex; flex-direction: column; justify-content: space-between; grid-column: span 2;">
+              <div>
+                <span class="metricTitle" style="display: block;">TOKENS CONSUMIDOS (TOTAL)</span>
+                <span class="metricValue">{{ businessMetrics.estimated_total_tokens }}</span>
+              </div>
+              <div style="font-size: 13px; color: #5c6773; font-weight: 700; margin-top: 10px; display: flex; gap: 16px;">
+                <span>Prompt (Entrada): <strong style="color: #235b8c;">{{ businessMetrics.estimated_prompt_tokens }}</strong></span>
+                <span>Completion (Salida): <strong style="color: #1e6841;">{{ businessMetrics.estimated_completion_tokens }}</strong></span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+    </template>
+
     <template v-else-if="isReviewListPath">
       <header class="topBar">
         <div>
@@ -1137,6 +1322,9 @@ onUnmounted(() => {
             </button>
             <button class="secondaryButton" type="button" @click="openToolExecutionList">
               Acciones IA
+            </button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">
+              Analíticas
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadHumanReviewItems">
@@ -1220,6 +1408,9 @@ onUnmounted(() => {
             <button class="secondaryButton" type="button" @click="openToolExecutionList">
               Acciones IA
             </button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">
+              Analíticas
+            </button>
           </nav>
           <button class="primaryButton" type="button" @click="openNewTechnician">
             Nuevo técnico
@@ -1293,6 +1484,9 @@ onUnmounted(() => {
             </button>
             <button class="secondaryButton" type="button" @click="openToolExecutionList">
               Acciones IA
+            </button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">
+              Analíticas
             </button>
           </nav>
           <button class="primaryButton" type="button" @click="openNewVisit">
@@ -1378,6 +1572,9 @@ onUnmounted(() => {
             </button>
             <button class="secondaryButton" type="button" @click="openToolExecutionList">
               Acciones IA
+            </button>
+            <button class="secondaryButton" type="button" @click="openAnalytics">
+              Analíticas
             </button>
           </nav>
           <button class="primaryButton" type="button" :disabled="loading" @click="loadIncidents">
