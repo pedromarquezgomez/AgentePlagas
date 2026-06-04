@@ -24,6 +24,8 @@ from app.routes import (
     evaluation,
     analytics,
 )
+from app.realtime.routes import router as realtime_router
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,3 +80,4 @@ app.include_router(telegram.router)
 app.include_router(whatsapp.router)
 app.include_router(evaluation.router)
 app.include_router(analytics.router)
+app.include_router(realtime_router)

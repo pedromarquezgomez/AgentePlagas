@@ -10,6 +10,9 @@ from app.incidents.sla.contracts import SLAStatus
 from app.incidents.sla.engine import SLAEngine
 from app.schemas.incident import Incident, IncidentDraft, IncidentRead
 from app.services.firestore_factory import get_firestore_service
+from app.realtime.contracts import RealtimeEvent
+from app.realtime.event_bus import event_bus
+
 
 
 class IncidentNotFoundError(LookupError):
@@ -55,6 +58,17 @@ class IncidentService:
             document_id=incident.id,
         )
         incident.id = stored_incident["id"]
+        try:
+            event_bus.publish(
+                RealtimeEvent(
+                    event_type="incident_created",
+                    resource_type="incident",
+                    resource_id=incident.id,
+                    payload=incident.model_dump(mode="json")
+                )
+            )
+        except Exception as exc:
+            logger.error("Failed to publish incident_created event: %s", exc)
         return incident
 
     async def list_incidents(
@@ -136,6 +150,29 @@ class IncidentService:
         queue_map = await self._get_global_queue_map()
         read_model = self._to_read_model(updated_incident, queue_map)
         await self._record_sla_breach_once(updated_incident, read_model)
+
+        try:
+            payload_data = read_model.model_dump(mode="json")
+            event_bus.publish(
+                RealtimeEvent(
+                    event_type="incident_updated",
+                    resource_type="incident",
+                    resource_id=incident_id,
+                    payload=payload_data
+                )
+            )
+            if new_status == "cancelled" and old_status != "cancelled":
+                event_bus.publish(
+                    RealtimeEvent(
+                        event_type="incident_cancelled",
+                        resource_type="incident",
+                        resource_id=incident_id,
+                        payload=payload_data
+                    )
+                )
+        except Exception as exc:
+            logger.error("Failed to publish incident update events: %s", exc)
+
         return read_model.model_dump(mode="json")
 
     def _to_read_model(
@@ -338,6 +375,22 @@ class IncidentService:
                 read_model.id,
                 {"metadata": updated_metadata},
             )
+            try:
+                event_bus.publish(
+                    RealtimeEvent(
+                        event_type="sla_breached",
+                        resource_type="incident",
+                        resource_id=read_model.id,
+                        payload={
+                            "incident_id": read_model.id,
+                            "sla_hours": read_model.sla_hours,
+                            "elapsed_hours": read_model.elapsed_hours,
+                            "breach_hours": read_model.breach_hours,
+                        }
+                    )
+                )
+            except Exception as exc:
+                logger.error("Failed to publish sla_breached event: %s", exc)
 
     def _parse_datetime(self, value: object) -> datetime:
         if isinstance(value, datetime):

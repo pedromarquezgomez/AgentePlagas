@@ -1,5 +1,7 @@
 from app.audit.contracts import AuditEvent
 from app.audit.in_memory_repository import InMemoryAuditRepository
+from app.realtime.contracts import RealtimeEvent
+from app.realtime.event_bus import event_bus
 
 
 _default_repository = InMemoryAuditRepository()
@@ -12,6 +14,17 @@ class AuditService:
     def record_event(self, event: AuditEvent) -> None:
         try:
             self.repository.record_event(event)
+            try:
+                event_bus.publish(
+                    RealtimeEvent(
+                        event_type="audit_event_created",
+                        resource_type="audit",
+                        resource_id=event.event_id,
+                        payload=event.model_dump(mode="json")
+                    )
+                )
+            except Exception:
+                pass
         except Exception:
             # Audit is best-effort and must never break the operational flow.
             return

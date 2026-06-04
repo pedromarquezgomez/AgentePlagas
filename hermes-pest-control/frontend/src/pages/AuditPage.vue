@@ -5,6 +5,7 @@ import { listToolExecutions, approveToolExecution, rejectToolExecution } from '.
 import type { AuditEvent, ToolExecution } from '../api/types'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard'
+import { useEventStream } from '../composables/useEventStream'
 
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
@@ -40,7 +41,7 @@ const activePayload = ref<any>(null)
 const payloadTitle = ref('')
 const isDrawerVisible = ref(false)
 
-let autoRefreshInterval: ReturnType<typeof setInterval> | null = null
+
 
 // Toasts notification system
 function showToast(title: string, message: string, type: 'success' | 'error' = 'success') {
@@ -205,15 +206,21 @@ const pendingHitlList = computed(() => {
 onMounted(() => {
   void refreshData()
   onRefresh(refreshData)
-  autoRefreshInterval = setInterval(() => {
-    void refreshData()
-  }, 10000)
 })
 
 onUnmounted(() => {
   removeRefresh(refreshData)
-  if (autoRefreshInterval) {
-    clearInterval(autoRefreshInterval)
+})
+
+useEventStream((event) => {
+  const refreshEvents = [
+    'audit_event_created',
+    'tool_proposed',
+    'tool_review_updated',
+    'tool_execution_completed'
+  ]
+  if (refreshEvents.includes(event.event_type)) {
+    void refreshData()
   }
 })
 </script>

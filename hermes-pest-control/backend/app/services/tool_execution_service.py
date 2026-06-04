@@ -4,6 +4,8 @@ from app.audit.contracts import AuditEvent, AuditEventType
 from app.audit.service import AuditService, default_audit_service
 from app.schemas.tool_harness import ToolExecutionRecord, ToolExecutionRecordUpdate
 from app.services.firestore_factory import get_firestore_service
+from app.realtime.contracts import RealtimeEvent
+from app.realtime.event_bus import event_bus
 from app.services.gmail_tool_executor import (
     GmailToolDisabledError,
     GmailToolExecutionError,
@@ -54,7 +56,28 @@ class ToolExecutionService:
             execution_record.model_dump(exclude={"created_at", "updated_at", "reviewed_at"}),
             document_id=execution_record.id,
         )
-        return ToolExecutionRecord.model_validate(stored_record)
+        record_model = ToolExecutionRecord.model_validate(stored_record)
+        try:
+            event_bus.publish(
+                RealtimeEvent(
+                    event_type="tool_proposed",
+                    resource_type="tool_execution",
+                    resource_id=record_model.id,
+                    payload=record_model.model_dump(mode="json")
+                )
+            )
+            if record_model.tool_name == "schedule_visit_tool":
+                event_bus.publish(
+                    RealtimeEvent(
+                        event_type="calendar_visit_proposed",
+                        resource_type="calendar_visit",
+                        resource_id=record_model.id,
+                        payload=record_model.model_dump(mode="json")
+                    )
+                )
+        except Exception:
+            pass
+        return record_model
 
     async def list_execution_records(
         self,
@@ -134,6 +157,17 @@ class ToolExecutionService:
             raise ToolExecutionRecordNotFoundError(
                 f"Tool execution record not found after update: {execution_id}"
             )
+        try:
+            event_bus.publish(
+                RealtimeEvent(
+                    event_type="tool_review_updated",
+                    resource_type="tool_execution",
+                    resource_id=execution_id,
+                    payload=updated_record
+                )
+            )
+        except Exception:
+            pass
         return updated_record
 
     async def execute_execution_record(
@@ -345,6 +379,17 @@ class ToolExecutionService:
             raise ToolExecutionRecordNotFoundError(
                 f"Tool execution record not found after execution: {execution_id}"
             )
+        try:
+            event_bus.publish(
+                RealtimeEvent(
+                    event_type="tool_execution_completed",
+                    resource_type="tool_execution",
+                    resource_id=execution_id,
+                    payload=updated_record
+                )
+            )
+        except Exception:
+            pass
         return updated_record
 
     def _is_gmail_create_draft(self, record: dict) -> bool:

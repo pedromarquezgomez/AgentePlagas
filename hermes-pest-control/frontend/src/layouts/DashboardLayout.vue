@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard'
@@ -28,45 +28,6 @@ const hideFilters = computed(() => {
 function handleRefresh() {
   void store.triggerRefresh()
 }
-
-// Configuración de refresco automático reactivo (polling cada 10 segundos)
-let refreshInterval: ReturnType<typeof setInterval> | null = null
-
-function startAutoRefresh() {
-  if (refreshInterval) return
-  refreshInterval = setInterval(() => {
-    // Solo actualizar si la página está activa y visible
-    if (document.visibilityState === 'visible') {
-      void store.triggerRefresh()
-    }
-  }, 10000) // cada 10 segundos
-}
-
-function stopAutoRefresh() {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-    refreshInterval = null
-  }
-}
-
-function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    void store.triggerRefresh() // refrescar inmediatamente al volver a enfocar
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
-}
-
-onMounted(() => {
-  startAutoRefresh()
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-})
-
-onUnmounted(() => {
-  stopAutoRefresh()
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
 </script>
 
 <template>

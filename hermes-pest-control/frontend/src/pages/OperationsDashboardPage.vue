@@ -7,6 +7,7 @@ import type { Incident, AnalyticsOverview, ToolExecution } from '../api/types'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard'
 import { normalizePestType } from '../utils/labels'
+import { useEventStream } from '../composables/useEventStream'
 
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
@@ -235,6 +236,22 @@ onMounted(() => {
 
 onUnmounted(() => {
   removeRefresh(refreshData)
+})
+
+useEventStream((event) => {
+  const refreshEvents = [
+    'incident_created',
+    'incident_updated',
+    'incident_cancelled',
+    'tool_proposed',
+    'tool_review_updated',
+    'tool_execution_completed',
+    'sla_breached',
+    'calendar_visit_proposed'
+  ]
+  if (refreshEvents.includes(event.event_type)) {
+    void refreshData()
+  }
 })
 </script>
 

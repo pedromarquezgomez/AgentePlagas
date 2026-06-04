@@ -3,6 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDashboardStore } from '../stores/dashboard'
 import { useToolExecutions } from '../composables/useToolExecutions'
+import { useEventStream } from '../composables/useEventStream'
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import LoadingState from '../components/dashboard/LoadingState.vue'
 import EmptyState from '../components/dashboard/EmptyState.vue'
@@ -36,6 +37,17 @@ onMounted(() => {
 
 onUnmounted(() => {
   removeRefresh(loadHumanReviewItems)
+})
+
+useEventStream((event) => {
+  const refreshEvents = [
+    'tool_proposed',
+    'tool_review_updated',
+    'incident_updated'
+  ]
+  if (refreshEvents.includes(event.event_type)) {
+    void loadHumanReviewItems()
+  }
 })
 </script>
 
