@@ -171,3 +171,56 @@ make seed-tool-executions
 The `Crear borrador en Gmail` button appears only for approved
 `gmail.create_draft` records that have not been executed yet. The backend must
 also have `GMAIL_TOOLS_ENABLED=true` and `GMAIL_DRAFT_EXECUTION_ENABLED=true`.
+
+## Dashboard Design System
+
+The Hermes Pest Control dashboard follows a dark, high-density zinc SaaS theme (`zinc-900`, `zinc-950` with emerald accents). It is designed to be highly modular, responsive, and data-dense.
+
+### Page Structure
+
+Every premium page is wrapped inside the `DashboardShell` component. It provides the standard framework:
+1. **SidebarNav**: Navigation panel on the left containing links to the operations, analytics, AI performance, and audit pages, alongside engine health signals.
+2. **TopFiltersBar**: Cabecera block hosting global filters (Channel, Pest Type, Priority) and real-time refresh sync hooks.
+3. **Main Content Band**: Where the page components are rendered.
+
+### Reusable Components
+
+All premium components live under `src/components/dashboard/`:
+- **DashboardShell.vue**: The grid layout provider.
+- **PageHeader.vue**: Unified header for displaying titles and descriptions.
+- **SectionCard.vue**: Container component for widgets, charts, and lists.
+- **KpiCard.vue**: Standard KPI cards with progress bar support.
+- **FilterSelect.vue**: Customizable filter inputs.
+- **DataToolbar.vue**: Layout component to align filters and list controls.
+- **LoadingState.vue**: Pulse-spinner representing background sync.
+- **EmptyState.vue**: Clean visual banner for empty lists.
+- **ErrorBanner.vue**: Red-bordered dismissal banner for server exceptions.
+
+### Rules of Dumb UI (Presentational vs Container)
+
+To preserve architectural cleaness:
+1. **No direct backend queries in components**: Dashboard subcomponents under `src/components/dashboard/` must remain presentational ("dumb"). They receive data via props and bubble events (`emit`) up for state actions.
+2. **Container Pages**: Only files under `src/pages/` are allowed to manage asynchronous client API operations and store local state.
+3. **No client recalculations**: Never compute priority thresholds or SLA timelines in the UI. Represent whatever strings and timestamps FastAPI resolves.
+
+### How to Create New Vistas
+
+To add a new premium page:
+1. Add the path variables and conditional checks to `src/App.vue`.
+2. Create a new Vue SFC under `src/pages/YourNewPage.vue`.
+3. Wrap the content with `<DashboardShell>`:
+   ```vue
+   <script setup lang="ts">
+   import DashboardShell from '../components/dashboard/DashboardShell.vue'
+   import PageHeader from '../components/dashboard/PageHeader.vue'
+   // ...
+   </script>
+   <template>
+     <DashboardShell ...>
+       <PageHeader title="New Vista" subtitle="..." />
+       <!-- Use SectionCard, KpiCard, and other subcomponents -->
+     </DashboardShell>
+   </template>
+   ```
+4. Propagate navigate event to `App.vue` using `@navigate` emit.
+

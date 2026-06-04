@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import SectionCard from './SectionCard.vue'
 
 const props = defineProps<{
   approved: number
@@ -35,12 +36,10 @@ const offsetPending = computed(() => {
 </script>
 
 <template>
-  <div class="metrics-block flex-between">
-    <div>
-      <h3 class="block-title">Decisiones del Motor de IA</h3>
-      <p class="block-subtitle">Salud de la distribución de autorizaciones y bloqueos</p>
-    </div>
-
+  <SectionCard 
+    title="Decisiones del Motor de IA" 
+    subtitle="Salud de la distribución de autorizaciones y bloqueos"
+  >
     <div class="donut-chart-wrapper">
       <div class="donut-svg-wrapper">
         <svg class="donut-svg" viewBox="0 0 36 36">
@@ -80,43 +79,16 @@ const offsetPending = computed(() => {
         <span class="legend-text">Pendientes: {{ percentPending }}%</span>
       </div>
     </div>
-  </div>
+  </SectionCard>
 </template>
 
 <style scoped>
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.flex-between {
-  justify-content: space-between;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0;
-}
-
-.block-subtitle {
-  font-size: 10px;
-  color: #52525b;
-  margin: 4px 0 0 0;
-}
-
 .donut-chart-wrapper {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin: 20px 0;
+  margin: 12px 0 20px 0;
+  flex: 1;
 }
 
 .donut-svg-wrapper {

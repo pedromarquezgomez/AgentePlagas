@@ -5,6 +5,9 @@ import type { RuntimeStats } from '../api/types'
 import { ApiError } from '../api/types'
 
 import DashboardShell from '../components/dashboard/DashboardShell.vue'
+import PageHeader from '../components/dashboard/PageHeader.vue'
+import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
+import LoadingState from '../components/dashboard/LoadingState.vue'
 import LatencyKpiGrid from '../components/dashboard/LatencyKpiGrid.vue'
 import TokenUsagePanel from '../components/dashboard/TokenUsagePanel.vue'
 import RuntimeModelPanel from '../components/dashboard/RuntimeModelPanel.vue'
@@ -12,10 +15,11 @@ import RuntimeModelPanel from '../components/dashboard/RuntimeModelPanel.vue'
 // Routing & shell state
 const currentPath = ref('/ai-performance')
 const isLoading = ref(false)
+const isFetching = ref(false)
 const lastUpdated = ref('--:--:--')
 const errorMsg = ref<string | null>(null)
 
-// Filters state (unified with other dashboard layouts)
+// Filters state
 const filterChannel = ref('all')
 const filterPestType = ref('all')
 const filterPriority = ref('all')
@@ -34,8 +38,9 @@ function showToast(title: string, message: string, type: 'success' | 'error' = '
 }
 
 // Fetch runtime stats from api
-async function loadStats() {
-  isLoading.value = true
+async function loadStats(showSpinner = false) {
+  if (showSpinner) isLoading.value = true
+  isFetching.value = true
   errorMsg.value = null
   try {
     stats.value = await getRuntimeStats()
@@ -53,6 +58,7 @@ async function loadStats() {
     stats.value = null
   } finally {
     isLoading.value = false
+    isFetching.value = false
   }
 }
 
@@ -66,10 +72,10 @@ function handleNavigate(path: string) {
 }
 
 onMounted(() => {
-  loadStats()
+  loadStats(true)
   // Auto refresh stats every 10 seconds for real-time telemetry
   autoRefreshInterval = setInterval(() => {
-    loadStats()
+    loadStats(false)
   }, 10000)
 })
 
@@ -83,50 +89,52 @@ onUnmounted(() => {
 <template>
   <DashboardShell
     :currentPath="currentPath"
-    :isLoading="isLoading"
+    :isLoading="isFetching"
     :lastUpdated="lastUpdated"
     v-model:channel="filterChannel"
     v-model:pestType="filterPestType"
     v-model:priority="filterPriority"
     :toasts="toasts"
     @navigate="handleNavigate"
-    @refresh="loadStats"
+    @refresh="loadStats(true)"
   >
     <div class="performance-content">
-      <!-- Error Bar -->
-      <div v-if="errorMsg" class="error-bar">
-        <div class="error-left">
-          <svg class="error-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <span>{{ errorMsg }}</span>
+      <!-- Error Banner -->
+      <ErrorBanner :error="errorMsg" @dismiss="errorMsg = null" />
+
+      <!-- Page Header -->
+      <PageHeader 
+        title="Métricas de Rendimiento del LLM" 
+        subtitle="Latencia, consumo de tokens y tasa de redirección a motor de respaldo (fallback) en tiempo real."
+      />
+
+      <!-- Loading State -->
+      <LoadingState v-if="isLoading" message="Cargando telemetría de IA..." />
+
+      <template v-else-if="stats">
+        <!-- KPIs Grid -->
+        <LatencyKpiGrid :stats="stats" />
+
+        <!-- Executive Details Section -->
+        <div class="details-section-grid">
+          <!-- Token Distribution Card -->
+          <TokenUsagePanel 
+            :promptTokens="stats.prompt_tokens"
+            :completionTokens="stats.completion_tokens"
+            :totalTokens="stats.total_tokens"
+          />
+
+          <!-- Model Engine Status -->
+          <RuntimeModelPanel 
+            :provider="stats.provider"
+            :model="stats.model"
+          />
         </div>
-        <button class="dismiss-btn" @click="errorMsg = null">Descartar</button>
-      </div>
+      </template>
 
-      <!-- Section Title -->
-      <div class="section-header-band">
-        <h2 class="section-title">Métricas de Rendimiento del LLM</h2>
-        <p class="section-subtitle">Latencia, consumo de tokens y tasa de redirección a motor de respaldo (fallback) en tiempo real.</p>
-      </div>
-
-      <!-- KPIs Grid -->
-      <LatencyKpiGrid :stats="stats" />
-
-      <!-- Executive Details Section -->
-      <div v-if="stats" class="details-section-grid">
-        <!-- Token Distribution Card -->
-        <TokenUsagePanel 
-          :promptTokens="stats.prompt_tokens"
-          :completionTokens="stats.completion_tokens"
-          :totalTokens="stats.total_tokens"
-        />
-
-        <!-- Model Engine Status -->
-        <RuntimeModelPanel 
-          :provider="stats.provider"
-          :model="stats.model"
-        />
+      <!-- Empty State -->
+      <div v-else-if="!isLoading && !stats" class="empty-state-wrapper">
+        <EmptyState message="No hay estadísticas de ejecución disponibles." />
       </div>
     </div>
   </DashboardShell>
@@ -137,59 +145,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.error-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(127, 29, 29, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  color: #fee2e2;
-  font-size: 13px;
-}
-
-.error-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.error-icon {
-  width: 18px;
-  height: 18px;
-  color: #f87171;
-}
-
-.dismiss-btn {
-  background: transparent;
-  border: none;
-  color: #f87171;
-  font-weight: 700;
-  font-size: 11px;
-  text-transform: uppercase;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.section-header-band {
-  border-bottom: 1px solid #18181b;
-  padding-bottom: 12px;
-}
-
-.section-title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #f4f4f5;
-  margin: 0;
-}
-
-.section-subtitle {
-  font-size: 12px;
-  color: #a1a1aa;
-  margin: 4px 0 0 0;
 }
 
 .details-section-grid {

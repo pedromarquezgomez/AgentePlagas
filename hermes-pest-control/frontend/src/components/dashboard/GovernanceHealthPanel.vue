@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import SectionCard from './SectionCard.vue'
 
 const props = defineProps<{
   pendingCount: number
@@ -30,12 +31,10 @@ const riskClass = computed(() => {
 </script>
 
 <template>
-  <div class="metrics-block">
-    <div>
-      <h3 class="block-title">Salud del Gobierno</h3>
-      <p class="block-subtitle">Análisis de rendimiento y cuello de botella del HITL</p>
-    </div>
-
+  <SectionCard
+    title="Salud del Gobierno"
+    subtitle="Análisis de rendimiento y cuello de botella del HITL"
+  >
     <div class="health-container">
       <div class="risk-badge-container">
         <span class="risk-label">Riesgo Operativo:</span>
@@ -70,41 +69,15 @@ const riskClass = computed(() => {
     <div class="health-footer-desc">
       El riesgo escala a CRITICAL si el backlog supera los 3 elementos.
     </div>
-  </div>
+  </SectionCard>
 </template>
 
 <style scoped>
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 200px;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0;
-}
-
-.block-subtitle {
-  font-size: 10px;
-  color: #52525b;
-  margin: 4px 0 0 0;
-}
-
 .health-container {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 20px;
+  margin-top: 4px;
   flex: 1;
 }
 
@@ -225,6 +198,6 @@ const riskClass = computed(() => {
 .health-footer-desc {
   font-size: 9px;
   color: #52525b;
-  margin-top: 12px;
+  margin-top: 16px;
 }
 </style>

@@ -7,6 +7,11 @@ import type { Incident, AnalyticsOverview, ToolExecution } from '../api/types'
 import { ApiError } from '../api/types'
 
 import DashboardShell from '../components/dashboard/DashboardShell.vue'
+import PageHeader from '../components/dashboard/PageHeader.vue'
+import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
+import LoadingState from '../components/dashboard/LoadingState.vue'
+import EmptyState from '../components/dashboard/EmptyState.vue'
+import SectionCard from '../components/dashboard/SectionCard.vue'
 import KpiCard from '../components/dashboard/KpiCard.vue'
 import DispatchBucketCard from '../components/dashboard/DispatchBucketCard.vue'
 import OperationalIncidentsTable from '../components/dashboard/OperationalIncidentsTable.vue'
@@ -16,6 +21,7 @@ import type { Toast } from '../components/dashboard/ToastContainer.vue'
 // Routing & Shell status
 const currentPath = ref('/operations')
 const isLoading = ref(false)
+const isFetching = ref(false)
 const actionLoadingId = ref<string | null>(null)
 const lastUpdated = ref('--:--:--')
 const errorMsg = ref<string | null>(null)
@@ -46,8 +52,9 @@ function showToast(title: string, message: string, type: 'success' | 'error' = '
 }
 
 // Fetch all data from APIs
-async function refreshData() {
-  isLoading.value = true
+async function refreshData(showSpinner = false) {
+  if (showSpinner) isLoading.value = true
+  isFetching.value = true
   errorMsg.value = null
   try {
     const [incList, metData, toolList] = await Promise.all([
@@ -72,10 +79,11 @@ async function refreshData() {
     }
   } finally {
     isLoading.value = false
+    isFetching.value = false
   }
 }
 
-// Navigate (propagate navigation to main shell)
+// Navigate
 const emit = defineEmits<{
   (e: 'navigate', path: string): void
 }>()
@@ -88,7 +96,6 @@ function handleNavigate(path: string) {
 async function handleApprove(incidentId: string) {
   actionLoadingId.value = incidentId
   try {
-    // Buscar si hay una herramienta propuesta asociada al incidente
     const inc = incidents.value.find(i => i.id === incidentId)
     const tool = proposedTools.value.find(t => 
       t.metadata?.incident_id === incidentId || 
@@ -103,7 +110,6 @@ async function handleApprove(incidentId: string) {
         'success'
       )
     } else {
-      // Si no hay tool propuesta, avanzar estado del incidente
       await updateIncident(incidentId, { status: 'ready_for_scheduling' })
       showToast(
         'Incidencia Confirmada',
@@ -111,7 +117,7 @@ async function handleApprove(incidentId: string) {
         'success'
       )
     }
-    await refreshData()
+    await refreshData(false)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo confirmar la acción.'
     showToast('Error', msg, 'error')
@@ -130,7 +136,7 @@ async function handleCancel(incidentId: string) {
       'El estado de la incidencia se ha actualizado a cancelado.',
       'success'
     )
-    await refreshData()
+    await refreshData(false)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo cancelar el caso.'
     showToast('Error', msg, 'error')
@@ -146,7 +152,6 @@ function handleInspect(incident: Incident) {
   isDrawerVisible.value = true
 }
 
-// Close drawer helper
 function closeDrawer() {
   isDrawerVisible.value = false
   activePayload.value = null
@@ -170,7 +175,6 @@ const activeIncidentsCount = computed(() => {
   return filteredIncidents.value.length
 })
 
-// Conversion rate based on filtered metrics
 const conversionRate = computed(() => {
   const total = metrics.value?.total_conversations || 0
   const created = metrics.value?.incidents_created || 0
@@ -238,7 +242,7 @@ const dispatchBuckets = computed(() => {
 })
 
 onMounted(() => {
-  refreshData()
+  refreshData(true)
 })
 </script>
 
@@ -246,119 +250,124 @@ onMounted(() => {
   <DashboardShell
     :currentPath="currentPath"
     :activeIncidentsCount="activeIncidentsCount"
-    :isLoading="isLoading"
+    :isLoading="isFetching"
     :lastUpdated="lastUpdated"
     v-model:channel="filterChannel"
     v-model:pestType="filterPestType"
     v-model:priority="filterPriority"
     :toasts="toasts"
     @navigate="handleNavigate"
-    @refresh="refreshData"
+    @refresh="refreshData(true)"
   >
-    <!-- Main operations screen layout -->
     <div class="operations-dashboard-content">
-      <!-- Error Bar -->
-      <div v-if="errorMsg" class="error-bar">
-        <div class="error-left">
-          <svg class="error-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <span>{{ errorMsg }}</span>
-        </div>
-        <button class="dismiss-btn" @click="errorMsg = null">Descartar</button>
-      </div>
+      <!-- Error Banner -->
+      <ErrorBanner :error="errorMsg" @dismiss="errorMsg = null" />
 
-      <!-- Section Title header -->
-      <div class="section-header-band">
-        <h2 class="section-title">Centro Operativo (HITL)</h2>
-        <p class="section-subtitle">Asignaciones recomendadas, estado de SLAs y flujo de control humano de herramientas automatizadas.</p>
-      </div>
-
-      <!-- KPI Executive widgets grid -->
-      <div class="kpi-grid">
-        <KpiCard 
-          title="Conversaciones Totales"
-          :value="metrics?.total_conversations ?? 0"
-          description="Acumulado en últimos 30 días"
-          iconType="comments"
-        />
-        <KpiCard 
-          title="Incidencias Creadas"
-          :value="incidents.length"
-          description="Registradas por el Intake Engine"
-          iconType="incidents"
-        />
-        <KpiCard 
-          title="Tasa de Conversión AI"
-          :value="conversionRate + '%'"
-          :progressValue="parseFloat(conversionRate)"
-          description="Conversión de chats a incidencias"
-          iconType="conversion"
-          variant="emerald"
-        />
-        <KpiCard 
-          title="Inversión Coste IA"
-          :value="'$' + (metrics?.estimated_llm_cost_usd ?? 0.0).toFixed(3)"
-          description="Estimado por consumo de tokens"
-          iconType="cost"
-          variant="indigo"
-        />
-      </div>
-
-      <!-- Secondary metrics grid -->
-      <div class="charts-row">
-        <!-- Priority Card -->
-        <div class="metrics-block">
-          <h3 class="block-title">Prioridad Operativa</h3>
-          <div class="progress-stats-list">
-            <div v-for="item in priorityStats" :key="item.name" class="progress-stat-item">
-              <div class="stat-meta">
-                <span class="stat-name">{{ item.name }}</span>
-                <span class="stat-count" :class="item.colorText">{{ item.count }} casos</span>
-              </div>
-              <div class="stat-bar-track">
-                <div class="stat-bar-fill" :class="item.colorBg" :style="{ width: item.percentage + '%' }"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Severity Donut -->
-        <div class="metrics-block donut-block">
-          <h3 class="block-title">Severidad Biológica</h3>
-          <div class="donut-content">
-            <div class="donut-svg-wrapper">
-              <svg class="donut-svg" viewBox="0 0 36 36">
-                <path class="donut-bg" stroke-width="4" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                <path class="donut-fill" stroke-width="4.5" :stroke-dasharray="`${severityPercentages.critical}, 100`" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-              </svg>
-              <div class="donut-labels">
-                <span class="donut-value">{{ incidents.length }}</span>
-                <span class="donut-sub">Casos</span>
-              </div>
-            </div>
-            <div class="donut-legend">
-              <div class="legend-item"><span class="legend-dot critical"></span> Crítica ({{ severityCounts.CRITICAL }})</div>
-              <div class="legend-item"><span class="legend-dot high"></span> Alta ({{ severityCounts.HIGH }})</div>
-              <div class="legend-item"><span class="legend-dot medium"></span> Media ({{ severityCounts.MEDIUM }})</div>
-              <div class="legend-item"><span class="legend-dot low"></span> Baja ({{ severityCounts.LOW }})</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Dispatch Buckets -->
-        <DispatchBucketCard :buckets="dispatchBuckets" />
-      </div>
-
-      <!-- Master Incidents table component -->
-      <OperationalIncidentsTable 
-        :incidents="filteredIncidents"
-        :loading="isLoading"
-        :actionLoadingId="actionLoadingId"
-        @approve="handleApprove"
-        @cancel="handleCancel"
-        @inspect="handleInspect"
+      <!-- Page Header -->
+      <PageHeader
+        title="Centro Operativo (HITL)"
+        subtitle="Asignaciones recomendadas, estado de SLAs y flujo de control humano de herramientas automatizadas."
       />
+
+      <!-- Loading State -->
+      <LoadingState v-if="isLoading" message="Cargando centro operativo..." />
+
+      <template v-else-if="incidents.length > 0">
+        <!-- KPI Executive widgets grid -->
+        <div class="kpi-grid">
+          <KpiCard 
+            title="Conversaciones Totales"
+            :value="metrics?.total_conversations ?? 0"
+            description="Acumulado en últimos 30 días"
+            iconType="comments"
+          />
+          <KpiCard 
+            title="Incidencias Creadas"
+            :value="incidents.length"
+            description="Registradas por el Intake Engine"
+            iconType="incidents"
+          />
+          <KpiCard 
+            title="Tasa de Conversión AI"
+            :value="conversionRate + '%'"
+            :progressValue="parseFloat(conversionRate)"
+            description="Conversión de chats a incidencias"
+            iconType="conversion"
+            variant="emerald"
+          />
+          <KpiCard 
+            title="Inversión Coste IA"
+            :value="'$' + (metrics?.estimated_llm_cost_usd ?? 0.0).toFixed(3)"
+            description="Estimado por consumo de tokens"
+            iconType="cost"
+            variant="indigo"
+          />
+        </div>
+
+        <!-- Secondary metrics grid -->
+        <div class="charts-row">
+          <!-- Priority Card -->
+          <SectionCard 
+            title="Prioridad Operativa"
+            subtitle="Gravedad de atención de casos en tiempo real"
+          >
+            <div class="progress-stats-list">
+              <div v-for="item in priorityStats" :key="item.name" class="progress-stat-item">
+                <div class="stat-meta">
+                  <span class="stat-name">{{ item.name }}</span>
+                  <span class="stat-count" :class="item.colorText">{{ item.count }} casos</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" :class="item.colorBg" :style="{ width: item.percentage + '%' }"></div>
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          <!-- Severity Donut -->
+          <SectionCard 
+            title="Severidad Biológica"
+            subtitle="Clasificación del tipo de plaga y área afectada"
+          >
+            <div class="donut-content">
+              <div class="donut-svg-wrapper">
+                <svg class="donut-svg" viewBox="0 0 36 36">
+                  <path class="donut-bg" stroke-width="4" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path class="donut-fill" stroke-width="4.5" :stroke-dasharray="`${severityPercentages.critical}, 100`" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                </svg>
+                <div class="donut-labels">
+                  <span class="donut-value">{{ incidents.length }}</span>
+                  <span class="donut-sub">Casos</span>
+                </div>
+              </div>
+              <div class="donut-legend">
+                <div class="legend-item"><span class="legend-dot critical"></span> Crítica ({{ severityCounts.CRITICAL }})</div>
+                <div class="legend-item"><span class="legend-dot high"></span> Alta ({{ severityCounts.HIGH }})</div>
+                <div class="legend-item"><span class="legend-dot medium"></span> Media ({{ severityCounts.MEDIUM }})</div>
+                <div class="legend-item"><span class="legend-dot low"></span> Baja ({{ severityCounts.LOW }})</div>
+              </div>
+            </div>
+          </SectionCard>
+
+          <!-- Dispatch Buckets -->
+          <DispatchBucketCard :buckets="dispatchBuckets" />
+        </div>
+
+        <!-- Master Incidents table component -->
+        <OperationalIncidentsTable 
+          :incidents="filteredIncidents"
+          :loading="isFetching"
+          :actionLoadingId="actionLoadingId"
+          @approve="handleApprove"
+          @cancel="handleCancel"
+          @inspect="handleInspect"
+        />
+      </template>
+
+      <!-- Empty State -->
+      <div v-else class="empty-state-wrapper">
+        <EmptyState message="No hay incidencias registradas en el Centro Operativo." />
+      </div>
     </div>
 
     <!-- Inspect Drawer component -->
@@ -378,59 +387,6 @@ onMounted(() => {
   gap: 24px;
 }
 
-.error-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(127, 29, 29, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  color: #fee2e2;
-  font-size: 13px;
-}
-
-.error-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.error-icon {
-  width: 18px;
-  height: 18px;
-  color: #f87171;
-}
-
-.dismiss-btn {
-  background: transparent;
-  border: none;
-  color: #f87171;
-  font-weight: 700;
-  font-size: 11px;
-  text-transform: uppercase;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.section-header-band {
-  border-bottom: 1px solid #18181b;
-  padding-bottom: 12px;
-}
-
-.section-title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #f4f4f5;
-  margin: 0;
-}
-
-.section-subtitle {
-  font-size: 12px;
-  color: #a1a1aa;
-  margin: 4px 0 0 0;
-}
-
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -443,28 +399,11 @@ onMounted(() => {
   gap: 20px;
 }
 
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0 0 16px 0;
-}
-
 .progress-stats-list {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  margin-top: 4px;
 }
 
 .progress-stat-item {
@@ -525,16 +464,13 @@ onMounted(() => {
   color: #38bdf8;
 }
 
-.donut-block {
-  justify-content: space-between;
-}
-
 .donut-content {
   display: flex;
   align-items: center;
   justify-content: space-around;
   gap: 16px;
   flex: 1;
+  margin-top: 4px;
 }
 
 .donut-svg-wrapper {

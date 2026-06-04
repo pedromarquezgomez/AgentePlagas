@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SectionCard from './SectionCard.vue'
+
 defineProps<{
   funnelData: Array<{
     label: string
@@ -10,12 +12,11 @@ defineProps<{
 </script>
 
 <template>
-  <div class="metrics-block col-span-2">
-    <div>
-      <h3 class="block-title">Embudo Operativo & Automatización</h3>
-      <p class="block-subtitle">Conversión automatizada de interacciones conversacionales</p>
-    </div>
-
+  <SectionCard
+    title="Embudo Operativo & Automatización"
+    subtitle="Conversión automatizada de interacciones conversacionales"
+    :colSpan="2"
+  >
     <div class="funnel-steps-list">
       <div v-for="step in funnelData" :key="step.label" class="funnel-step">
         <div class="funnel-step-meta">
@@ -34,43 +35,15 @@ defineProps<{
         </div>
       </div>
     </div>
-  </div>
+  </SectionCard>
 </template>
 
 <style scoped>
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.col-span-2 {
-  grid-column: span 2;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0;
-}
-
-.block-subtitle {
-  font-size: 10px;
-  color: #52525b;
-  margin: 4px 0 0 0;
-}
-
 .funnel-steps-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 4px;
 }
 
 .funnel-step {

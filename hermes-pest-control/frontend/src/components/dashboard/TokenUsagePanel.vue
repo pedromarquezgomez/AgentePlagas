@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import SectionCard from './SectionCard.vue'
 
 const props = defineProps<{
   promptTokens: number
@@ -18,12 +19,11 @@ const completionTokenPercent = computed(() => {
 </script>
 
 <template>
-  <div class="metrics-block col-span-2">
-    <div class="tokens-header-section">
-      <h3 class="block-title">Distribución y Consumo de Tokens</h3>
-      <p class="block-subtitle">Volumen de datos de entrada frente a datos de salida procesados</p>
-    </div>
-
+  <SectionCard 
+    title="Distribución y Consumo de Tokens" 
+    subtitle="Volumen de datos de entrada frente a datos de salida procesados"
+    :colSpan="2"
+  >
     <div class="tokens-distribution-container">
       <div class="token-metric-item">
         <div class="token-meta">
@@ -49,43 +49,15 @@ const completionTokenPercent = computed(() => {
     <div class="token-total-footer">
       <span class="total-text font-mono">Consumo Acumulado: {{ totalTokens }} tokens</span>
     </div>
-  </div>
+  </SectionCard>
 </template>
 
 <style scoped>
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.col-span-2 {
-  grid-column: span 2;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0;
-}
-
-.block-subtitle {
-  font-size: 10px;
-  color: #52525b;
-  margin: 4px 0 0 0;
-}
-
 .tokens-distribution-container {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 20px;
+  margin-top: 4px;
   flex: 1;
 }
 

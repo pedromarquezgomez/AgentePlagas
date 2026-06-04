@@ -8,6 +8,12 @@ import OperationsPage from './pages/OperationsPage.vue'
 import OperationsDashboardPage from './pages/OperationsDashboardPage.vue'
 import AiPerformancePage from './pages/AiPerformancePage.vue'
 import AuditPage from './pages/AuditPage.vue'
+import DashboardShell from './components/dashboard/DashboardShell.vue'
+import PageHeader from './components/dashboard/PageHeader.vue'
+import LoadingState from './components/dashboard/LoadingState.vue'
+import EmptyState from './components/dashboard/EmptyState.vue'
+import ErrorBanner from './components/dashboard/ErrorBanner.vue'
+import SectionCard from './components/dashboard/SectionCard.vue'
 import DocumentTable from './components/DocumentTable.vue'
 import HumanReviewDetail from './components/HumanReviewDetail.vue'
 import HumanReviewTable from './components/HumanReviewTable.vue'
@@ -655,6 +661,20 @@ function enforceRouteProtection(): void {
   }
 }
 
+const lastUpdated = ref(new Date().toTimeString().split(' ')[0])
+
+function refreshCurrentData(): void {
+  lastUpdated.value = new Date().toTimeString().split(' ')[0]
+  if (isDashboardPath.value) void loadDashboardSummary()
+  else if (isIncidentListPath.value) void loadIncidents()
+  else if (isReviewListPath.value) void loadHumanReviewItems()
+  else if (isTechnicianListPath.value) void loadTechnicians()
+  else if (isVisitListPath.value) void loadVisits()
+  else if (isDocumentListPath.value) void loadDocuments()
+  else if (isShadowDecisionListPath.value) void loadShadowDecisionRecords()
+  else if (isToolExecutionListPath.value) void loadToolExecutionRecords()
+}
+
 onMounted(() => {
   window.addEventListener('popstate', syncPath)
   stopAuthObserver = observeAuthState((hasAuthAccess) => {
@@ -721,6 +741,11 @@ onUnmounted(() => {
     @navigate="navigate"
   />
 
+  <AnalyticsPage
+    v-else-if="isAnalyticsPath"
+    @navigate="navigate"
+  />
+
   <AiPerformancePage
     v-else-if="isAiPerformancePath"
     @navigate="navigate"
@@ -731,7 +756,19 @@ onUnmounted(() => {
     @navigate="navigate"
   />
 
-  <main v-else class="appShell">
+  <DashboardShell
+    v-else
+    :currentPath="currentPath"
+    :isLoading="loading"
+    :lastUpdated="lastUpdated"
+    channel="all"
+    pestType="all"
+    priority="all"
+    :toasts="[]"
+    :hideFilters="true"
+    @navigate="navigate"
+    @refresh="refreshCurrentData"
+  >
     <IncidentDetail
       v-if="selectedIncidentId"
       :incident-id="selectedIncidentId"
@@ -784,58 +821,10 @@ onUnmounted(() => {
     />
 
     <template v-else-if="isDashboardPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Panel operativo</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="primaryButton" type="button" disabled>Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">
-              Operaciones
-            </button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">
-              Incidencias
-            </button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">
-              Revisión humana
-            </button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">
-              Técnicos
-            </button>
-            <button class="secondaryButton" type="button" @click="openVisitList">
-              Visitas
-            </button>
-            <button class="secondaryButton" type="button" @click="openCalendar">
-              Calendario
-            </button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">
-              Documentos
-            </button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">
-              Acciones IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">
-              Analíticas
-            </button>
-          </nav>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadDashboardSummary">
-            Actualizar
-          </button>
-          <button
-            v-if="REQUIRE_LOGIN"
-            class="secondaryButton"
-            type="button"
-            @click="handleLogout"
-          >
-            Salir
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Resumen Ejecutivo"
+        subtitle="Métricas operativas del negocio y resumen de la actividad de Hermes Pest Control."
+      />
 
       <DashboardPanel
         :summary="dashboardSummary"
@@ -847,51 +836,10 @@ onUnmounted(() => {
     </template>
 
     <template v-else-if="isCalendarPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Calendario</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">
-              Incidencias
-            </button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">
-              Revisión humana
-            </button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">
-              Técnicos
-            </button>
-            <button class="secondaryButton" type="button" @click="openVisitList">
-              Visitas
-            </button>
-            <button class="primaryButton" type="button" disabled>Calendario</button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">
-              Documentos
-            </button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">
-              Acciones IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">
-              Analíticas
-            </button>
-          </nav>
-          <button
-            v-if="REQUIRE_LOGIN"
-            class="secondaryButton"
-            type="button"
-            @click="handleLogout"
-          >
-            Salir
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Calendario de Visitas"
+        subtitle="Visualización de visitas técnicas planificadas y asignaciones horarias."
+      />
 
       <CalendarPanel
         @open="openVisit"
@@ -900,33 +848,10 @@ onUnmounted(() => {
     </template>
 
     <template v-else-if="isDocumentListPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Documentos</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
-            <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
-            <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
-            <button class="primaryButton" type="button" disabled>Documentos</button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">Acciones IA</button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">Analíticas</button>
-          </nav>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadDocuments">
-            Actualizar
-          </button>
-          <button v-if="REQUIRE_LOGIN" class="secondaryButton" type="button" @click="handleLogout">
-            Salir
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Repositorio de Documentos"
+        subtitle="Listado y consulta de reportes, briefings y sumarios de tratamiento emitidos."
+      />
 
       <section class="filters" aria-label="Filtros de documentos">
         <label>
@@ -955,43 +880,18 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando documentos...</div>
-        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
-        <div v-else-if="documents.length === 0" class="stateMessage">
-          No hay documentos para los filtros seleccionados.
-        </div>
+        <LoadingState v-if="loading" message="Cargando documentos..." />
+        <ErrorBanner v-else-if="error" :error="error" @dismiss="error = null" />
+        <EmptyState v-else-if="documents.length === 0" message="No hay documentos para los filtros seleccionados." />
         <DocumentTable v-else :documents="documents" @open="openDocument" />
       </section>
     </template>
 
     <template v-else-if="isShadowDecisionListPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Evaluación IA</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
-            <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
-            <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
-            <button class="primaryButton" type="button" disabled>Evaluación IA</button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">Acciones IA</button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">Analíticas</button>
-          </nav>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadShadowDecisionRecords">
-            Actualizar
-          </button>
-          <button v-if="REQUIRE_LOGIN" class="secondaryButton" type="button" @click="handleLogout">
-            Salir
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Evaluaciones en Sombra (Shadow Decisions)"
+        subtitle="Monitoreo pasivo y evaluación comparativa entre las decisiones propuestas por la IA y la lógica del sistema."
+      />
 
       <section class="contentBand">
         <div class="infoPanel" aria-label="Explicación de evaluación IA">
@@ -1039,11 +939,9 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando evaluaciones IA...</div>
-        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
-        <div v-else-if="shadowDecisionRecords.length === 0" class="stateMessage">
-          No hay evaluaciones IA para los filtros seleccionados.
-        </div>
+        <LoadingState v-if="loading" message="Cargando evaluaciones IA..." />
+        <ErrorBanner v-else-if="error" :error="error" @dismiss="error = null" />
+        <EmptyState v-else-if="shadowDecisionRecords.length === 0" message="No hay evaluaciones IA para los filtros seleccionados." />
         <ShadowDecisionTable
           v-else
           :records="shadowDecisionRecords"
@@ -1053,33 +951,10 @@ onUnmounted(() => {
     </template>
 
     <template v-else-if="isToolExecutionListPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Acciones IA</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
-            <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
-            <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
-            <button class="primaryButton" type="button" disabled>Acciones IA</button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">Analíticas</button>
-          </nav>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadToolExecutionRecords">
-            Actualizar
-          </button>
-          <button v-if="REQUIRE_LOGIN" class="secondaryButton" type="button" @click="handleLogout">
-            Salir
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Acciones de la IA"
+        subtitle="Registro y revisión de propuestas de ejecución de herramientas invocadas por el agente de IA."
+      />
 
       <section class="contentBand">
         <div class="infoPanel" aria-label="Explicación de acciones IA">
@@ -1170,11 +1045,9 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando acciones IA...</div>
-        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
-        <div v-else-if="toolExecutionRecords.length === 0" class="stateMessage">
-          No hay acciones IA para los filtros seleccionados.
-        </div>
+        <LoadingState v-if="loading" message="Cargando acciones IA..." />
+        <ErrorBanner v-else-if="error" :error="error" @dismiss="error = null" />
+        <EmptyState v-else-if="toolExecutionRecords.length === 0" message="No hay acciones IA para los filtros seleccionados." />
         <ToolExecutionTable
           v-else
           :records="toolExecutionRecords"
@@ -1183,117 +1056,11 @@ onUnmounted(() => {
       </section>
     </template>
 
-    <template v-else-if="isAnalyticsPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Analíticas</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
-            <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
-            <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">Acciones IA</button>
-            <button class="primaryButton" type="button" disabled>Analíticas</button>
-          </nav>
-          <button v-if="REQUIRE_LOGIN" class="secondaryButton" type="button" @click="handleLogout">
-            Salir
-          </button>
-        </div>
-      </header>
-
-      <section class="contentBand">
-        <AnalyticsPage />
-      </section>
-    </template>
-
-    <template v-else-if="isOperationsPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Operaciones</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="primaryButton" type="button" disabled>Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">Incidencias</button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">Revisión humana</button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">Técnicos</button>
-            <button class="secondaryButton" type="button" @click="openVisitList">Visitas</button>
-            <button class="secondaryButton" type="button" @click="openCalendar">Calendario</button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">Documentos</button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">Evaluación IA</button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">Acciones IA</button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">Analíticas</button>
-          </nav>
-          <button v-if="REQUIRE_LOGIN" class="secondaryButton" type="button" @click="handleLogout">
-            Salir
-          </button>
-        </div>
-      </header>
-
-      <section class="contentBand">
-        <OperationsPage />
-      </section>
-    </template>
-
     <template v-else-if="isReviewListPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Revisión humana</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">
-              Incidencias
-            </button>
-            <button class="primaryButton" type="button" disabled>Revisión humana</button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">
-              Técnicos
-            </button>
-            <button class="secondaryButton" type="button" @click="openVisitList">
-              Visitas
-            </button>
-            <button class="secondaryButton" type="button" @click="openCalendar">
-              Calendario
-            </button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">
-              Documentos
-            </button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">
-              Acciones IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">
-              Analíticas
-            </button>
-          </nav>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadHumanReviewItems">
-            Actualizar
-          </button>
-          <button
-            v-if="REQUIRE_LOGIN"
-            class="secondaryButton"
-            type="button"
-            @click="handleLogout"
-          >
-            Salir
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Cola de Revisión Humana (HITL)"
+        subtitle="Intervenciones y aprobaciones manuales pendientes para control del agente."
+      />
 
       <section class="filters" aria-label="Filtros de revisión humana">
         <label>
@@ -1322,67 +1089,23 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando revisión humana...</div>
-        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
-        <div v-else-if="reviewItems.length === 0" class="stateMessage">
-          No hay elementos de revisión para los filtros seleccionados.
-        </div>
+        <LoadingState v-if="loading" message="Cargando revisión humana..." />
+        <ErrorBanner v-else-if="error" :error="error" @dismiss="error = null" />
+        <EmptyState v-else-if="reviewItems.length === 0" message="No hay elementos de revisión para los filtros seleccionados." />
         <HumanReviewTable v-else :items="reviewItems" @open="openHumanReview" />
       </section>
     </template>
 
     <template v-else-if="isTechnicianListPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Técnicos</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">
-              Incidencias
-            </button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">
-              Revisión humana
-            </button>
-            <button class="primaryButton" type="button" disabled>Técnicos</button>
-            <button class="secondaryButton" type="button" @click="openVisitList">
-              Visitas
-            </button>
-            <button class="secondaryButton" type="button" @click="openCalendar">
-              Calendario
-            </button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">
-              Documentos
-            </button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">
-              Acciones IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">
-              Analíticas
-            </button>
-          </nav>
-          <button class="primaryButton" type="button" @click="openNewTechnician">
-            Nuevo técnico
-          </button>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadTechnicians">
-            Actualizar
-          </button>
-          <button
-            v-if="REQUIRE_LOGIN"
-            class="secondaryButton"
-            type="button"
-            @click="handleLogout"
-          >
-            Salir
-          </button>
-        </div>
-      </header>
+      <div class="sectionHeader">
+        <PageHeader
+          title="Técnicos de Servicio"
+          subtitle="Listado y estado de disponibilidad del personal técnico asignado."
+        />
+        <button class="primaryButton" type="button" @click="openNewTechnician">
+          Nuevo técnico
+        </button>
+      </div>
 
       <section class="filters" aria-label="Filtros de técnicos">
         <label>
@@ -1400,67 +1123,23 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando técnicos...</div>
-        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
-        <div v-else-if="technicians.length === 0" class="stateMessage">
-          No hay técnicos para los filtros seleccionados.
-        </div>
+        <LoadingState v-if="loading" message="Cargando técnicos..." />
+        <ErrorBanner v-else-if="error" :error="error" @dismiss="error = null" />
+        <EmptyState v-else-if="technicians.length === 0" message="No hay técnicos para los filtros seleccionados." />
         <TechnicianTable v-else :technicians="technicians" @open="openTechnician" />
       </section>
     </template>
 
     <template v-else-if="isVisitListPath">
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Visitas</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="secondaryButton" type="button" @click="openIncidentList">
-              Incidencias
-            </button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">
-              Revisión humana
-            </button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">
-              Técnicos
-            </button>
-            <button class="primaryButton" type="button" disabled>Visitas</button>
-            <button class="secondaryButton" type="button" @click="openCalendar">
-              Calendario
-            </button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">
-              Documentos
-            </button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">
-              Acciones IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">
-              Analíticas
-            </button>
-          </nav>
-          <button class="primaryButton" type="button" @click="openNewVisit">
-            Nueva visita
-          </button>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadVisits">
-            Actualizar
-          </button>
-          <button
-            v-if="REQUIRE_LOGIN"
-            class="secondaryButton"
-            type="button"
-            @click="handleLogout"
-          >
-            Salir
-          </button>
-        </div>
-      </header>
+      <div class="sectionHeader">
+        <PageHeader
+          title="Planificación de Visitas"
+          subtitle="Visitas técnicas programadas y asignaciones de tratamiento sobre el terreno."
+        />
+        <button class="primaryButton" type="button" @click="openNewVisit">
+          Nueva visita
+        </button>
+      </div>
 
       <section class="filters" aria-label="Filtros de visitas">
         <label>
@@ -1489,64 +1168,18 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando visitas...</div>
-        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
-        <div v-else-if="visits.length === 0" class="stateMessage">
-          No hay visitas para los filtros seleccionados.
-        </div>
+        <LoadingState v-if="loading" message="Cargando visitas..." />
+        <ErrorBanner v-else-if="error" :error="error" @dismiss="error = null" />
+        <EmptyState v-else-if="visits.length === 0" message="No hay visitas para los filtros seleccionados." />
         <VisitTable v-else :visits="visits" @open="openVisit" />
       </section>
     </template>
 
     <template v-else>
-      <header class="topBar">
-        <div>
-          <p class="eyebrow">Hermes Pest Control</p>
-          <h1>Incidencias</h1>
-        </div>
-        <div class="topActions">
-          <nav class="sectionNav" aria-label="Navegación del panel">
-            <button class="secondaryButton" type="button" @click="openDashboard">Panel</button>
-            <button class="secondaryButton" type="button" @click="openOperations">Operaciones</button>
-            <button class="primaryButton" type="button" disabled>Incidencias</button>
-            <button class="secondaryButton" type="button" @click="openHumanReviewList">
-              Revisión humana
-            </button>
-            <button class="secondaryButton" type="button" @click="openTechnicianList">
-              Técnicos
-            </button>
-            <button class="secondaryButton" type="button" @click="openVisitList">
-              Visitas
-            </button>
-            <button class="secondaryButton" type="button" @click="openCalendar">
-              Calendario
-            </button>
-            <button class="secondaryButton" type="button" @click="openDocumentList">
-              Documentos
-            </button>
-            <button class="secondaryButton" type="button" @click="openShadowDecisionList">
-              Evaluación IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openToolExecutionList">
-              Acciones IA
-            </button>
-            <button class="secondaryButton" type="button" @click="openAnalytics">
-              Analíticas
-            </button>
-          </nav>
-          <button class="primaryButton" type="button" :disabled="loading" @click="loadIncidents">
-            Actualizar
-          </button>
-          <button
-            v-if="REQUIRE_LOGIN"
-            class="secondaryButton"
-            type="button"
-            @click="handleLogout"
-          >
-            Salir
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        title="Historial de Incidencias"
+        subtitle="Registro histórico de incidencias de plagas detectadas, su prioridad y estado de SLA."
+      />
 
       <section class="filters" aria-label="Filtros de incidencias">
         <label>
@@ -1605,13 +1238,11 @@ onUnmounted(() => {
       </section>
 
       <section class="contentBand">
-        <div v-if="loading" class="stateMessage">Cargando incidencias...</div>
-        <div v-else-if="error" class="stateMessage errorMessage">{{ error }}</div>
-        <div v-else-if="incidents.length === 0" class="stateMessage">
-          No hay incidencias para los filtros seleccionados.
-        </div>
+        <LoadingState v-if="loading" message="Cargando incidencias..." />
+        <ErrorBanner v-else-if="error" :error="error" @dismiss="error = null" />
+        <EmptyState v-else-if="incidents.length === 0" message="No hay incidencias para los filtros seleccionados." />
         <IncidentTable v-else :incidents="incidents" @open="openIncident" @sort="sortIncidents" />
       </section>
     </template>
-  </main>
+  </DashboardShell>
 </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SectionCard from './SectionCard.vue'
+
 defineProps<{
   slaComplianceRate: number
   slaOnTimeCount: number
@@ -7,12 +9,10 @@ defineProps<{
 </script>
 
 <template>
-  <div class="metrics-block flex-between">
-    <div>
-      <h3 class="block-title">Cumplimiento General SLA</h3>
-      <p class="block-subtitle">Métricas de cumplimiento calculadas por el backend</p>
-    </div>
-    
+  <SectionCard 
+    title="Cumplimiento General SLA" 
+    subtitle="Métricas de cumplimiento calculadas por el backend"
+  >
     <div class="radial-chart-wrapper">
       <div class="radial-svg-wrapper">
         <svg class="radial-svg" viewBox="0 0 36 36">
@@ -36,43 +36,16 @@ defineProps<{
         <span class="legend-text">Vencidos ({{ slaBreaches }})</span>
       </div>
     </div>
-  </div>
+  </SectionCard>
 </template>
 
 <style scoped>
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.flex-between {
-  justify-content: space-between;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0;
-}
-
-.block-subtitle {
-  font-size: 10px;
-  color: #52525b;
-  margin: 4px 0 0 0;
-}
-
 .radial-chart-wrapper {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin: 20px 0;
+  margin: 12px 0 20px 0;
+  flex: 1;
 }
 
 .radial-svg-wrapper {

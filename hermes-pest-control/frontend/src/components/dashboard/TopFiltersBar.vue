@@ -5,6 +5,7 @@ defineProps<{
   priority: string
   isLoading: boolean
   lastUpdated: string
+  hideFilters?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,7 +37,7 @@ const emit = defineEmits<{
 
     <!-- Active Filters & Sync bar -->
     <div class="actions-container">
-      <div class="filters-panel">
+      <div v-if="!hideFilters" class="filters-panel">
         <div class="filters-label-group">
           <!-- Filter Icon -->
           <svg class="filter-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">

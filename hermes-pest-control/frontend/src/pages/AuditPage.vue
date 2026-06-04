@@ -6,6 +6,10 @@ import type { AuditEvent, ToolExecution } from '../api/types'
 import { ApiError } from '../api/types'
 
 import DashboardShell from '../components/dashboard/DashboardShell.vue'
+import PageHeader from '../components/dashboard/PageHeader.vue'
+import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
+import LoadingState from '../components/dashboard/LoadingState.vue'
+import EmptyState from '../components/dashboard/EmptyState.vue'
 import AuditKpiGrid from '../components/dashboard/AuditKpiGrid.vue'
 import AiDecisionPanel from '../components/dashboard/AiDecisionPanel.vue'
 import EventDistributionPanel from '../components/dashboard/EventDistributionPanel.vue'
@@ -17,6 +21,7 @@ import PayloadDrawer from '../components/dashboard/PayloadDrawer.vue'
 // Routing & Shell status
 const currentPath = ref('/audit')
 const isLoading = ref(false)
+const isFetching = ref(false)
 const actionLoadingId = ref<string | null>(null)
 const lastUpdated = ref('--:--:--')
 const errorMsg = ref<string | null>(null)
@@ -48,8 +53,9 @@ function showToast(title: string, message: string, type: 'success' | 'error' = '
 }
 
 // Fetch all audit data from API
-async function refreshData() {
-  isLoading.value = true
+async function refreshData(showSpinner = false) {
+  if (showSpinner) isLoading.value = true
+  isFetching.value = true
   errorMsg.value = null
   try {
     const [eventsList, executionsList] = await Promise.all([
@@ -72,6 +78,7 @@ async function refreshData() {
     }
   } finally {
     isLoading.value = false
+    isFetching.value = false
   }
 }
 
@@ -90,7 +97,7 @@ async function handleApprove(id: string) {
   try {
     await approveToolExecution(id)
     showToast('Ejecución Aprobada', 'La herramienta ha sido autorizada para ejecución segura.', 'success')
-    await refreshData()
+    await refreshData(false)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo aprobar la ejecución.'
     showToast('Error', msg, 'error')
@@ -103,8 +110,8 @@ async function handleReject(id: string) {
   actionLoadingId.value = id
   try {
     await rejectToolExecution(id)
-    showToast('Ejecución Rechazada', 'La ejecución ha sido bloqueada y cancelada.', 'success')
-    await refreshData()
+    showToast('Ejecución Rejected', 'La ejecución ha sido bloqueada y cancelada.', 'success')
+    await refreshData(false)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo rechazar la ejecución.'
     showToast('Error', msg, 'error')
@@ -175,7 +182,6 @@ const avgApprovalTime = computed(() => {
   let count = 0
   approvedItems.forEach(item => {
     const start = new Date(item.created_at!).getTime()
-    // Fallback if updated_at / reviewed_at is not defined
     const endStr = item.updated_at || item.created_at
     const end = new Date(endStr!).getTime()
     const diff = (end - start) / 1000
@@ -212,9 +218,9 @@ const pendingHitlList = computed(() => {
 })
 
 onMounted(() => {
-  refreshData()
+  refreshData(true)
   autoRefreshInterval = setInterval(() => {
-    refreshData()
+    refreshData(false)
   }, 10000)
 })
 
@@ -228,79 +234,81 @@ onUnmounted(() => {
 <template>
   <DashboardShell
     :currentPath="currentPath"
-    :isLoading="isLoading"
+    :isLoading="isFetching"
     :lastUpdated="lastUpdated"
     v-model:channel="filterChannel"
     v-model:pestType="filterPestType"
     v-model:priority="filterPriority"
     :toasts="toasts"
     @navigate="handleNavigate"
-    @refresh="refreshData"
+    @refresh="refreshData(true)"
   >
     <div class="audit-dashboard-content">
-      <!-- Error Bar -->
-      <div v-if="errorMsg" class="error-bar">
-        <div class="error-left">
-          <svg class="error-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <span>{{ errorMsg }}</span>
+      <!-- Error Banner -->
+      <ErrorBanner :error="errorMsg" @dismiss="errorMsg = null" />
+
+      <!-- Page Header -->
+      <PageHeader 
+        title="Centro de Gobierno Operativo & Auditoría" 
+        subtitle="Trazabilidad en tiempo real de decisiones autónomas del motor de IA y control de gobernanza."
+      />
+
+      <!-- Loading State -->
+      <LoadingState v-if="isLoading" message="Cargando centro de auditoría y gobierno..." />
+
+      <template v-else-if="auditEvents.length > 0 || toolExecutions.length > 0">
+        <!-- KPIs Auditoría -->
+        <AuditKpiGrid
+          :totalEvents="totalEventsCount"
+          :toolsExecuted="toolsExecutedCount"
+          :pendingHitl="pendingHitlCount"
+          :approvedHitl="approvedHitlCount"
+          :rejectedHitl="rejectedHitlCount"
+        />
+
+        <!-- Middle panels row -->
+        <div class="charts-row">
+          <!-- Decisiones IA (Donut) -->
+          <AiDecisionPanel 
+            :approved="approvedHitlCount" 
+            :rejected="rejectedHitlCount" 
+            :pending="pendingHitlCount" 
+          />
+
+          <!-- Eventos por Tipo (Barras Horizontales) -->
+          <EventDistributionPanel :events="filteredEvents" />
+
+          <!-- Salud del Gobierno -->
+          <GovernanceHealthPanel
+            :pendingCount="pendingHitlCount"
+            :avgApprovalTimeSeconds="avgApprovalTime"
+            :backlogCount="backlogCount"
+            :riskLevel="riskLevel"
+          />
         </div>
-        <button class="dismiss-btn" @click="errorMsg = null">Descartar</button>
-      </div>
 
-      <!-- Section Title header -->
-      <div class="section-header-band">
-        <h2 class="section-title">Centro de Gobierno Operativo & Auditoría</h2>
-        <p class="section-subtitle">Trazabilidad en tiempo real de decisiones autónomas del motor de IA y control de gobernanza.</p>
-      </div>
-
-      <!-- KPIs Auditoría -->
-      <AuditKpiGrid
-        :totalEvents="totalEventsCount"
-        :toolsExecuted="toolsExecutedCount"
-        :pendingHitl="pendingHitlCount"
-        :approvedHitl="approvedHitlCount"
-        :rejectedHitl="rejectedHitlCount"
-      />
-
-      <!-- Middle panels row -->
-      <div class="charts-row">
-        <!-- Decisiones IA (Donut) -->
-        <AiDecisionPanel 
-          :approved="approvedHitlCount" 
-          :rejected="rejectedHitlCount" 
-          :pending="pendingHitlCount" 
+        <!-- Cola Human-In-The-Loop (HITL) -->
+        <PendingReviewsPanel
+          :pendingReviews="pendingHitlList"
+          :loading="isFetching"
+          :actionLoadingId="actionLoadingId"
+          @approve="handleApprove"
+          @reject="handleReject"
+          @inspect="handleInspect"
         />
 
-        <!-- Eventos por Tipo (Barras Horizontales) -->
-        <EventDistributionPanel :events="filteredEvents" />
-
-        <!-- Salud del Gobierno -->
-        <GovernanceHealthPanel
-          :pendingCount="pendingHitlCount"
-          :avgApprovalTimeSeconds="avgApprovalTime"
-          :backlogCount="backlogCount"
-          :riskLevel="riskLevel"
+        <!-- Timeline Vivo de Eventos -->
+        <AuditTimeline
+          :events="filteredEvents"
+          :loading="isFetching"
+          @inspect-payload="handleInspect"
         />
+      </template>
+
+      <!-- Empty State -->
+      <div v-else class="empty-state-wrapper">
+        <EmptyState message="No hay eventos ni ejecuciones registradas en el log de auditoría." />
       </div>
-
-      <!-- Cola Human-In-The-Loop (HITL) -->
-      <PendingReviewsPanel
-        :pendingReviews="pendingHitlList"
-        :loading="isLoading"
-        :actionLoadingId="actionLoadingId"
-        @approve="handleApprove"
-        @reject="handleReject"
-        @inspect="handleInspect"
-      />
-
-      <!-- Timeline Vivo de Eventos -->
-      <AuditTimeline
-        :events="filteredEvents"
-        :loading="isLoading"
-        @inspect-payload="handleInspect"
-      />
     </div>
 
     <!-- Payload drawer -->
@@ -318,59 +326,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.error-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(127, 29, 29, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  color: #fee2e2;
-  font-size: 13px;
-}
-
-.error-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.error-icon {
-  width: 18px;
-  height: 18px;
-  color: #f87171;
-}
-
-.dismiss-btn {
-  background: transparent;
-  border: none;
-  color: #f87171;
-  font-weight: 700;
-  font-size: 11px;
-  text-transform: uppercase;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.section-header-band {
-  border-bottom: 1px solid #18181b;
-  padding-bottom: 12px;
-}
-
-.section-title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #f4f4f5;
-  margin: 0;
-}
-
-.section-subtitle {
-  font-size: 12px;
-  color: #a1a1aa;
-  margin: 4px 0 0 0;
 }
 
 .charts-row {

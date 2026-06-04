@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SectionCard from './SectionCard.vue'
+
 defineProps<{
   provider: string
   model: string
@@ -6,12 +8,10 @@ defineProps<{
 </script>
 
 <template>
-  <div class="metrics-block">
-    <div>
-      <h3 class="block-title">Motor de IA Activo</h3>
-      <p class="block-subtitle">Proveedor y modelo de lenguaje actualmente en uso</p>
-    </div>
-
+  <SectionCard 
+    title="Motor de IA Activo" 
+    subtitle="Proveedor y modelo de lenguaje actualmente en uso"
+  >
     <div class="engine-status-container">
       <div class="status-pulse-badge">
         <span class="pulse-dot"></span>
@@ -32,39 +32,15 @@ defineProps<{
     <div class="engine-footer-desc">
       Estadísticas recolectadas de forma segura y validadas por el servidor.
     </div>
-  </div>
+  </SectionCard>
 </template>
 
 <style scoped>
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0;
-}
-
-.block-subtitle {
-  font-size: 10px;
-  color: #52525b;
-  margin: 4px 0 0 0;
-}
-
 .engine-status-container {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 4px;
   flex: 1;
 }
 

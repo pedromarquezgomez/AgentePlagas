@@ -12,6 +12,7 @@ defineProps<{
   pestType: string
   priority: string
   toasts: Toast[]
+  hideFilters?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +33,7 @@ const emit = defineEmits<{
       :priority="priority"
       :isLoading="isLoading"
       :lastUpdated="lastUpdated"
+      :hideFilters="hideFilters"
       @update:channel="emit('update:channel', $event)"
       @update:pestType="emit('update:pestType', $event)"
       @update:priority="emit('update:priority', $event)"
