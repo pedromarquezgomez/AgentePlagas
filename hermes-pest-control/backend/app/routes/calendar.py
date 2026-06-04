@@ -13,6 +13,67 @@ router = APIRouter(
 visit_service = VisitService()
 
 
+@router.get("/status")
+async def get_calendar_status() -> dict:
+    from app.services.google_calendar_service import GoogleCalendarService
+    from app.config.settings import settings
+    from datetime import datetime, timezone, timedelta
+
+    enabled = settings.google_calendar_enabled
+    calendar_id = settings.google_calendar_id
+    auth_type = "none"
+    if settings.google_calendar_credentials_json or settings.google_calendar_credentials_path:
+        auth_type = "service_account"
+
+    can_read = False
+    can_write = False
+
+    if enabled:
+        try:
+            gcal = GoogleCalendarService()
+            service = gcal._build_service()
+            now_iso = datetime.now(timezone.utc).isoformat()
+            later_iso = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+
+            body = {
+                "timeMin": now_iso,
+                "timeMax": later_iso,
+                "items": [{"id": calendar_id}]
+            }
+            service.freebusy().query(body=body).execute()
+            can_read = True
+        except Exception:
+            pass
+
+        if can_read:
+            try:
+                event_body = {
+                    "summary": "Hermes Status Test Event",
+                    "start": {"dateTime": now_iso},
+                    "end": {"dateTime": later_iso},
+                }
+                created = (
+                    service.events()
+                    .insert(calendarId=calendar_id, body=event_body)
+                    .execute()
+                )
+                event_id = created.get("id")
+                if event_id:
+                    can_write = True
+                    service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+            except Exception:
+                pass
+
+    return {
+        "calendar_enabled": enabled,
+        "provider": "google_calendar",
+        "authentication": auth_type,
+        "calendar_id": calendar_id,
+        "can_read": can_read,
+        "can_write": can_write
+    }
+
+
 @router.get("/visits")
 async def list_calendar_visits(
     start_date: date,

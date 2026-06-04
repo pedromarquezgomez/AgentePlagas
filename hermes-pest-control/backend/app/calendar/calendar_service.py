@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import logging
+import asyncio
 from typing import Any
 
 from app.calendar.contracts import CalendarEventDraft
@@ -30,7 +31,7 @@ class HermesCalendarService:
                 "items": [{"id": calendar_id}]
             }
             
-            result = service.freebusy().query(body=body).execute()
+            result = await asyncio.to_thread(service.freebusy().query(body=body).execute)
             calendars = result.get("calendars", {})
             cal_data = calendars.get(calendar_id, {})
             busy_list = cal_data.get("busy", [])
@@ -74,10 +75,10 @@ class HermesCalendarService:
             if draft.attendees:
                 event["attendees"] = [{"email": email} for email in draft.attendees]
 
-            created = (
+            created = await asyncio.to_thread(
                 service.events()
                 .insert(calendarId=calendar_id, body=event)
-                .execute()
+                .execute
             )
             return created.get("id", "google-event-id")
         except Exception as exc:

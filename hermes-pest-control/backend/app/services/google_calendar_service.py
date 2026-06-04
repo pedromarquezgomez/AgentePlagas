@@ -95,7 +95,9 @@ class GoogleCalendarService:
                     "Google Calendar credentials are not configured."
                 )
 
-            return build("calendar", "v3", credentials=credentials, cache_discovery=False)
+            import httplib2
+            http = httplib2.Http(timeout=4)
+            return build("calendar", "v3", credentials=credentials, http=http, cache_discovery=False)
         except GoogleCalendarServiceError:
             raise
         except Exception as exc:

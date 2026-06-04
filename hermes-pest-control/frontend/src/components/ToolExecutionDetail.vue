@@ -44,13 +44,21 @@ const formattedPayload = computed(() => formatJson(record.value?.metadata?.paylo
 const formattedApprovedPayload = computed(() => formatJson(record.value?.approved_payload))
 const formattedExecutionResult = computed(() => formatJson(record.value?.execution_result))
 const formattedMetadata = computed(() => formatJson(record.value?.metadata))
-const canCreateGmailDraft = computed(() => (
-  record.value?.tool_name === 'gmail.create_draft' &&
-  record.value?.provider === 'gmail' &&
-  record.value?.action === 'create_draft' &&
-  record.value?.review_status === 'approved' &&
-  record.value?.executed === false
-))
+const canExecute = computed(() => {
+  if (!record.value || record.value.executed) return false
+  if (record.value.review_status !== 'approved') return false
+  return (
+    (record.value.tool_name === 'gmail.create_draft' && record.value.action === 'create_draft') ||
+    (record.value.tool_name === 'schedule_visit_tool' && record.value.action === 'schedule_visit')
+  )
+})
+
+const executeButtonLabel = computed(() => {
+  if (record.value?.tool_name === 'schedule_visit_tool') {
+    return 'Agendar visita en Google Calendar'
+  }
+  return 'Crear borrador en Gmail'
+})
 
 function formatDate(value: string | undefined | null): string {
   if (!value) return 'Sin fecha'
@@ -135,8 +143,8 @@ async function saveReview(nextStatus?: ToolReviewStatus): Promise<void> {
   }
 }
 
-async function executeGmailDraft(): Promise<void> {
-  if (!record.value || !canCreateGmailDraft.value) return
+async function executeAction(): Promise<void> {
+  if (!record.value || !canExecute.value) return
   executing.value = true
   error.value = null
   savedMessage.value = null
@@ -145,13 +153,17 @@ async function executeGmailDraft(): Promise<void> {
     const updatedRecord = await executeToolExecutionRecord(record.value.id)
     record.value = updatedRecord
     hydrateForm(updatedRecord)
-    savedMessage.value = 'Borrador creado en Gmail. No se ha enviado ningún correo.'
+    if (record.value.tool_name === 'schedule_visit_tool') {
+      savedMessage.value = 'Visita agendada con éxito en Google Calendar.'
+    } else {
+      savedMessage.value = 'Borrador creado en Gmail. No se ha enviado ningún correo.'
+    }
   } catch (err) {
     if (isUnauthorizedError(err)) {
       emit('unauthorized')
       return
     }
-    error.value = err instanceof Error ? err.message : 'No se pudo crear el borrador de Gmail'
+    error.value = err instanceof Error ? err.message : 'No se pudo ejecutar la acción'
   } finally {
     executing.value = false
   }
@@ -340,20 +352,20 @@ watch(
           <div>
             <h3>Ejecución controlada</h3>
             <p class="sectionText">
-              Solo Gmail create_draft puede ejecutarse en esta fase, y únicamente si la acción está aprobada.
+              Solo Gmail create_draft y schedule_visit_tool pueden ejecutarse en esta fase, y únicamente si la acción está aprobada.
             </p>
           </div>
         </div>
-        <div v-if="canCreateGmailDraft" class="buttonRow">
-          <button class="primaryButton" type="button" :disabled="executing" @click="executeGmailDraft">
-            Crear borrador en Gmail
+        <div v-if="canExecute" class="buttonRow">
+          <button class="primaryButton" type="button" :disabled="executing" @click="executeAction">
+            {{ executeButtonLabel }}
           </button>
-          <p class="sectionText">Esto creará un borrador, no enviará el correo.</p>
+          <p class="sectionText">Esto ejecutará la acción en la integración externa correspondiente.</p>
         </div>
         <p v-else class="sectionText">
-          Esta acción no está lista para ejecución controlada, ya fue ejecutada o no es un borrador de Gmail aprobado.
+          Esta acción no está lista para ejecución controlada, ya fue ejecutada o no está aprobada.
         </p>
-        <p v-if="executing" class="stateMessage">Creando borrador en Gmail...</p>
+        <p v-if="executing" class="stateMessage">Ejecutando acción...</p>
         <dl class="detailGrid">
           <div>
             <dt>Ejecutada</dt>
