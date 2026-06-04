@@ -3,7 +3,8 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { listAuditEvents } from '../api/audit'
 import { listToolExecutions, approveToolExecution, rejectToolExecution } from '../api/tools'
 import type { AuditEvent, ToolExecution } from '../api/types'
-import { useGlobalState } from '../composables/useGlobalState'
+import { storeToRefs } from 'pinia'
+import { useDashboardStore } from '../stores/dashboard'
 
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
@@ -17,14 +18,14 @@ import AuditTimeline from '../components/dashboard/AuditTimeline.vue'
 import PendingReviewsPanel from '../components/dashboard/PendingReviewsPanel.vue'
 import PayloadDrawer from '../components/dashboard/PayloadDrawer.vue'
 
+const store = useDashboardStore()
 const {
   filterChannel,
   filterPestType,
   filterPriority,
-  onRefresh,
-  removeRefresh,
   toasts
-} = useGlobalState()
+} = storeToRefs(store)
+const { onRefresh, removeRefresh } = store
 
 const isLoading = ref(false)
 const actionLoadingId = ref<string | null>(null)

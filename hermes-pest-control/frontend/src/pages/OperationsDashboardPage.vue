@@ -4,7 +4,8 @@ import { getAnalyticsOverview } from '../api/analytics'
 import { listIncidents, updateIncident } from '../api/incidents'
 import { listToolExecutions, approveToolExecution } from '../api/tools'
 import type { Incident, AnalyticsOverview, ToolExecution } from '../api/types'
-import { useGlobalState } from '../composables/useGlobalState'
+import { storeToRefs } from 'pinia'
+import { useDashboardStore } from '../stores/dashboard'
 
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
@@ -16,15 +17,15 @@ import DispatchBucketCard from '../components/dashboard/DispatchBucketCard.vue'
 import OperationalIncidentsTable from '../components/dashboard/OperationalIncidentsTable.vue'
 import PayloadDrawer from '../components/dashboard/PayloadDrawer.vue'
 
+const store = useDashboardStore()
 const {
   filterChannel,
   filterPestType,
   filterPriority,
   activeIncidentsCount,
-  onRefresh,
-  removeRefresh,
   toasts
-} = useGlobalState()
+} = storeToRefs(store)
+const { onRefresh, removeRefresh } = store
 
 const isLoading = ref(false)
 const actionLoadingId = ref<string | null>(null)

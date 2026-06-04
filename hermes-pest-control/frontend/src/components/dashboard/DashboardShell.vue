@@ -4,7 +4,6 @@ import TopFiltersBar from './TopFiltersBar.vue'
 import ToastContainer, { Toast } from './ToastContainer.vue'
 
 defineProps<{
-  currentPath: string
   activeIncidentsCount?: number
   isLoading: boolean
   lastUpdated: string
@@ -16,7 +15,6 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'navigate', path: string): void
   (e: 'refresh'): void
   (e: 'update:channel', val: string): void
   (e: 'update:pestType', val: string): void
@@ -44,9 +42,7 @@ const emit = defineEmits<{
     <div class="shell-body">
       <!-- Sidebar Nav -->
       <SidebarNav 
-        :currentPath="currentPath"
         :activeIncidentsCount="activeIncidentsCount"
-        @navigate="emit('navigate', $event)"
       />
 
       <!-- Scrollable Main Workspace -->

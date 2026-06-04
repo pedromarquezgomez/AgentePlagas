@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { getRuntimeStats } from '../api/runtime'
 import type { RuntimeStats } from '../api/types'
-import { useGlobalState } from '../composables/useGlobalState'
+import { useDashboardStore } from '../stores/dashboard'
 
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
@@ -12,7 +12,8 @@ import TokenUsagePanel from '../components/dashboard/TokenUsagePanel.vue'
 import RuntimeModelPanel from '../components/dashboard/RuntimeModelPanel.vue'
 import EmptyState from '../components/dashboard/EmptyState.vue'
 
-const { onRefresh, removeRefresh } = useGlobalState()
+const store = useDashboardStore()
+const { onRefresh, removeRefresh } = store
 
 const isLoading = ref(false)
 const errorMsg = ref<string | null>(null)

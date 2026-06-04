@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useGlobalState } from '../composables/useGlobalState'
+import { useDashboardStore } from '../stores/dashboard'
 import { useIncidents } from '../composables/useIncidents'
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import LoadingState from '../components/dashboard/LoadingState.vue'
@@ -24,7 +24,8 @@ import {
 } from '../utils/labels'
 
 const router = useRouter()
-const { onRefresh, removeRefresh } = useGlobalState()
+const store = useDashboardStore()
+const { onRefresh, removeRefresh } = store
 const {
   incidents,
   loading,

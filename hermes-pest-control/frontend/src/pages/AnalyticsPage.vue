@@ -2,7 +2,8 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { getAnalyticsOverview } from '../api/analytics'
 import type { AnalyticsOverview } from '../api/types'
-import { useGlobalState } from '../composables/useGlobalState'
+import { storeToRefs } from 'pinia'
+import { useDashboardStore } from '../stores/dashboard'
 
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
@@ -13,12 +14,12 @@ import SlaOverviewPanel from '../components/dashboard/SlaOverviewPanel.vue'
 import FunnelPanel from '../components/dashboard/FunnelPanel.vue'
 import TokenUsagePanel from '../components/dashboard/TokenUsagePanel.vue'
 
+const store = useDashboardStore()
 const {
   filterChannel,
-  filterPestType,
-  onRefresh,
-  removeRefresh
-} = useGlobalState()
+  filterPestType
+} = storeToRefs(store)
+const { onRefresh, removeRefresh } = store
 
 const isLoading = ref(false)
 const errorMsg = ref<string | null>(null)

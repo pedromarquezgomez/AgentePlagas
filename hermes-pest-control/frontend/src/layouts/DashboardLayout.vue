@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useGlobalState } from '../composables/useGlobalState'
+import { storeToRefs } from 'pinia'
+import { useDashboardStore } from '../stores/dashboard'
 import DashboardShell from '../components/dashboard/DashboardShell.vue'
 
 const route = useRoute()
 const router = useRouter()
+const store = useDashboardStore()
 
 const {
   filterChannel,
@@ -14,9 +16,8 @@ const {
   isLoading,
   lastUpdated,
   toasts,
-  activeIncidentsCount,
-  triggerRefresh
-} = useGlobalState()
+  activeIncidentsCount
+} = storeToRefs(store)
 
 // Ocultar filtros si no estamos en una página operativa principal de analíticas/auditoría
 const hideFilters = computed(() => {
@@ -24,18 +25,13 @@ const hideFilters = computed(() => {
   return !mainDashboards.includes(route.name as string)
 })
 
-function handleNavigate(path: string) {
-  void router.push(path)
-}
-
 function handleRefresh() {
-  void triggerRefresh()
+  void store.triggerRefresh()
 }
 </script>
 
 <template>
   <DashboardShell
-    :currentPath="route.path"
     :activeIncidentsCount="activeIncidentsCount"
     :isLoading="isLoading"
     :lastUpdated="lastUpdated"
@@ -44,7 +40,6 @@ function handleRefresh() {
     v-model:priority="filterPriority"
     :toasts="toasts"
     :hideFilters="hideFilters"
-    @navigate="handleNavigate"
     @refresh="handleRefresh"
   >
     <!-- Slot de contenido de la página -->
