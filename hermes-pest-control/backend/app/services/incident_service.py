@@ -1,5 +1,8 @@
+import logging
 from uuid import uuid4
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from app.audit.contracts import AuditEvent, AuditEventType
 from app.audit.service import AuditService, default_audit_service
@@ -124,6 +127,12 @@ class IncidentService:
         )
         if updated_incident is None:
             raise IncidentNotFoundError(f"Incident not found after update: {incident_id}")
+
+        old_status = current_incident.get("status")
+        new_status = updated_incident.get("status")
+        if new_status == "cancelled" and old_status != "cancelled":
+            await self._notify_client_incident_cancelled(updated_incident)
+
         queue_map = await self._get_global_queue_map()
         read_model = self._to_read_model(updated_incident, queue_map)
         await self._record_sla_breach_once(updated_incident, read_model)
@@ -416,3 +425,70 @@ class IncidentService:
             positions_map[item["id"]] = (index + 1, item["score"], item["reason"])
 
         return positions_map
+
+    async def _notify_client_incident_cancelled(self, incident: dict) -> None:
+        channel = incident.get("channel")
+        conversation_id = incident.get("conversation_id")
+        if not channel or not conversation_id:
+            return
+
+        # Obtener conversación para obtener external_chat_id
+        conversation = await self.firestore_service.get_document("conversations", conversation_id)
+        external_chat_id = None
+        if conversation:
+            external_chat_id = conversation.get("external_chat_id")
+        if not external_chat_id and ":" in conversation_id:
+            external_chat_id = conversation_id.split(":", 1)[1]
+
+        if not external_chat_id:
+            return
+
+        pest_type = incident.get("pest_type") or "plagas"
+        # Traducir o formatear un poco la plaga para el mensaje
+        pest_spanish_map = {
+            "COCKROACH": "cucarachas",
+            "RODENT": "roedores",
+            "ANT": "hormigas",
+            "FLYING_INSECT": "insectos voladores",
+            "STORED_PRODUCT_INSECT": "insectos de productos almacenados",
+            "UNKNOWN": "plagas no identificadas",
+        }
+        pest_name = pest_spanish_map.get(str(pest_type).upper(), str(pest_type).lower())
+
+        text_message = (
+            f"Hola, tu incidencia para el control de {pest_name} ha sido revisada por nuestro equipo y "
+            "ha sido descartada. Si tienes alguna otra consulta o necesitas asistencia con otro tipo de plaga, "
+            "no dudes en escribirnos."
+        )
+
+        from app.schemas.outgoing_message import OutgoingMessage
+
+        if channel == "telegram":
+            from app.adapters.telegram_adapter import TelegramAdapter
+            try:
+                # Usamos settings de la app
+                from app.config.settings import settings
+                adapter = TelegramAdapter(settings)
+                await adapter.send_message(
+                    OutgoingMessage(
+                        channel="telegram",
+                        external_chat_id=str(external_chat_id),
+                        text=text_message,
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Failed to send proactive cancellation message via telegram: %s", exc)
+        elif channel == "whatsapp":
+            from app.adapters.whatsapp_adapter import WhatsAppAdapter
+            try:
+                from app.config.settings import settings
+                adapter = WhatsAppAdapter(settings)
+                await adapter.send_message(
+                    OutgoingMessage(
+                        channel="whatsapp",
+                        external_chat_id=str(external_chat_id),
+                        text=text_message,
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Failed to send proactive cancellation message via whatsapp: %s", exc)

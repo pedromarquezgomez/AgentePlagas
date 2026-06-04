@@ -33,6 +33,18 @@ class IncidentBuilder:
                     )
                     active = sorted_incidents[0]
                     return active.get("id"), active.get("summary")
+                elif docs:
+                    # Si no hay activos, tomar el más reciente histórico
+                    sorted_docs = sorted(
+                        docs,
+                        key=lambda x: str(x.get("created_at") or ""),
+                        reverse=True,
+                    )
+                    recent = sorted_docs[0]
+                    recent_status = recent.get("status", "pending_review")
+                    if recent_status in ("closed", "cancelled"):
+                        special_summary = f"[ESTADO: DESCARTADO/CANCELADO] {recent.get('summary')}"
+                        return recent.get("id"), special_summary
             except Exception as exc:
                 logger.warning(
                     "incident_builder_failed conversation_id=%s error=%s",
