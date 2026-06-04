@@ -17,3 +17,9 @@ class CalendarEventDraft(BaseModel):
     location: str | None = None
     description: str | None = None
     attendees: list[str] = Field(default_factory=list)
+
+class SelectedVisitSlot(BaseModel):
+    slot_index: int
+    start_time: str
+    end_time: str
+    selection_text: str | None = None

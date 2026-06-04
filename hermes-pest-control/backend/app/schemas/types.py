@@ -7,6 +7,7 @@ AgentActionType = Literal[
     "create_incident",
     "collect_missing_data",
     "escalate_to_human",
+    "schedule_visit_selection",
 ]
 IncidentPriority = Literal["low", "medium", "high", "urgent"]
 HumanReviewStatus = Literal["open", "in_review", "resolved", "dismissed"]

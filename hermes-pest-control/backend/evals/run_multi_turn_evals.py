@@ -223,6 +223,26 @@ async def run_single_case(
                             f"DB: expected tool {expected_tool!r} to be proposed, but it was not."
                         )
 
+                if "visit_slot_selected" in asserts:
+                    expected_slot_idx = asserts["visit_slot_selected"]
+                    records = await firestore_service.list_documents("tool_execution_records")
+                    conv_records = [
+                        r for r in records
+                        if r.get("conversation_id") == conversation_id and r.get("tool_name") == "schedule_visit_tool"
+                    ]
+                    if conv_records:
+                        payload = conv_records[0].get("approved_payload") or {}
+                        sel_slot = payload.get("selected_slot") or {}
+                        actual_idx = sel_slot.get("slot_index")
+                        if actual_idx != expected_slot_idx:
+                            turn_reasons.append(
+                                f"DB: expected selected slot_index={expected_slot_idx}, got {actual_idx}"
+                            )
+                    else:
+                        turn_reasons.append(
+                            "DB: expected visit slot selection, but no schedule_visit_tool record was found."
+                        )
+
                 # 7. Audit assertions
                 if "audit_events" in asserts:
                     expected_events = asserts["audit_events"]

@@ -109,6 +109,65 @@ class ConversationService:
                     action={"type": "collect_missing_data", "missing_fields": []},
                 )
 
+        # Check if the user is selecting a visit slot
+        if response is None:
+            from app.calendar.selection_service import VisitSlotSelectionService
+            selection_service = VisitSlotSelectionService(self.firestore_service)
+            active_proposal = await selection_service.locate_active_proposal(conversation_id)
+            if active_proposal:
+                slot_index = selection_service.interpret_selection(message.text)
+                if slot_index is not None:
+                    selected_slot = await selection_service.resolve_selection(conversation_id, message.text)
+                    if selected_slot:
+                        from datetime import datetime, timezone
+                        approved_payload = active_proposal.get("approved_payload") or {}
+                        approved_payload["selected_slot"] = {
+                            "slot_index": selected_slot.slot_index,
+                            "start_time": selected_slot.start_time,
+                            "end_time": selected_slot.end_time,
+                        }
+                        approved_payload["selected_at"] = datetime.now(timezone.utc).isoformat()
+                        approved_payload["customer_confirmation"] = message.text
+
+                        await self.firestore_service.update_document(
+                            "tool_execution_records",
+                            active_proposal["id"],
+                            {"approved_payload": approved_payload},
+                        )
+
+                        from app.audit.contracts import AuditEvent, AuditEventType
+                        self.audit_service.record_event(
+                            AuditEvent(
+                                event_type=AuditEventType.VISIT_SLOT_SELECTED,
+                                execution_id=active_proposal["id"],
+                                tool_name="schedule_visit_tool",
+                                provider="calendar",
+                                user_id=message.external_user_id,
+                                channel=message.channel,
+                                status="completed",
+                                message=f"Visit slot {selected_slot.slot_index} selected by customer.",
+                                metadata={
+                                    "incident_id": approved_payload.get("incident_id"),
+                                    "slot_index": selected_slot.slot_index,
+                                    "start_time": selected_slot.start_time,
+                                    "end_time": selected_slot.end_time,
+                                }
+                            )
+                        )
+
+                        response = AgentResponse(
+                            reply="Perfecto. He registrado tu preferencia de visita. Nuestro equipo revisará la disponibilidad y confirmará la cita antes de programarla definitivamente.",
+                            action={"type": "schedule_visit_selection", "missing_fields": []},
+                        )
+                else:
+                    text_lower = (message.text or "").lower()
+                    option_keywords = ["opción", "opcion", "primera", "segunda", "tercera", "primer", "segundo", "tercer", "horario"]
+                    if any(kw in text_lower for kw in option_keywords):
+                        response = AgentResponse(
+                            reply="Lo siento, no he entendido cuál de las opciones de visita prefieres. ¿Podrías indicarme si prefieres la primera, segunda o tercera opción?",
+                            action={"type": "collect_missing_data", "missing_fields": []},
+                        )
+
         if response is None:
             response = await self._get_hermes_response(message, conversation_id, trace_id)
 
