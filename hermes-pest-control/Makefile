@@ -1,4 +1,4 @@
-.PHONY: dev test smoke smoke-llm evals evals-real evals-hermes-agent evals-agent-llm synthetic-cases synthetic-shadow-eval synthetic-shadow-eval-cloud seed-tool-executions gmail-draft-check fake-hermes hermes-agent-server hermes-agent-llm firestore-check set-telegram-webhook telegram-webhook-info frontend-install frontend-dev frontend-build
+.PHONY: dev test smoke smoke-llm evals evals-real evals-multiturn evals-hermes-agent evals-agent-llm synthetic-cases synthetic-shadow-eval synthetic-shadow-eval-cloud seed-tool-executions gmail-draft-check fake-hermes hermes-agent-server hermes-agent-llm firestore-check set-telegram-webhook telegram-webhook-info frontend-install frontend-dev frontend-build
 
 dev:
 	cd backend && scripts/run_dev.sh
@@ -17,6 +17,9 @@ evals:
 
 evals-real:
 	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; python -m evals.run_evals --hermes-mode real
+
+evals-multiturn:
+	cd backend && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; python -m evals.run_multi_turn_evals
 
 evals-hermes-agent:
 	@curl -fsS $${HERMES_AGENT_HEALTH_URL:-http://127.0.0.1:9100/health} >/dev/null || (echo "Hermes Agent server is not reachable. Start it first with: make hermes-agent-server" && exit 1)

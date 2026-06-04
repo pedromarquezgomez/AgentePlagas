@@ -42,6 +42,28 @@ class HermesMockClient:
         text = (incoming_message.text or "").casefold()
         conversation_id = (business_context or {}).get("conversation_id")
 
+        incident_summary = (business_context or {}).get("incident_summary") or ""
+        if "[estado: descartado/cancelado]" in incident_summary.lower():
+            return AgentResponse(
+                reply="Hola, tu incidencia para el control de plagas ha sido revisada por nuestro equipo y ha sido descartada. Si tienes alguna otra consulta o necesitas asistencia con otro tipo de plaga, no dudes en escribirnos.",
+                action={"type": "collect_missing_data", "missing_fields": []},
+            )
+
+        incident_id = (business_context or {}).get("incident_id")
+        if incident_id:
+            if any(k in text for k in ["opción", "opcion", "primera", "segunda", "tercera", "horario"]):
+                # Simular la aceptación de una visita
+                # En un entorno real, la lógica actualizaría el estado o registraría el evento
+                return AgentResponse(
+                    reply="Perfecto, he tomado nota de tu preferencia. Confirmaremos tu cita en la mayor brevedad posible tras la revisión de nuestro equipo y operador.",
+                    action={"type": "escalate_to_human", "missing_fields": []},
+                )
+            elif any(k in text for k in ["cómo va", "como va", "estado", "novedades"]):
+                return AgentResponse(
+                    reply="Tu incidencia se encuentra registrada y en espera de revisión por parte de nuestro equipo.",
+                    action={"type": "collect_missing_data", "missing_fields": []},
+                )
+
         if self._requires_human_review(text):
             return self._build_human_review_response(text)
 
