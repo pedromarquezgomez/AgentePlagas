@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-
-export interface AuditEvent {
-  id: string
-  type: string
-  timestamp: string
-  description: string
-  payload: any
-}
+import type { AuditEvent } from '../../api/types'
 
 const props = defineProps<{
   events: AuditEvent[]
@@ -27,12 +20,46 @@ function formatTimestamp(isoString: string): string {
     return isoString
   }
 }
+
+// Map event types to semantic colors/badges
+function getStatusClass(event: AuditEvent): string {
+  const type = (event.event_type || '').toLowerCase()
+  const status = (event.status || '').toLowerCase()
+  const decision = (event.policy_decision || '').toLowerCase()
+
+  if (status === 'approved' || status === 'success' || type === 'tool_execution_completed' || decision === 'allow') {
+    return 'badge-green'
+  }
+  if (status === 'requires_human_review' || status === 'pending' || type === 'human_review_required') {
+    return 'badge-yellow'
+  }
+  if (status === 'rejected' || status === 'cancelled' || type === 'tool_execution_failed') {
+    return 'badge-red'
+  }
+  return 'badge-blue'
+}
+
+function getActor(event: AuditEvent): string {
+  if (event.user_id) return event.user_id.toUpperCase()
+  if (event.channel) return event.channel.toUpperCase()
+  return 'SISTEMA'
+}
+
+function getIncidentId(event: AuditEvent): string {
+  if (event.metadata?.incident_id) {
+    return `INC-${event.metadata.incident_id.slice(0, 5).toUpperCase()}`
+  }
+  if (event.execution_id) {
+    return `EXEC-${event.execution_id.slice(0, 5).toUpperCase()}`
+  }
+  return '--'
+}
 </script>
 
 <template>
   <div class="audit-timeline">
     <div class="timeline-header">
-      <span class="timeline-label">Historial de Operaciones</span>
+      <span class="timeline-label">Centro de Gobierno Operativo (Live)</span>
       <span class="timeline-badge font-mono">Trazabilidad Segura</span>
     </div>
     
@@ -43,36 +70,48 @@ function formatTimestamp(isoString: string): string {
       <div v-else-if="events.length === 0" class="empty-state">
         No se han registrado eventos de auditoría en este periodo.
       </div>
-      <div v-else class="events-list">
-        <div v-for="event in events" :key="event.id" class="event-item">
-          <div class="event-left">
-            <span class="event-icon-box">
-              <!-- Default Icon (Gavel / Shield / Gear) -->
-              <svg v-if="event.type.includes('POLICY')" class="event-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.746 3.746 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-              </svg>
-              <svg v-else-if="event.type.includes('HUMAN')" class="event-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-              </svg>
-              <svg v-else class="event-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17L17.25 21A2.67 2.67 0 0021 17.25l-5.83-5.83m-9.75 9.75L9.75 17m-3.03-3.03L3.6 10.85a1 1 0 01-.22-.38l-.9-3.6a1 1 0 011.25-1.22l3.6.9a1 1 0 01.38.22l3.12 3.12m-3.03 3.03l3.03-3.03m3.03 3.03l3.03-3.03M13.5 3h6v6" />
-              </svg>
-            </span>
-            <div class="event-details">
-              <div class="event-meta">
-                <span class="event-type font-mono">{{ event.type }}</span>
-                <span class="event-time font-mono">{{ formatTimestamp(event.timestamp) }}</span>
-              </div>
-              <p class="event-description">{{ event.description }}</p>
-            </div>
-          </div>
-          <button class="event-btn" @click="emit('inspect-payload', event)">
-            <svg class="code-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-            </svg>
-            Ver JSON
-          </button>
-        </div>
+      <div v-else class="table-container">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>Evento</th>
+              <th>Actor</th>
+              <th>Incidencia / Ref</th>
+              <th>Resultado / Mensaje</th>
+              <th class="text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="event in events" :key="event.event_id">
+              <td class="font-mono text-zinc-400 font-medium">
+                {{ formatTimestamp(event.timestamp) }}
+              </td>
+              <td>
+                <span class="badge" :class="getStatusClass(event)">
+                  {{ event.event_type }}
+                </span>
+              </td>
+              <td class="font-mono text-zinc-300 font-semibold">
+                {{ getActor(event) }}
+              </td>
+              <td class="font-mono text-zinc-300">
+                {{ getIncidentId(event) }}
+              </td>
+              <td class="text-zinc-400 text-left">
+                {{ event.message || event.status || '--' }}
+              </td>
+              <td class="text-right">
+                <button class="event-btn" @click="emit('inspect-payload', event)">
+                  <svg class="code-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                  </svg>
+                  Ver JSON
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -125,83 +164,83 @@ function formatTimestamp(isoString: string): string {
   font-weight: 500;
 }
 
-.events-list {
-  display: flex;
-  flex-direction: column;
+.table-container {
+  overflow-x: auto;
 }
 
-.event-item {
-  padding: 16px;
-  border-bottom: 1px solid #18181b; /* zinc-900 */
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  transition: background 0.2s;
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
 }
 
-.event-item:hover {
+.audit-table th {
+  padding: 12px 16px;
+  border-bottom: 1px solid #18181b;
+  color: #71717a;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.audit-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #18181b;
+  vertical-align: middle;
+}
+
+.audit-table tr:hover {
   background: rgba(39, 39, 42, 0.2);
 }
 
-.event-item:last-child {
-  border-bottom: none;
+.text-right {
+  text-align: right !important;
 }
 
-.event-left {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.event-icon-box {
-  background: #09090b;
-  border: 1px solid #27272a;
-  color: #a1a1aa;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.event-icon {
-  width: 18px;
-  height: 18px;
-}
-
-.event-details {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.event-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.event-type {
-  font-size: 11px;
-  font-weight: 700;
-  color: #f4f4f5;
-}
-
-.event-time {
-  font-size: 10px;
-  color: #71717a;
-}
-
-.event-description {
-  margin: 0;
-  font-size: 12px;
+.text-zinc-300 {
   color: #d4d4d8;
-  line-height: 1.4;
-  text-align: left;
+}
+
+.text-zinc-400 {
+  color: #a1a1aa;
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-green {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-yellow {
+  background: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-red {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-blue {
+  background: rgba(14, 165, 233, 0.1);
+  color: #38bdf8;
+  border: 1px solid rgba(14, 165, 233, 0.2);
 }
 
 .event-btn {

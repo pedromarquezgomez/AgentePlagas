@@ -9,6 +9,8 @@ from app.services.shadow_decision_service import (
     ShadowDecisionRecordNotFoundError,
     ShadowDecisionService,
 )
+from app.audit.service import default_audit_service
+from app.audit.contracts import AuditEvent
 
 router = APIRouter(
     prefix="/audit",
@@ -69,3 +71,20 @@ async def get_shadow_decision_record(shadow_decision_id: str) -> dict:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Shadow decision record not found.",
         ) from exc
+
+
+@router.get("/events", response_model=list[AuditEvent])
+async def list_audit_events() -> list[AuditEvent]:
+    return default_audit_service().list_events()
+
+
+@router.get("/events/{event_id}", response_model=AuditEvent)
+async def get_audit_event(event_id: str) -> AuditEvent:
+    events = default_audit_service().list_events()
+    event = next((e for e in events if e.event_id == event_id), None)
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audit event not found.",
+        )
+    return event

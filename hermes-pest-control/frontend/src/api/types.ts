@@ -97,3 +97,33 @@ export class ApiError extends Error {
     Object.setPrototypeOf(this, ApiError.prototype)
   }
 }
+
+export enum AuditEventType {
+  PROVIDER_SELECTED = 'provider_selected',
+  TOOL_PROPOSED = 'tool_proposed',
+  POLICY_EVALUATED = 'policy_evaluated',
+  TOOL_EXECUTION_STARTED = 'tool_execution_started',
+  TOOL_EXECUTION_COMPLETED = 'tool_execution_completed',
+  TOOL_EXECUTION_FAILED = 'tool_execution_failed',
+  HUMAN_REVIEW_REQUIRED = 'human_review_required',
+  INCIDENT_PRIORITIZED = 'incident_prioritized',
+  INCIDENT_DISPATCH_ASSESSED = 'incident_dispatch_assessed',
+  INCIDENT_SLA_BREACHED = 'incident_sla_breached',
+  VISIT_SLOT_SELECTED = 'visit_slot_selected',
+}
+
+export interface AuditEvent {
+  event_id: string
+  event_type: AuditEventType
+  timestamp: string
+  execution_id?: string | null
+  tool_name?: string | null
+  provider?: string | null
+  user_id?: string | null
+  channel?: string | null
+  policy_decision?: string | null
+  status?: string | null
+  message: string
+  metadata?: Record<string, any>
+}
+
