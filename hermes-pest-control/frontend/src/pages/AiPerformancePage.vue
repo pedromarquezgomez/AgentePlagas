@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { getRuntimeStats } from '../api/runtime'
 import type { RuntimeStats } from '../api/types'
 import { ApiError } from '../api/types'
 
 import DashboardShell from '../components/dashboard/DashboardShell.vue'
-import KpiCard from '../components/dashboard/KpiCard.vue'
+import LatencyKpiGrid from '../components/dashboard/LatencyKpiGrid.vue'
+import TokenUsagePanel from '../components/dashboard/TokenUsagePanel.vue'
+import RuntimeModelPanel from '../components/dashboard/RuntimeModelPanel.vue'
 
 // Routing & shell state
 const currentPath = ref('/ai-performance')
@@ -63,16 +65,6 @@ function handleNavigate(path: string) {
   emit('navigate', path)
 }
 
-// Prompt & Completion Token Percentages
-const promptTokenPercent = computed(() => {
-  if (!stats.value || stats.value.total_tokens === 0) return 50
-  return Math.round((stats.value.prompt_tokens / stats.value.total_tokens) * 100)
-})
-
-const completionTokenPercent = computed(() => {
-  return 100 - promptTokenPercent.value
-})
-
 onMounted(() => {
   loadStats()
   // Auto refresh stats every 10 seconds for real-time telemetry
@@ -119,100 +111,22 @@ onUnmounted(() => {
       </div>
 
       <!-- KPIs Grid -->
-      <div v-if="stats" class="kpi-grid">
-        <KpiCard
-          title="Peticiones Realizadas"
-          :value="stats.requests"
-          description="Invocaciones totales al modelo LLM"
-          iconType="comments"
-        />
-        <KpiCard
-          title="Latencia de Inferencia"
-          :value="stats.avg_latency_ms + ' ms'"
-          description="Tiempo promedio de respuesta del LLM"
-          iconType="sla"
-          variant="emerald"
-        />
-        <KpiCard
-          title="Fallbacks de Respaldo"
-          :value="stats.fallbacks"
-          :description="stats.fallbacks > 0 ? 'Redirecciones por error o tiempo límite' : 'Sin redirecciones a motor secundario'"
-          iconType="incidents"
-          :variant="stats.fallbacks > 0 ? 'danger' : 'default'"
-        />
-        <KpiCard
-          title="Tokens Totales"
-          :value="stats.total_tokens"
-          description="Volumen total de tokens procesados"
-          iconType="cost"
-          variant="indigo"
-        />
-      </div>
+      <LatencyKpiGrid :stats="stats" />
 
       <!-- Executive Details Section -->
       <div v-if="stats" class="details-section-grid">
         <!-- Token Distribution Card -->
-        <div class="metrics-block col-span-2">
-          <div>
-            <h3 class="block-title">Distribución y Consumo de Tokens</h3>
-            <p class="block-subtitle">Volumen de datos de entrada frente a datos de salida procesados</p>
-          </div>
-
-          <div class="tokens-distribution-container">
-            <div class="token-metric-item">
-              <div class="token-meta">
-                <span class="token-type">Prompt Tokens (Entrada/Contexto)</span>
-                <span class="token-count font-mono">{{ stats.prompt_tokens }} ({{ promptTokenPercent }}%)</span>
-              </div>
-              <div class="token-bar-track">
-                <div class="token-bar-fill prompt-fill" :style="{ width: promptTokenPercent + '%' }"></div>
-              </div>
-            </div>
-
-            <div class="token-metric-item">
-              <div class="token-meta">
-                <span class="token-type">Completion Tokens (Salida/Generación)</span>
-                <span class="token-count font-mono">{{ stats.completion_tokens }} ({{ completionTokenPercent }}%)</span>
-              </div>
-              <div class="token-bar-track">
-                <div class="token-bar-fill completion-fill" :style="{ width: completionTokenPercent + '%' }"></div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="token-total-footer">
-            <span class="total-text font-mono">Consumo Acumulado: {{ stats.total_tokens }} tokens</span>
-          </div>
-        </div>
+        <TokenUsagePanel 
+          :promptTokens="stats.prompt_tokens"
+          :completionTokens="stats.completion_tokens"
+          :totalTokens="stats.total_tokens"
+        />
 
         <!-- Model Engine Status -->
-        <div class="metrics-block">
-          <div>
-            <h3 class="block-title">Motor de IA Activo</h3>
-            <p class="block-subtitle">Proveedor y modelo de lenguaje actualmente en uso</p>
-          </div>
-
-          <div class="engine-status-container">
-            <div class="status-pulse-badge">
-              <span class="pulse-dot"></span>
-              <span class="status-text">ONLINE</span>
-            </div>
-
-            <div class="engine-meta-row">
-              <span class="meta-label">Proveedor:</span>
-              <span class="meta-value uppercase font-mono">{{ stats.provider }}</span>
-            </div>
-
-            <div class="engine-meta-row">
-              <span class="meta-label">Modelo:</span>
-              <span class="meta-value font-mono">{{ stats.model }}</span>
-            </div>
-          </div>
-
-          <div class="engine-footer-desc">
-            Estadísticas recolectadas de forma segura y validadas por el servidor.
-          </div>
-        </div>
+        <RuntimeModelPanel 
+          :provider="stats.provider"
+          :model="stats.model"
+        />
       </div>
     </div>
   </DashboardShell>
@@ -278,182 +192,9 @@ onUnmounted(() => {
   margin: 4px 0 0 0;
 }
 
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
-}
-
 .details-section-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
-}
-
-@media (min-width: 1024px) {
-  .col-span-2 {
-    grid-column: span 2;
-  }
-}
-
-.metrics-block {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.block-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #71717a;
-  margin: 0;
-}
-
-.block-subtitle {
-  font-size: 10px;
-  color: #52525b;
-  margin: 4px 0 0 0;
-}
-
-.tokens-distribution-container {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-top: 20px;
-  flex: 1;
-}
-
-.token-metric-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.token-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #a1a1aa;
-}
-
-.token-type {
-  font-weight: 500;
-  color: #d4d4d8;
-}
-
-.token-bar-track {
-  background: #09090b;
-  height: 8px;
-  border-radius: 9999px;
-  overflow: hidden;
-}
-
-.token-bar-fill {
-  height: 100%;
-  border-radius: 9999px;
-  transition: width 0.5s ease;
-}
-
-.prompt-fill {
-  background: linear-gradient(90deg, #0284c7, #38bdf8); /* sky-600 to sky-400 */
-}
-
-.completion-fill {
-  background: linear-gradient(90deg, #7c3aed, #a855f7); /* violet-600 to purple-500 */
-}
-
-.token-total-footer {
-  margin-top: 16px;
-  border-top: 1px solid #27272a;
-  padding-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.total-text {
-  background: #09090b;
-  border: 1px solid #27272a;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 10px;
-  color: #e4e4e7;
-  font-weight: 700;
-}
-
-.engine-status-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 20px;
-  flex: 1;
-}
-
-.status-pulse-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  padding: 4px 8px;
-  border-radius: 6px;
-  align-self: flex-start;
-}
-
-.pulse-dot {
-  width: 6px;
-  height: 6px;
-  background-color: #10b981;
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-}
-
-.status-text {
-  font-size: 9px;
-  font-weight: 800;
-  color: #34d399;
-  letter-spacing: 0.05em;
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-  }
-  70% {
-    transform: scale(1);
-    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0);
-  }
-  100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-  }
-}
-
-.engine-meta-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  border-bottom: 1px solid #27272a;
-  padding-bottom: 8px;
-}
-
-.meta-label {
-  color: #71717a;
-}
-
-.meta-value {
-  color: #f4f4f5;
-  font-weight: 700;
-}
-
-.engine-footer-desc {
-  font-size: 9px;
-  color: #52525b;
-  margin-top: 16px;
 }
 </style>
