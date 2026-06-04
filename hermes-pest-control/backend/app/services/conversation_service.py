@@ -98,7 +98,20 @@ class ConversationService:
             trace_id,
         )
 
-        response = await self._get_hermes_response(message, conversation_id, trace_id)
+        response = None
+        from app.incidents.status_service import IncidentStatusService
+        status_service = IncidentStatusService(self.firestore_service)
+        if status_service.is_status_query(message.text):
+            status_message = await status_service.resolve_status_message(conversation_id)
+            if status_message:
+                response = AgentResponse(
+                    reply=status_message,
+                    action={"type": "collect_missing_data", "missing_fields": []},
+                )
+
+        if response is None:
+            response = await self._get_hermes_response(message, conversation_id, trace_id)
+
         if response.incident and (response.action.type == "create_incident" or self._should_create_incident(response)):
             self._enrich_incident_operational_fields(message, response.incident)
         incident_id = None
