@@ -193,7 +193,8 @@ export function formatSeverity(value: string | null | undefined): string {
 }
 
 export function formatPestType(value: string | null | undefined): string {
-  return labelFromMap(value, pestTypeLabels)
+  const normalized = normalizePestType(value)
+  return labelFromMap(normalized, pestTypeLabels)
 }
 
 export function formatVisitType(value: string | null | undefined): string {
@@ -314,4 +315,23 @@ export function normalizeDifferences(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => String(item))
   if (value && typeof value === 'object') return Object.keys(value as Record<string, unknown>)
   return []
+}
+
+export function normalizePestType(pestType: string | null | undefined): string {
+  if (!pestType) return 'UNKNOWN'
+  const pt = pestType.trim().toLowerCase()
+  const mapping: Record<string, string> = {
+    'cucarachas': 'COCKROACH',
+    'cockroach': 'COCKROACH',
+    'roedores': 'RODENT',
+    'rodent': 'RODENT',
+    'hormigas': 'ANT',
+    'ant': 'ANT',
+    'insectos voladores': 'FLYING_INSECT',
+    'flying_insect': 'FLYING_INSECT',
+    'insectos de productos almacenados': 'STORED_PRODUCT_INSECT',
+    'stored_product_insect': 'STORED_PRODUCT_INSECT',
+    'insectos de producto almacenado': 'STORED_PRODUCT_INSECT',
+  }
+  return mapping[pt] ?? pt.toUpperCase()
 }

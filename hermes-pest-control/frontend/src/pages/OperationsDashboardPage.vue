@@ -6,6 +6,7 @@ import { listToolExecutions, approveToolExecution } from '../api/tools'
 import type { Incident, AnalyticsOverview, ToolExecution } from '../api/types'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard'
+import { normalizePestType } from '../utils/labels'
 
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
@@ -145,7 +146,8 @@ function closeDrawer() {
 const filteredIncidents = computed(() => {
   return incidents.value.filter(inc => {
     const matchesChannel = filterChannel.value === 'all' || inc.channel === filterChannel.value
-    const matchesPest = filterPestType.value === 'all' || inc.pest_type === filterPestType.value
+    const matchesPest = filterPestType.value === 'all' || 
+      normalizePestType(inc.pest_type) === filterPestType.value
     
     const operationalPriority = inc.operational_priority || inc.priority || ''
     const matchesPriority = filterPriority.value === 'all' || 
