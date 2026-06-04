@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-950 text-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Pest Control AI - Control Panel</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome for Premium Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom Scrollbar for High-Density Data Tables */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #09090b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #27272a;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3f3f46;
+    }
+  </style>
+</head>
+<body class="h-full overflow-hidden select-none">
+  <!-- Vue Application Target -->
+  <div id="app" class="h-full flex flex-col" v-cloak>
+
+    <!-- Global Header / Navbar -->
+    <header class="flex-none bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 z-10">
+      <div class="flex items-center gap-3 w-full md:w-auto">
+        <div class="bg-emerald-600 text-white p-2 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-900/20">
+          <i class="fa-solid fa-spider text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-zinc-50 flex items-center gap-2">
+            Hermes Pest AI 
+            <span class="text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">SaaS Enterprise</span>
+          </h1>
+          <p class="text-[11px] text-zinc-400">Plataforma Inteligente de Gestión y Triaje Humano (HITL)</p>
+        </div>
+      </div>
+
+      <!-- Live Sync and Filter Settings Bar -->
+      <div class="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+        <!-- Global Filters Dropdowns -->
+        <div class="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg p-1 text-xs">
+          <div class="flex items-center px-2 text-zinc-400 gap-1.5 border-r border-zinc-800">
+            <i class="fa-solid fa-filter text-[10px]"></i>
+            <span>Filtros:</span>
+          </div>
+          <!-- Channel Filter -->
+          <select v-model="filters.channel" class="bg-transparent text-zinc-200 outline-none px-2 cursor-pointer border-r border-zinc-800">
+            <option value="all" class="bg-zinc-900 text-zinc-200">Todos los Canales</option>
+            <option value="whatsapp" class="bg-zinc-900 text-zinc-200">WhatsApp</option>
+            <option value="telegram" class="bg-zinc-900 text-zinc-200">Telegram</option>
+          </select>
+          <!-- Pest Filter -->
+          <select v-model="filters.pestType" class="bg-transparent text-zinc-200 outline-none px-2 cursor-pointer border-r border-zinc-800">
+            <option value="all" class="bg-zinc-900 text-zinc-200">Todas las Plagas</option>
+            <option value="COCKROACH" class="bg-zinc-900 text-zinc-200">Cucarachas</option>
+            <option value="RODENT" class="bg-zinc-900 text-zinc-200">Roedores</option>
+            <option value="ANT" class="bg-zinc-900 text-zinc-200">Hormigas</option>
+            <option value="UNKNOWN" class="bg-zinc-900 text-zinc-200">Inciertas / Desconocidas</option>
+          </select>
+          <!-- Priority Filter -->
+          <select v-model="filters.priority" class="bg-transparent text-zinc-200 outline-none px-2 cursor-pointer">
+            <option value="all" class="bg-zinc-900 text-zinc-200">Prioridad: Todas</option>
+            <option value="URGENT" class="bg-zinc-900 text-zinc-200">Urgente</option>
+            <option value="HIGH" class="bg-zinc-900 text-zinc-200">Alta</option>
+            <option value="NORMAL" class="bg-zinc-900 text-zinc-200">Normal</option>
+          </select>
+        </div>
+
+        <button 
+          @click="fetchData" 
+          :disabled="isLoading"
+          class="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-semibold text-zinc-300 flex items-center gap-2 transition-all disabled:opacity-50"
+        >
+          <i class="fa-solid fa-rotate" :class="{ 'animate-spin': isLoading }"></i>
+          Sincronizar
+        </button>
+        <span class="text-[10px] text-zinc-500 font-mono hidden lg:inline">Actualizado: {{ lastUpdated }}</span>
+      </div>
+    </header>
+
+    <!-- Shell Workspace (Sidebar + Main View Container) -->
+    <div class="flex-1 flex overflow-hidden">
+      
+      <!-- Side Navigation Panel -->
+      <nav class="w-64 bg-zinc-950 border-r border-zinc-900 flex flex-col justify-between p-4 hidden md:flex flex-none">
+        <div class="space-y-6">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-600 block px-3 mb-2">Paneles del Sistema</span>
+            <div class="space-y-1">
+              <button 
+                @click="currentTab = 'overview'" 
+                :class="currentTab === 'overview' ? 'bg-zinc-900 text-emerald-400 font-medium' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                class="w-full flex items-center gap-3 px-3 py-2 text-xs rounded-lg transition-all"
+              >
+                <i class="fa-solid fa-chart-line text-sm w-4 text-center"></i>
+                Resumen Ejecutivo
+              </button>
+              <button 
+                @click="currentTab = 'operations'" 
+                :class="currentTab === 'operations' ? 'bg-zinc-900 text-emerald-400 font-medium' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-all"
+              >
+                <span class="flex items-center gap-3">
+                  <i class="fa-solid fa-briefcase text-sm w-4 text-center"></i>
+                  Centro Operativo
+                </span>
+                <span v-if="activeIncidentsCount > 0" class="bg-red-500/10 text-red-400 text-[10px] font-bold px-1.5 py-0.2 rounded-full border border-red-500/20">
+                  {{ activeIncidentsCount }}
+                </span>
+              </button>
+              <button 
+                @click="currentTab = 'ai-performance'" 
+                :class="currentTab === 'ai-performance' ? 'bg-zinc-900 text-emerald-400 font-medium' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                class="w-full flex items-center gap-3 px-3 py-2 text-xs rounded-lg transition-all"
+              >
+                <i class="fa-solid fa-microchip text-sm w-4 text-center"></i>
+                Rendimiento de la IA
+              </button>
+              <button 
+                @click="currentTab = 'audit'" 
+                :class="currentTab === 'audit' ? 'bg-zinc-900 text-emerald-400 font-medium' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                class="w-full flex items-center gap-3 px-3 py-2 text-xs rounded-lg transition-all"
+              >
+                <i class="fa-solid fa-history text-sm w-4 text-center"></i>
+                Auditoría y Gobierno
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick System Indicators -->
+          <div class="border-t border-zinc-900 pt-4 space-y-3">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-600 block px-3">Estado de Motores (SaaS)</span>
+            <div class="px-3 space-y-2 text-[11px]">
+              <div class="flex items-center justify-between text-zinc-400">
+                <span>SLAEngine</span>
+                <span class="flex items-center gap-1 text-emerald-400"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Operativo</span>
+              </div>
+              <div class="flex items-center justify-between text-zinc-400">
+                <span>DispatchAssessment</span>
+                <span class="flex items-center gap-1 text-emerald-400"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Operativo</span>
+              </div>
+              <div class="flex items-center justify-between text-zinc-400">
+                <span>PolicyEngine</span>
+                <span class="flex items-center gap-1 text-emerald-400"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Activo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tenant Identification Context Info -->
+        <div class="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800 text-[10px] text-zinc-500">
+          <div class="flex items-center gap-2 mb-1">
+            <i class="fa-solid fa-building text-zinc-400"></i>
+            <span class="font-bold text-zinc-400 uppercase">Tenant Activo</span>
+          </div>
+          <p class="mono truncate">tenant_hermes_global_pest</p>
+        </div>
+      </nav>
+
+      <!-- Main Content Area -->
+      <main class="flex-1 overflow-y-auto bg-zinc-950 p-6">
+        
+        <!-- Error Bar (If Any Communication Issues Arise) -->
+        <div v-if="errorMessage" class="mb-6 p-4 rounded-lg border border-red-500/20 bg-red-950/20 text-red-300 text-xs flex justify-between items-center shadow-lg">
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            {{ errorMessage }}
+          </span>
+          <button @click="errorMessage = ''" class="text-[10px] uppercase font-bold tracking-wider hover:text-white underline">Descartar</button>
+        </div>
+
+        <!-- TAB 1: EXECUTIVE OVERVIEW -->
+        <div v-if="currentTab === 'overview'" class="space-y-6">
+          <div class="border-b border-zinc-800 pb-4">
+            <h2 class="text-xl font-bold tracking-tight">Resumen Ejecutivo Global</h2>
+            <p class="text-xs text-zinc-400">Estado consolidado del negocio, facturación simulada, conversiones e incidencias críticas en tiempo real.</p>
+          </div>
+
+          <!-- Top-Tier Executive Metric Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Total Conversations Widget -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg flex flex-col justify-between">
+              <div class="flex justify-between items-center pb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Conversaciones Totales</span>
+                <i class="fa-solid fa-comments text-zinc-600"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-3xl font-extrabold tracking-tight text-zinc-100">{{ filteredConversationsCount }}</span>
+                <p class="text-[10px] text-zinc-400 mt-1">Acumulado en últimos 30 días</p>
+              </div>
+            </div>
+
+            <!-- Incidents Created Widget -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg flex flex-col justify-between">
+              <div class="flex justify-between items-center pb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Incidencias Creadas</span>
+                <i class="fa-solid fa-triangle-exclamation text-zinc-600"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-3xl font-extrabold tracking-tight text-zinc-100">{{ filteredIncidents.length }}</span>
+                <p class="text-[10px] text-zinc-400 mt-1">Registradas por Intake Engine</p>
+              </div>
+            </div>
+
+            <!-- Conversion Rate (Gauged Engine Progress) -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg flex flex-col justify-between">
+              <div class="flex justify-between items-center pb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Tasa de Conversión AI</span>
+                <i class="fa-solid fa-bullseye text-zinc-600"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-3xl font-extrabold tracking-tight text-emerald-400">{{ conversionRate }}%</span>
+                <div class="w-full bg-zinc-950 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div class="bg-emerald-400 h-full rounded-full transition-all duration-500" :style="{ width: conversionRate + '%' }"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Token / AI Cost Metric -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg flex flex-col justify-between">
+              <div class="flex justify-between items-center pb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Inversión Coste IA (Mes)</span>
+                <i class="fa-solid fa-coins text-zinc-600"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-3xl font-extrabold tracking-tight text-indigo-400">${{ currentMonthCost.toFixed(3) }}</span>
+                <p class="text-[10px] text-zinc-400 mt-1">Basado en token rate del LLM</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Secondary Executive Row -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- SLA General Compliance -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg flex flex-col justify-between">
+              <div>
+                <h3 class="text-sm font-bold tracking-tight text-zinc-200 uppercase tracking-wider">Cumplimiento General SLA</h3>
+                <p class="text-[11px] text-zinc-500 mt-0.5">Métricas de cumplimiento calculadas por el backend</p>
+              </div>
+              <div class="my-6 flex items-center justify-center gap-6">
+                <!-- Circular Radial Progress -->
+                <div class="relative w-32 h-32 flex items-center justify-center">
+                  <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                    <path class="text-zinc-800" stroke-width="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path class="text-emerald-500" stroke-width="4.5" stroke-linecap="round" stroke="currentColor" fill="none" :stroke-dasharray="`${slaComplianceRate}, 100`" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  </svg>
+                  <div class="absolute text-center">
+                    <span class="text-3xl font-bold tracking-tight">{{ slaComplianceRate }}%</span>
+                    <span class="block text-[9px] uppercase text-zinc-500 font-semibold">On-Time</span>
+                  </div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-xs border-t border-zinc-800 pt-3">
+                <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> <span class="text-zinc-400">En plazo ({{ slaStatesCount.ON_TRACK + slaStatesCount.COMPLETED }})</span></div>
+                <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-red-500"></span> <span class="text-zinc-400">Vencidos ({{ slaStatesCount.BREACHED }})</span></div>
+              </div>
+            </div>
+
+            <!-- Commercial Funnel Metrics -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg lg:col-span-2 flex flex-col justify-between">
+              <div>
+                <h3 class="text-sm font-bold tracking-tight text-zinc-200 uppercase tracking-wider">Embudo Operativo & Automatización</h3>
+                <p class="text-[11px] text-zinc-500 mt-0.5">Conversión automatizada de interacciones conversacionales</p>
+              </div>
+              <div class="space-y-3 my-4">
+                <div v-for="(step, index) in funnelData" :key="index" class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="font-medium text-zinc-300 flex items-center gap-2">
+                      <i :class="step.icon" class="text-zinc-500 text-[11px]"></i>
+                      {{ step.label }}
+                    </span>
+                    <span class="font-bold text-zinc-200">{{ step.value }} ({{ step.percent }}%)</span>
+                  </div>
+                  <div class="w-full bg-zinc-950 h-2.5 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 transition-all duration-500" :style="{ width: step.percent + '%' }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: OPERATIONS CENTER (MAIN QUEUE) -->
+        <div v-if="currentTab === 'operations'" class="space-y-6">
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-zinc-800 pb-4 gap-2">
+            <div>
+              <h2 class="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
+                Cola de Control de Incidencias
+              </h2>
+              <p class="text-xs text-zinc-400">Asignaciones recomendadas, estado de SLAs y flujo de control humano de herramientas automatizadas.</p>
+            </div>
+            
+            <span class="px-2.5 py-1 text-xs rounded bg-red-500/10 border border-red-500/20 text-red-400 font-medium" v-if="breachedIncidents.length > 0">
+              ⚠️ {{ breachedIncidents.length }} Incidencias con SLA Vencido detectadas
+            </span>
+          </div>
+
+          <!-- Secondary Statistical Insights (Calculated in FastAPI Backend and simulated) -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Priority Metrics Card -->
+            <div class="p-5 rounded-lg border border-zinc-800 bg-zinc-900 shadow-sm">
+              <h3 class="text-xs font-bold text-zinc-400 mb-4 uppercase tracking-wider">Prioridad Operativa</h3>
+              <div class="space-y-3.5">
+                <div v-for="item in priorityStats" :key="item.name" class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="font-medium text-zinc-300">{{ item.name }}</span>
+                    <span class="font-bold" :class="item.colorText">{{ item.count }}</span>
+                  </div>
+                  <div class="w-full bg-zinc-950 h-2 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-500" :class="item.colorBg" :style="{ width: `${item.percentage}%` }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Severity Donut -->
+            <div class="p-5 rounded-lg border border-zinc-800 bg-zinc-900 shadow-sm flex flex-col justify-between">
+              <div>
+                <h3 class="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider">Severidad Biológica</h3>
+              </div>
+              <div class="flex items-center justify-around gap-2 my-2">
+                <!-- Circular Grid Indicator -->
+                <div class="relative w-24 h-24 flex items-center justify-center">
+                  <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                    <path class="text-zinc-800" stroke-width="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path class="text-red-500" stroke-width="4.5" :stroke-dasharray="`${severityPercentages.critical}, 100`" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  </svg>
+                  <div class="absolute text-center">
+                    <span class="text-2xl font-bold tracking-tight">{{ filteredIncidents.length }}</span>
+                    <span class="block text-[8px] uppercase text-zinc-500 tracking-wider">Casos</span>
+                  </div>
+                </div>
+                <!-- Mini Legends -->
+                <div class="space-y-1 text-[11px]">
+                  <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span> <span class="text-zinc-300">Crítica ({{ severityCounts.CRITICAL || 0 }})</span></div>
+                  <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> <span class="text-zinc-300">Alta ({{ severityCounts.HIGH || 0 }})</span></div>
+                  <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-500"></span> <span class="text-zinc-300">Media ({{ severityCounts.MEDIUM || 0 }})</span></div>
+                  <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-zinc-600"></span> <span class="text-zinc-500">Baja ({{ severityCounts.LOW || 0 }})</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dispatch Buckets (Allocations calculated by backend engines) -->
+            <div class="p-5 rounded-lg border border-zinc-800 bg-zinc-900 shadow-sm flex flex-col justify-between">
+              <div>
+                <h3 class="text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Dispatch Buckets</h3>
+              </div>
+              <div class="space-y-2">
+                <div v-for="bucket in dispatchBuckets" :key="bucket.name" class="flex items-center justify-between p-2 rounded bg-zinc-950 border border-zinc-800 text-xs">
+                  <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full" :class="bucket.bulletColor"></span>
+                    <span class="font-medium text-zinc-300">{{ bucket.name }}</span>
+                  </div>
+                  <span class="font-bold text-zinc-200 font-mono">{{ bucket.count }} casos</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Master Operational Table (High Data Density) -->
+          <div class="rounded-lg border border-zinc-800 bg-zinc-900 shadow-sm overflow-hidden">
+            <div class="p-4 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center">
+              <div>
+                <h3 class="text-sm font-bold text-zinc-100">Cola Principal de Decisiones</h3>
+                <p class="text-[11px] text-zinc-400">Todos los datos de SLA, severidad e incidencias se resuelven de forma estricta en el servidor backend.</p>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-zinc-950 text-zinc-400 text-[10px] font-bold uppercase tracking-wider border-b border-zinc-800">
+                    <th class="p-4">ID de Incidencia / Ubicación</th>
+                    <th class="p-4">Plaga Detectada / Visita</th>
+                    <th class="p-4">Prioridad / Severidad</th>
+                    <th class="p-4">Asignación Técnica</th>
+                    <th class="p-4">Estado SLA (Backend)</th>
+                    <th class="p-4">Estado del Proceso</th>
+                    <th class="p-4 text-right">Aprobación (Human-In-The-Loop)</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-800 text-xs">
+                  <tr v-if="filteredIncidents.length === 0" class="hover:bg-zinc-850">
+                    <td colspan="7" class="p-8 text-center text-zinc-500 font-medium">Ninguna incidencia activa coincide con los criterios de filtrado.</td>
+                  </tr>
+                  <tr v-for="incident in filteredIncidents" :key="incident.incident_id" class="hover:bg-zinc-800/40 transition-colors">
+                    
+                    <!-- ID / Dirección -->
+                    <td class="p-4">
+                      <div class="font-bold text-zinc-200 font-mono text-sm">#{{ incident.incident_id.toUpperCase() }}</div>
+                      <div class="text-[11px] text-zinc-500 mt-1 flex items-center gap-1 font-medium">
+                        <i class="fa-solid fa-location-dot text-zinc-600"></i>
+                        {{ incident.location?.address }}, {{ incident.location?.municipality }}
+                      </div>
+                    </td>
+                    
+                    <!-- Plaga y Tipo de Visita -->
+                    <td class="p-4">
+                      <div class="flex flex-col gap-1.5">
+                        <span class="w-max px-2 py-0.5 rounded bg-zinc-950 text-zinc-300 text-[10px] font-mono font-bold tracking-wider border border-zinc-800">
+                          {{ incident.pest_type }}
+                        </span>
+                        <span class="text-[10px] text-zinc-500 font-semibold tracking-wide uppercase">{{ incident.visit_type }}</span>
+                      </div>
+                    </td>
+                    
+                    <!-- Severidad / Prioridad -->
+                    <td class="p-4">
+                      <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="getSeverityClass(incident.severity)">
+                          {{ incident.severity }}
+                        </span>
+                        <span class="text-zinc-400 font-medium">({{ incident.operational_priority }})</span>
+                      </div>
+                    </td>
+
+                    <!-- Nivel Técnico -->
+                    <td class="p-4">
+                      <span class="text-xs px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono">
+                        Nivel {{ incident.technician_level || 1 }}
+                      </span>
+                    </td>
+                    
+                    <!-- SLA Status Calculado por Backend -->
+                    <td class="p-4">
+                      <div class="flex items-center gap-2 font-mono text-[11px]">
+                        <span class="w-2 h-2 rounded-full" :class="getSlaColorBadge(incident.sla_status)"></span>
+                        <span :class="getSlaTextClass(incident.sla_status)" class="font-bold">
+                          {{ incident.sla_status }} 
+                          <span v-if="incident.sla_status === 'BREACHED'" class="text-[10px] font-normal text-zinc-500">
+                            (+{{ incident.breach_hours }}h)
+                          </span>
+                          <span v-else class="text-[10px] font-normal text-zinc-500">
+                            ({{ incident.remaining_hours }}h rest.)
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    
+                    <!-- Estado General -->
+                    <td class="p-4">
+                      <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-zinc-950 text-zinc-300 border border-zinc-800 flex items-center w-max gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        {{ incident.status }}
+                      </span>
+                    </td>
+                    
+                    <!-- Acciones Human-In-The-Loop directas al API -->
+                    <td class="p-4 text-right">
+                      <div class="flex justify-end gap-2">
+                        <button 
+                          @click="executeIncidentAction(incident.incident_id, 'approve')" 
+                          :disabled="actionLoadingId === incident.incident_id"
+                          class="px-2.5 py-1.5 rounded bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/20 text-emerald-400 hover:text-white text-[11px] font-bold transition-all disabled:opacity-50"
+                        >
+                          Confirmar
+                        </button>
+                        <button 
+                          @click="executeIncidentAction(incident.incident_id, 'cancel')" 
+                          :disabled="actionLoadingId === incident.incident_id"
+                          class="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-[11px] font-semibold transition-all disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </td>
+                    
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: AI PERFORMANCE (TELEMETRY) -->
+        <div v-if="currentTab === 'ai-performance'" class="space-y-6">
+          <div class="border-b border-zinc-800 pb-4">
+            <h2 class="text-xl font-bold tracking-tight">Rendimiento e Infraestructura de IA</h2>
+            <p class="text-xs text-zinc-400">Análisis detallado de tiempos de respuesta, llamadas de fallback, tokens consumidos y telemetría de LLM Runtime.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Average Latency KPI -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg">
+              <div class="flex justify-between items-center pb-2 text-zinc-500">
+                <span class="text-xs font-bold uppercase tracking-wider">Latencia Media</span>
+                <i class="fa-solid fa-gauge-high"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-2xl font-black text-emerald-400">1,840 ms</span>
+                <p class="text-[10px] text-zinc-400 mt-1">Calculado sobre últimas 100 llamadas</p>
+              </div>
+            </div>
+
+            <!-- Fallbacks KPI -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg">
+              <div class="flex justify-between items-center pb-2 text-zinc-500">
+                <span class="text-xs font-bold uppercase tracking-wider">Llamadas de Fallback</span>
+                <i class="fa-solid fa-shield"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-2xl font-black text-amber-500">0.42%</span>
+                <p class="text-[10px] text-zinc-400 mt-1">Redirecciones a motor alternativo</p>
+              </div>
+            </div>
+
+            <!-- Total Requests -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg">
+              <div class="flex justify-between items-center pb-2 text-zinc-500">
+                <span class="text-xs font-bold uppercase tracking-wider">Peticiones de Inferencia</span>
+                <i class="fa-solid fa-network-wired"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-2xl font-black text-indigo-400">45,201</span>
+                <p class="text-[10px] text-zinc-400 mt-1">Total de solicitudes globales</p>
+              </div>
+            </div>
+
+            <!-- Unknown Tag Classification -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg">
+              <div class="flex justify-between items-center pb-2 text-zinc-500">
+                <span class="text-xs font-bold uppercase tracking-wider">Clasificaciones UNKNOWN</span>
+                <i class="fa-solid fa-question text-red-400"></i>
+              </div>
+              <div class="mt-2">
+                <span class="text-2xl font-black text-red-400">{{ unknownClassificationsCount }}</span>
+                <p class="text-[10px] text-zinc-400 mt-1">Casos pendientes de revisión</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Token Consumption Breakdown -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Token Aggregations Widget -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg flex flex-col justify-between">
+              <div>
+                <h3 class="text-sm font-bold tracking-tight text-zinc-200 uppercase tracking-wider">Distribución de Consumo de Tokens</h3>
+                <p class="text-[11px] text-zinc-500 mt-0.5">Volumen mensual de procesamiento de lenguaje natural</p>
+              </div>
+              <div class="space-y-4 my-6">
+                <!-- Prompt Tokens -->
+                <div class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="text-zinc-400">Prompt Tokens</span>
+                    <span class="font-bold text-zinc-300">854,120</span>
+                  </div>
+                  <div class="w-full bg-zinc-950 h-2 rounded-full overflow-hidden">
+                    <div class="bg-sky-500 h-full rounded-full" style="width: 80%"></div>
+                  </div>
+                </div>
+                <!-- Completion Tokens -->
+                <div class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="text-zinc-400">Completion Tokens</span>
+                    <span class="font-bold text-zinc-300">214,500</span>
+                  </div>
+                  <div class="w-full bg-zinc-950 h-2 rounded-full overflow-hidden">
+                    <div class="bg-indigo-500 h-full rounded-full" style="width: 20%"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-zinc-950 p-3 rounded border border-zinc-800 text-xs flex justify-between">
+                <span class="text-zinc-400 font-semibold">Total Acumulado de Tokens:</span>
+                <span class="font-bold text-zinc-200 font-mono">1,068,620 tokens</span>
+              </div>
+            </div>
+
+            <!-- Provider Distribution -->
+            <div class="bg-zinc-900 border border-zinc-800 p-5 rounded-lg flex flex-col justify-between">
+              <div>
+                <h3 class="text-sm font-bold tracking-tight text-zinc-200 uppercase tracking-wider">Modelos y Proveedores del Sistema</h3>
+                <p class="text-[11px] text-zinc-500 mt-0.5">Asignación de carga por balanceador de carga inteligente</p>
+              </div>
+              <div class="space-y-3 my-4">
+                <div class="flex items-center justify-between p-2.5 rounded bg-zinc-950 border border-zinc-800 text-xs">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span class="font-medium text-zinc-300">OpenAI (GPT-4o)</span>
+                  </div>
+                  <span class="font-bold text-zinc-200 font-mono">85% de carga</span>
+                </div>
+                <div class="flex items-center justify-between p-2.5 rounded bg-zinc-950 border border-zinc-800 text-xs">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                    <span class="font-medium text-zinc-300">Anthropic (Claude 3.5)</span>
+                  </div>
+                  <span class="font-bold text-zinc-200 font-mono">15% de carga</span>
+                </div>
+              </div>
+              <p class="text-[10px] text-zinc-500 text-center">En caso de fallos repetidos o latencia alta superior a 3s, el sistema cambia la ruta del proveedor automáticamente.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: AUDIT LOG (SYSTEM DECISIONS) -->
+        <div v-if="currentTab === 'audit'" class="space-y-6">
+          <div class="border-b border-zinc-800 pb-4">
+            <h2 class="text-xl font-bold tracking-tight text-zinc-100">Registro de Auditoría y Decisiones (Audit Trail)</h2>
+            <p class="text-xs text-zinc-400">Historial inmutable de ejecución de herramientas, políticas de cumplimiento evaluadas y control de decisiones.</p>
+          </div>
+
+          <!-- Audit Timeline List -->
+          <div class="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+            <div class="p-4 border-b border-zinc-800 bg-zinc-900 flex justify-between items-center">
+              <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Historial de Operaciones</span>
+              <span class="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-0.5 rounded">Trazabilidad Segura</span>
+            </div>
+            
+            <div class="divide-y divide-zinc-800">
+              <div v-for="event in auditTrail" :key="event.event_id" class="p-4 hover:bg-zinc-800/20 transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs">
+                <div class="flex items-start gap-3">
+                  <span class="text-lg bg-zinc-950 p-1.5 rounded-lg border border-zinc-800 text-zinc-400 w-9 h-9 flex items-center justify-center">
+                    <i :class="getEventIcon(event.type)"></i>
+                  </span>
+                  <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-bold text-zinc-200 font-mono">{{ event.type }}</span>
+                      <span class="text-[10px] text-zinc-500 font-mono">{{ formatTimestamp(event.timestamp) }}</span>
+                    </div>
+                    <p class="text-zinc-400 mt-1">{{ event.description }}</p>
+                  </div>
+                </div>
+
+                <!-- Display Payload Trigger button -->
+                <div>
+                  <button 
+                    @click="activePayload = event.payload; payloadTitle = event.type"
+                    class="px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white transition-all text-[11px]"
+                  >
+                    <i class="fa-solid fa-code mr-1.5"></i>Ver JSON
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+
+    <!-- Custom Payload Code Drawer -->
+    <div v-if="activePayload" class="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4" @click.self="activePayload = null">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-lg max-w-lg w-full overflow-hidden flex flex-col h-[500px] shadow-2xl">
+        <div class="p-4 border-b border-zinc-800 bg-zinc-950 flex justify-between items-center">
+          <h4 class="text-xs font-bold tracking-wider uppercase text-emerald-400 font-mono">Payload: {{ payloadTitle }}</h4>
+          <button @click="activePayload = null" class="text-zinc-500 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="flex-1 p-4 overflow-auto bg-zinc-950 text-emerald-500 font-mono text-xs">
+          <pre>{{ JSON.stringify(activePayload, null, 2) }}</pre>
+        </div>
+        <div class="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end">
+          <button @click="activePayload = null" class="px-4 py-1.5 rounded bg-zinc-800 text-xs font-semibold hover:bg-zinc-700 text-white">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stunning Custom Toast Container (Zero Alert System Rule) -->
+    <div class="fixed bottom-6 right-6 flex flex-col gap-3 z-50">
+      <div 
+        v-for="toast in toasts" 
+        :key="toast.id" 
+        class="p-4 rounded-lg shadow-2xl border flex items-start gap-3 w-80 animate-slide-in transition-all duration-300"
+        :class="toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-200' : 'bg-red-950/90 border-red-500/30 text-red-200'"
+      >
+        <i class="text-lg mt-0.5" :class="toast.type === 'success' ? 'fa-solid fa-circle-check text-emerald-400' : 'fa-solid fa-circle-exclamation text-red-400'"></i>
+        <div>
+          <h5 class="font-bold text-xs uppercase tracking-wide">{{ toast.title }}</h5>
+          <p class="text-[11px] opacity-90 mt-0.5">{{ toast.message }}</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Vue 3 ESM Loader to prevent SyntaxError Outside Module -->
+  <script type="module">
+    import { createApp, ref, computed, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
+
+    createApp({
+      setup() {
+        // Tab router state
+        const currentTab = ref('operations');
+        const isLoading = ref(false);
+        const actionLoadingId = ref(null);
+        const errorMessage = ref('');
+        const lastUpdated = ref('--:--:--');
+        
+        // Modal payload display
+        const activePayload = ref(null);
+        const payloadTitle = ref('');
+
+        // Custom notification state
+        const toasts = ref([]);
+        const showToast = (title, message, type = 'success') => {
+          const id = Date.now();
+          toasts.value.push({ id, title, message, type });
+          setTimeout(() => {
+            toasts.value = toasts.value.filter(t => t.id !== id);
+          }, 4000);
+        };
+
+        // Reactive Application-level Filters
+        const filters = ref({
+          channel: 'all',
+          pestType: 'all',
+          priority: 'all'
+        });
+
+        // Incidents state uncoupled from UI logic, mirroring exact backend payloads
+        const incidents = ref([]);
+        const auditTrail = ref([]);
+
+        const fetchData = async () => {
+          isLoading.value = true;
+          errorMessage.value = '';
+          try {
+            // Simulated API fetch that closely mirrors real /api/incidents responses
+            await new Promise(resolve => setTimeout(resolve, 600));
+            
+            // Set mock responses matching precise business rules of SLA & Dispatch Engines
+            incidents.value = [
+              {
+                incident_id: "inc_01H7XZ",
+                pest_type: "RODENT",
+                severity: "CRITICAL",
+                operational_priority: "URGENT",
+                dispatch_bucket: "URGENT_24H",
+                technician_level: 2,
+                visit_type: "INSPECTION_AND_BAITING",
+                response_hours: 4,
+                remaining_hours: 1.5,
+                breach_hours: 0,
+                sla_status: "AT_RISK",
+                location: { address: "Calle Marqués de Larios 4", municipality: "Málaga" },
+                status: "pending_review",
+                channel: "whatsapp"
+              },
+              {
+                incident_id: "inc_02K8YA",
+                pest_type: "COCKROACH",
+                severity: "HIGH",
+                operational_priority: "HIGH",
+                dispatch_bucket: "THIS_WEEK",
+                technician_level: 1,
+                visit_type: "SPRAYING_AND_MONITORING",
+                response_hours: 24,
+                remaining_hours: 0,
+                breach_hours: 3.5,
+                sla_status: "BREACHED",
+                location: { address: "Av. de Andalucía 12", municipality: "Málaga" },
+                status: "pending_review",
+                channel: "telegram"
+              },
+              {
+                incident_id: "inc_03J1XP",
+                pest_type: "ANT",
+                severity: "MEDIUM",
+                operational_priority: "NORMAL",
+                dispatch_bucket: "THIS_WEEK",
+                technician_level: 1,
+                visit_type: "GEL_APPLICATOR",
+                response_hours: 48,
+                remaining_hours: 22.1,
+                breach_hours: 0,
+                sla_status: "ON_TRACK",
+                location: { address: "Calle Granada 45", municipality: "Málaga" },
+                status: "pending_review",
+                channel: "whatsapp"
+              },
+              {
+                incident_id: "inc_04U5YN",
+                pest_type: "UNKNOWN",
+                severity: "LOW",
+                operational_priority: "NORMAL",
+                dispatch_bucket: "MANUAL_REVIEW",
+                technician_level: 1,
+                visit_type: "UNKNOWN_TRIAJE",
+                response_hours: 72,
+                remaining_hours: 68.4,
+                breach_hours: 0,
+                sla_status: "ON_TRACK",
+                location: { address: "Alameda Principal 3", municipality: "Málaga" },
+                status: "pending_review",
+                channel: "whatsapp"
+              }
+            ];
+
+            // Simulated Backend Audit Log Trail
+            auditTrail.value = [
+              {
+                event_id: "aud_01",
+                type: "POLICY_EVALUATED",
+                timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+                description: "PolicyEngine validó directiva de contención biológica para el distrito Larios.",
+                payload: { policy_id: "pol_biological_safety", is_allowed: true, override_applied: false }
+              },
+              {
+                event_id: "aud_02",
+                type: "HUMAN_REVIEW_REQUIRED",
+                timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+                description: "Escalado manual registrado por baja certeza del LLM (0.61) en diagnóstico de plagas.",
+                payload: { conversation_id: "conv_9841235123", fallback_reason: "low_confidence_classification" }
+              },
+              {
+                event_id: "aud_03",
+                type: "TOOL_EXECUTION_COMPLETED",
+                timestamp: new Date(Date.now() - 22 * 60 * 1000).toISOString(),
+                description: "create_incident_tool ejecutado exitosamente.",
+                payload: { action: "create_incident", incident_id: "inc_01H7XZ", status: "success" }
+              }
+            ];
+
+            const now = new Date();
+            lastUpdated.value = now.toTimeString().split(' ')[0];
+          } catch (e) {
+            errorMessage.value = "Error al conectar con la pasarela de la API de Hermes.";
+          } finally {
+            isLoading.value = false;
+          }
+        };
+
+        const executeIncidentAction = async (id, action) => {
+          actionLoadingId.value = id;
+          try {
+            // Emulates POST /api/tools/executions/{id}/approve
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            // Remove incident from current review queue to showcase interactive success state
+            incidents.value = incidents.value.filter(i => i.incident_id !== id);
+            
+            showToast(
+              action === 'approve' ? 'Propuesta Aprobada' : 'Caso Cancelado',
+              `El backend ha registrado la decisión y ha activado el ToolExecutionService de forma segura.`,
+              'success'
+            );
+          } catch (e) {
+            showToast('Error de Servidor', 'No se pudo enviar la acción al backend.', 'error');
+          } finally {
+            actionLoadingId.value = null;
+          }
+        };
+
+        // Computed values for metrics calculations
+        const filteredIncidents = computed(() => {
+          return incidents.value.filter(inc => {
+            const matchesChannel = filters.value.channel === 'all' || inc.channel === filters.value.channel;
+            const matchesPest = filters.value.pestType === 'all' || inc.pest_type === filters.value.pestType;
+            const matchesPriority = filters.value.priority === 'all' || inc.operational_priority === filters.value.priority;
+            return matchesChannel && matchesPest && matchesPriority;
+          });
+        });
+
+        // Hardcoded totals matching normal scale metrics
+        const filteredConversationsCount = computed(() => {
+          return filters.value.channel === 'all' ? 142 : (filters.value.channel === 'whatsapp' ? 98 : 44);
+        });
+
+        const conversionRate = computed(() => {
+          if (filteredConversationsCount.value === 0) return 0;
+          return ((filteredIncidents.value.length / filteredConversationsCount.value) * 100).toFixed(1);
+        });
+
+        const activeIncidentsCount = computed(() => {
+          return filteredIncidents.value.length;
+        });
+
+        const currentMonthCost = computed(() => {
+          return (1.068 * 1.5); // Mocked cost metric
+        });
+
+        const unknownClassificationsCount = computed(() => {
+          return filteredIncidents.value.filter(i => i.pest_type === 'UNKNOWN').length;
+        });
+
+        // SLA Compliance rate metrics calculations
+        const slaStatesCount = computed(() => {
+          const counts = { ON_TRACK: 0, AT_RISK: 0, BREACHED: 0, COMPLETED: 0 };
+          filteredIncidents.value.forEach(i => {
+            if (counts[i.sla_status] !== undefined) counts[i.sla_status]++;
+          });
+          return counts;
+        });
+
+        const slaComplianceRate = computed(() => {
+          const total = filteredIncidents.value.length;
+          if (total === 0) return 100;
+          const onTime = total - slaStatesCount.value.BREACHED;
+          return Math.round((onTime / total) * 100);
+        });
+
+        // Funnel Step Percentage Calculations
+        const funnelData = computed(() => {
+          const totalConversations = filteredConversationsCount.value || 1;
+          const incidentsCount = filteredIncidents.value.length;
+          const proposals = Math.round(incidentsCount * 0.85);
+          const confirmations = Math.round(proposals * 0.75);
+          const closed = Math.round(confirmations * 0.9);
+
+          return [
+            { label: '1. Conversaciones Iniciales', value: totalConversations, percent: 100, icon: 'fa-solid fa-comments' },
+            { label: '2. Incidencias Creadas', value: incidentsCount, percent: Math.round((incidentsCount / totalConversations) * 100), icon: 'fa-solid fa-triangle-exclamation' },
+            { label: '3. Visitas Propuestas', value: proposals, percent: Math.round((proposals / totalConversations) * 100), icon: 'fa-solid fa-calendar-plus' },
+            { label: '4. Visitas Confirmadas', value: confirmations, percent: Math.round((confirmations / totalConversations) * 100), icon: 'fa-solid fa-calendar-check' },
+            { label: '5. Casos Cerrados', value: closed, percent: Math.round((closed / totalConversations) * 100), icon: 'fa-solid fa-circle-check' }
+          ];
+        });
+
+        // Priority Calculations
+        const priorityStats = computed(() => {
+          const counts = { URGENT: 0, HIGH: 0, NORMAL: 0, LOW: 0 };
+          filteredIncidents.value.forEach(i => {
+            if (counts[i.operational_priority] !== undefined) counts[i.operational_priority]++;
+          });
+          const total = filteredIncidents.value.length || 1;
+          return [
+            { name: 'Urgente', count: counts.URGENT, percentage: (counts.URGENT / total) * 100, colorBg: 'bg-red-500', colorText: 'text-red-400' },
+            { name: 'Alta', count: counts.HIGH, percentage: (counts.HIGH / total) * 100, colorBg: 'bg-amber-500', colorText: 'text-amber-400' },
+            { name: 'Normal', count: counts.NORMAL, percentage: (counts.NORMAL / total) * 100, colorBg: 'bg-sky-500', colorText: 'text-sky-400' }
+          ];
+        });
+
+        // Severity Calculations
+        const severityCounts = computed(() => {
+          const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+          filteredIncidents.value.forEach(i => {
+            if (counts[i.severity] !== undefined) counts[i.severity]++;
+          });
+          return counts;
+        });
+
+        const severityPercentages = computed(() => {
+          const total = filteredIncidents.value.length || 1;
+          return {
+            critical: (severityCounts.value.CRITICAL / total) * 100,
+            high: (severityCounts.value.HIGH / total) * 100,
+            medium: (severityCounts.value.MEDIUM / total) * 100,
+            low: (severityCounts.value.LOW / total) * 100,
+          };
+        });
+
+        // Dispatch Buckets mapping
+        const dispatchBuckets = computed(() => {
+          const buckets = { URGENT_24H: 0, THIS_WEEK: 0, MANUAL_REVIEW: 0 };
+          filteredIncidents.value.forEach(i => {
+            if (buckets[i.dispatch_bucket] !== undefined) buckets[i.dispatch_bucket]++;
+          });
+          return [
+            { name: 'Urgente 24 Horas', count: buckets.URGENT_24H, bulletColor: 'bg-red-500' },
+            { name: 'Agenda Semanal', count: buckets.THIS_WEEK, bulletColor: 'bg-amber-500' },
+            { name: 'Revisión Manual', count: buckets.MANUAL_REVIEW, bulletColor: 'bg-zinc-500' }
+          ];
+        });
+
+        const breachedIncidents = computed(() => {
+          return filteredIncidents.value.filter(i => i.sla_status === 'BREACHED');
+        });
+
+        // Event formatting icons
+        const getEventIcon = (type) => {
+          if (type === 'POLICY_EVALUATED') return 'fa-solid fa-gavel';
+          if (type === 'HUMAN_REVIEW_REQUIRED') return 'fa-solid fa-user-shield';
+          return 'fa-solid fa-screwdriver-wrench';
+        };
+
+        const formatTimestamp = (isoString) => {
+          const date = new Date(isoString);
+          return date.toTimeString().split(' ')[0];
+        };
+
+        // Custom badges colors mappings based on exact business requirements
+        const getSeverityClass = (severity) => {
+          if (severity === 'CRITICAL') return 'bg-red-500/15 text-red-400 border border-red-500/30';
+          if (severity === 'HIGH') return 'bg-amber-500/15 text-amber-400 border border-amber-500/20';
+          if (severity === 'MEDIUM') return 'bg-sky-500/15 text-sky-400 border border-sky-500/20';
+          return 'bg-zinc-800 text-zinc-400 border border-zinc-700';
+        };
+
+        const getSlaColorBadge = (status) => {
+          if (status === 'BREACHED') return 'bg-red-500 animate-pulse';
+          if (status === 'AT_RISK') return 'bg-amber-500 animate-pulse';
+          if (status === 'ON_TRACK') return 'bg-emerald-500';
+          return 'bg-zinc-600';
+        };
+
+        const getSlaTextClass = (status) => {
+          if (status === 'BREACHED') return 'text-red-400';
+          if (status === 'AT_RISK') return 'text-amber-400';
+          if (status === 'ON_TRACK') return 'text-emerald-400';
+          return 'text-zinc-500';
+        };
+
+        onMounted(() => {
+          fetchData();
+        });
+
+        return {
+          currentTab,
+          isLoading,
+          actionLoadingId,
+          errorMessage,
+          lastUpdated,
+          filters,
+          activePayload,
+          payloadTitle,
+          toasts,
+          filteredIncidents,
+          filteredConversationsCount,
+          conversionRate,
+          activeIncidentsCount,
+          currentMonthCost,
+          unknownClassificationsCount,
+          slaComplianceRate,
+          slaStatesCount,
+          funnelData,
+          priorityStats,
+          severityCounts,
+          severityPercentages,
+          dispatchBuckets,
+          breachedIncidents,
+          auditTrail,
+          fetchData,
+          executeIncidentAction,
+          getSeverityClass,
+          getSlaColorBadge,
+          getSlaTextClass,
+          getEventIcon,
+          formatTimestamp
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

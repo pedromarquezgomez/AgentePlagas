@@ -1,0 +1,317 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+
+const props = defineProps<{
+  currentPath: string
+  activeIncidentsCount?: number
+  engineStatus?: {
+    slaEngine: boolean
+    dispatchAssessment: boolean
+    policyEngine: boolean
+  }
+}>()
+
+const emit = defineEmits<{
+  (e: 'navigate', path: string): void
+}>()
+
+const currentTab = computed(() => {
+  if (props.currentPath === '/operations') return 'operations'
+  if (props.currentPath === '/ai-performance') return 'ai-performance'
+  if (props.currentPath === '/audit') return 'audit'
+  if (props.currentPath === '/analytics') return 'analytics'
+  return 'overview' // default is /dashboard or /
+})
+
+const slaEngineOk = computed(() => props.engineStatus?.slaEngine ?? true)
+const dispatchOk = computed(() => props.engineStatus?.dispatchAssessment ?? true)
+const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
+</script>
+
+<template>
+  <nav class="sidebar-nav">
+    <div class="navigation-section">
+      <span class="section-title">Paneles del Sistema</span>
+      <div class="menu-list">
+        <!-- Resumen Ejecutivo -->
+        <button 
+          @click="emit('navigate', '/dashboard')" 
+          :class="{ 'active': currentTab === 'overview' }"
+          class="menu-item"
+        >
+          <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020 18V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+          </svg>
+          Resumen Ejecutivo
+        </button>
+
+        <!-- Centro Operativo -->
+        <button 
+          @click="emit('navigate', '/operations')" 
+          :class="{ 'active': currentTab === 'operations' }"
+          class="menu-item justify-between"
+        >
+          <span class="menu-label-inner">
+            <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 .414-.336.75-.75.75H4.5a.75.75 0 01-.75-.75v-4.25m16.5 0a2.25 2.25 0 00-2.25-2.25H18.5m-3 0H5.25A2.25 2.25 0 003 14.15m17.25 0h-3m-14.25 0h3m3 0a2.25 2.25 0 014.5 0M9 3h6m-6 3h6m-9 6h12" />
+            </svg>
+            Centro Operativo
+          </span>
+          <span v-if="activeIncidentsCount && activeIncidentsCount > 0" class="badge-count">
+            {{ activeIncidentsCount }}
+          </span>
+        </button>
+
+        <!-- Analíticas -->
+        <button 
+          @click="emit('navigate', '/analytics')" 
+          :class="{ 'active': currentTab === 'analytics' }"
+          class="menu-item"
+        >
+          <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
+          </svg>
+          Métricas de Negocio
+        </button>
+
+        <!-- Rendimiento de la IA -->
+        <button 
+          @click="emit('navigate', '/ai-performance')" 
+          :class="{ 'active': currentTab === 'ai-performance' }"
+          class="menu-item"
+        >
+          <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m10.5-5.25V4.5m4.5 3.75H21m-1.5 4.5v1.5m-4.5 3.75v1.5m-9-1.5v1.5M4.5 15.75H3m18 0h-1.5m-2.25-12h-9a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25zM9 9h6v6H9V9z" />
+          </svg>
+          Rendimiento de la IA
+        </button>
+
+        <!-- Auditoría y Gobierno -->
+        <button 
+          @click="emit('navigate', '/audit')" 
+          :class="{ 'active': currentTab === 'audit' }"
+          class="menu-item"
+        >
+          <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+          </svg>
+          Auditoría y Gobierno
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Indicators -->
+    <div class="status-section">
+      <span class="section-title">Estado de Motores (SaaS)</span>
+      <div class="status-list">
+        <div class="status-indicator">
+          <span class="indicator-label">SLAEngine</span>
+          <span class="indicator-value" :class="{ 'status-ok': slaEngineOk }">
+            <span class="indicator-dot"></span>
+            {{ slaEngineOk ? 'Operativo' : 'Desconocido' }}
+          </span>
+        </div>
+        <div class="status-indicator">
+          <span class="indicator-label">DispatchAssessment</span>
+          <span class="indicator-value" :class="{ 'status-ok': dispatchOk }">
+            <span class="indicator-dot"></span>
+            {{ dispatchOk ? 'Operativo' : 'Desconocido' }}
+          </span>
+        </div>
+        <div class="status-indicator">
+          <span class="indicator-label">PolicyEngine</span>
+          <span class="indicator-value" :class="{ 'status-ok': policyOk }">
+            <span class="indicator-dot"></span>
+            {{ policyOk ? 'Activo' : 'Inactivo' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tenant Identity Context -->
+    <div class="tenant-context">
+      <div class="tenant-header">
+        <svg class="tenant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" />
+        </svg>
+        <span class="tenant-title">Tenant Activo</span>
+      </div>
+      <p class="tenant-name">tenant_hermes_global_pest</p>
+    </div>
+  </nav>
+</template>
+
+<style scoped>
+.sidebar-nav {
+  width: 256px; /* w-64 */
+  background: #09090b; /* zinc-950 */
+  border-right: 1px solid #18181b; /* zinc-900 */
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.navigation-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #3f3f46; /* zinc-700 / zinc-600 */
+  display: block;
+  padding: 0 12px;
+  margin-bottom: 8px;
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: #a1a1aa; /* zinc-400 */
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.menu-label-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.menu-item:hover {
+  color: #e4e4e7; /* zinc-200 */
+  background: rgba(24, 24, 27, 0.5); /* zinc-900 / 50 */
+}
+
+.menu-item.active {
+  background: #18181b; /* zinc-900 */
+  color: #34d399; /* emerald-400 */
+  font-weight: 600;
+}
+
+.menu-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.badge-count {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.status-section {
+  border-top: 1px solid #18181b;
+  padding-top: 16px;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.indicator-label {
+  font-weight: 400;
+}
+
+.indicator-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #71717a;
+}
+
+.indicator-value.status-ok {
+  color: #34d399; /* emerald-400 */
+}
+
+.indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #71717a;
+}
+
+.status-ok .indicator-dot {
+  background: #34d399;
+}
+
+.tenant-context {
+  background: rgba(24, 24, 27, 0.5);
+  border: 1px solid #18181b;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 10px;
+  margin-top: auto;
+}
+
+.tenant-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: #a1a1aa;
+}
+
+.tenant-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.tenant-title {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tenant-name {
+  margin: 0;
+  color: #71717a;
+  font-family: 'JetBrains Mono', monospace;
+  word-break: break-all;
+}
+</style>

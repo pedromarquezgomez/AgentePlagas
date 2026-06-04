@@ -5,6 +5,9 @@ import DashboardPanel from './components/DashboardPanel.vue'
 import DocumentDetail from './components/DocumentDetail.vue'
 import AnalyticsPage from './pages/AnalyticsPage.vue'
 import OperationsPage from './pages/OperationsPage.vue'
+import OperationsDashboardPage from './pages/OperationsDashboardPage.vue'
+import AiPerformancePage from './pages/AiPerformancePage.vue'
+import AuditPage from './pages/AuditPage.vue'
 import DocumentTable from './components/DocumentTable.vue'
 import HumanReviewDetail from './components/HumanReviewDetail.vue'
 import HumanReviewTable from './components/HumanReviewTable.vue'
@@ -150,6 +153,8 @@ const isDashboardPath = computed(() => currentPath.value === '/dashboard' || cur
 const isCalendarPath = computed(() => currentPath.value === '/calendar')
 const isAnalyticsPath = computed(() => currentPath.value === '/analytics')
 const isOperationsPath = computed(() => currentPath.value === '/operations')
+const isAiPerformancePath = computed(() => currentPath.value === '/ai-performance')
+const isAuditPath = computed(() => currentPath.value === '/audit')
 const isDocumentListPath = computed(() => currentPath.value === '/documents')
 const isShadowDecisionListPath = computed(() => currentPath.value === '/audit/shadow-decisions')
 const isToolExecutionListPath = computed(() => currentPath.value === '/tools/executions')
@@ -689,7 +694,7 @@ onMounted(() => {
     void loadToolExecutionRecords()
     return
   }
-  if (hasAccess.value && (isAnalyticsPath.value || isOperationsPath.value)) {
+  if (hasAccess.value && (isAnalyticsPath.value || isOperationsPath.value || isAiPerformancePath.value || isAuditPath.value)) {
     return
   }
   if (hasAccess.value && isIncidentListPath.value) {
@@ -709,6 +714,21 @@ onUnmounted(() => {
     :auth-mode="AUTH_MODE"
     :message="authMessage"
     @login="handleLogin"
+  />
+
+  <OperationsDashboardPage
+    v-else-if="isOperationsPath"
+    @navigate="navigate"
+  />
+
+  <AiPerformancePage
+    v-else-if="isAiPerformancePath"
+    @navigate="navigate"
+  />
+
+  <AuditPage
+    v-else-if="isAuditPath"
+    @navigate="navigate"
   />
 
   <main v-else class="appShell">
