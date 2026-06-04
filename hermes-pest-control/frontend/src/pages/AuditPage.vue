@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { listAuditEvents } from '../api/audit'
 import { listToolExecutions, approveToolExecution, rejectToolExecution } from '../api/tools'
 import type { AuditEvent, ToolExecution } from '../api/types'
-import { ApiError } from '../api/types'
+import { useGlobalState } from '../composables/useGlobalState'
 
-import DashboardShell from '../components/dashboard/DashboardShell.vue'
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
 import LoadingState from '../components/dashboard/LoadingState.vue'
@@ -18,18 +17,18 @@ import AuditTimeline from '../components/dashboard/AuditTimeline.vue'
 import PendingReviewsPanel from '../components/dashboard/PendingReviewsPanel.vue'
 import PayloadDrawer from '../components/dashboard/PayloadDrawer.vue'
 
-// Routing & Shell status
-const currentPath = ref('/audit')
-const isLoading = ref(false)
-const isFetching = ref(false)
-const actionLoadingId = ref<string | null>(null)
-const lastUpdated = ref('--:--:--')
-const errorMsg = ref<string | null>(null)
+const {
+  filterChannel,
+  filterPestType,
+  filterPriority,
+  onRefresh,
+  removeRefresh,
+  toasts
+} = useGlobalState()
 
-// Filters state
-const filterChannel = ref('all')
-const filterPestType = ref('all')
-const filterPriority = ref('all')
+const isLoading = ref(false)
+const actionLoadingId = ref<string | null>(null)
+const errorMsg = ref<string | null>(null)
 
 // Real Data state
 const auditEvents = ref<AuditEvent[]>([])
@@ -43,7 +42,6 @@ const isDrawerVisible = ref(false)
 let autoRefreshInterval: ReturnType<typeof setInterval> | null = null
 
 // Toasts notification system
-const toasts = ref<any[]>([])
 function showToast(title: string, message: string, type: 'success' | 'error' = 'success') {
   const id = Date.now()
   toasts.value.push({ id, title, message, type })
@@ -53,9 +51,8 @@ function showToast(title: string, message: string, type: 'success' | 'error' = '
 }
 
 // Fetch all audit data from API
-async function refreshData(showSpinner = false) {
-  if (showSpinner) isLoading.value = true
-  isFetching.value = true
+async function refreshData() {
+  isLoading.value = true
   errorMsg.value = null
   try {
     const [eventsList, executionsList] = await Promise.all([
@@ -64,32 +61,19 @@ async function refreshData(showSpinner = false) {
     ])
     auditEvents.value = eventsList
     toolExecutions.value = executionsList
-
-    const now = new Date()
-    lastUpdated.value = now.toTimeString().split(' ')[0]
   } catch (err) {
     console.error('Error cargando datos de auditoría:', err)
-    if (err instanceof ApiError) {
-      errorMsg.value = `Error: ${err.message}`
-      showToast('Error de Servidor', err.message, 'error')
-    } else {
-      errorMsg.value = err instanceof Error ? err.message : 'Error al conectar con la API de auditoría.'
-      showToast('Error', 'No se pudo conectar con el servidor.', 'error')
-    }
+    errorMsg.value = err instanceof Error ? err.message : 'Error al conectar con la API de auditoría.'
+    showToast('Error', 'No se pudo conectar con el servidor.', 'error')
   } finally {
     isLoading.value = false
-    isFetching.value = false
   }
 }
 
-// Propagate navigation
-const emit = defineEmits<{
-  (e: 'navigate', path: string): void
-}>()
-
-function handleNavigate(path: string) {
-  emit('navigate', path)
-}
+// React to global filters
+watch([filterChannel, filterPriority], () => {
+  void refreshData()
+})
 
 // Action handlers for Pending Reviews
 async function handleApprove(id: string) {
@@ -97,7 +81,7 @@ async function handleApprove(id: string) {
   try {
     await approveToolExecution(id)
     showToast('Ejecución Aprobada', 'La herramienta ha sido autorizada para ejecución segura.', 'success')
-    await refreshData(false)
+    await refreshData()
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo aprobar la ejecución.'
     showToast('Error', msg, 'error')
@@ -111,7 +95,7 @@ async function handleReject(id: string) {
   try {
     await rejectToolExecution(id)
     showToast('Ejecución Rejected', 'La ejecución ha sido bloqueada y cancelada.', 'success')
-    await refreshData(false)
+    await refreshData()
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo rechazar la ejecución.'
     showToast('Error', msg, 'error')
@@ -218,13 +202,15 @@ const pendingHitlList = computed(() => {
 })
 
 onMounted(() => {
-  refreshData(true)
+  void refreshData()
+  onRefresh(refreshData)
   autoRefreshInterval = setInterval(() => {
-    refreshData(false)
+    void refreshData()
   }, 10000)
 })
 
 onUnmounted(() => {
+  removeRefresh(refreshData)
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval)
   }
@@ -232,94 +218,97 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <DashboardShell
-    :currentPath="currentPath"
-    :isLoading="isFetching"
-    :lastUpdated="lastUpdated"
-    v-model:channel="filterChannel"
-    v-model:pestType="filterPestType"
-    v-model:priority="filterPriority"
-    :toasts="toasts"
-    @navigate="handleNavigate"
-    @refresh="refreshData(true)"
-  >
-    <div class="audit-dashboard-content">
-      <!-- Error Banner -->
-      <ErrorBanner :error="errorMsg" @dismiss="errorMsg = null" />
+  <div class="audit-dashboard-content">
+    <!-- Error Banner -->
+    <ErrorBanner :error="errorMsg" @dismiss="errorMsg = null" />
 
-      <!-- Page Header -->
-      <PageHeader 
-        title="Centro de Gobierno Operativo & Auditoría" 
-        subtitle="Trazabilidad en tiempo real de decisiones autónomas del motor de IA y control de gobernanza."
+    <!-- Page Header -->
+    <PageHeader
+      title="Centro de Gobierno Operativo & Auditoría"
+      subtitle="Trazabilidad en tiempo real de decisiones autónomas del motor de IA y control de gobernanza."
+    />
+
+    <!-- Loading State -->
+    <LoadingState v-if="isLoading" message="Cargando centro de auditoría y gobierno..." />
+
+    <template v-else-if="auditEvents.length > 0 || toolExecutions.length > 0">
+      <!-- KPIs Auditoría -->
+      <AuditKpiGrid
+        :totalEvents="totalEventsCount"
+        :toolsExecuted="toolsExecutedCount"
+        :pendingHitl="pendingHitlCount"
+        :approvedHitl="approvedHitlCount"
+        :rejectedHitl="rejectedHitlCount"
       />
 
-      <!-- Loading State -->
-      <LoadingState v-if="isLoading" message="Cargando centro de auditoría y gobierno..." />
-
-      <template v-else-if="auditEvents.length > 0 || toolExecutions.length > 0">
-        <!-- KPIs Auditoría -->
-        <AuditKpiGrid
-          :totalEvents="totalEventsCount"
-          :toolsExecuted="toolsExecutedCount"
-          :pendingHitl="pendingHitlCount"
-          :approvedHitl="approvedHitlCount"
-          :rejectedHitl="rejectedHitlCount"
+      <!-- Middle panels row -->
+      <div class="charts-row">
+        <!-- Decisiones IA (Donut) -->
+        <AiDecisionPanel
+          :approved="approvedHitlCount"
+          :rejected="rejectedHitlCount"
+          :pending="pendingHitlCount"
         />
 
-        <!-- Middle panels row -->
-        <div class="charts-row">
-          <!-- Decisiones IA (Donut) -->
-          <AiDecisionPanel 
-            :approved="approvedHitlCount" 
-            :rejected="rejectedHitlCount" 
-            :pending="pendingHitlCount" 
-          />
+        <!-- Eventos por Tipo (Barras Horizontales) -->
+        <EventDistributionPanel :events="filteredEvents" />
 
-          <!-- Eventos por Tipo (Barras Horizontales) -->
-          <EventDistributionPanel :events="filteredEvents" />
-
-          <!-- Salud del Gobierno -->
-          <GovernanceHealthPanel
-            :pendingCount="pendingHitlCount"
-            :avgApprovalTimeSeconds="avgApprovalTime"
-            :backlogCount="backlogCount"
-            :riskLevel="riskLevel"
-          />
-        </div>
-
-        <!-- Cola Human-In-The-Loop (HITL) -->
-        <PendingReviewsPanel
-          :pendingReviews="pendingHitlList"
-          :loading="isFetching"
-          :actionLoadingId="actionLoadingId"
-          @approve="handleApprove"
-          @reject="handleReject"
-          @inspect="handleInspect"
+        <!-- Salud del Gobierno -->
+        <GovernanceHealthPanel
+          :pendingCount="pendingHitlCount"
+          :avgApprovalTimeSeconds="avgApprovalTime"
+          :backlogCount="backlogCount"
+          :riskLevel="riskLevel"
         />
-
-        <!-- Timeline Vivo de Eventos -->
-        <AuditTimeline
-          :events="filteredEvents"
-          :loading="isFetching"
-          @inspect-payload="handleInspect"
-        />
-      </template>
-
-      <!-- Empty State -->
-      <div v-else class="empty-state-wrapper">
-        <EmptyState message="No hay eventos ni ejecuciones registradas en el log de auditoría." />
       </div>
-    </div>
 
-    <!-- Payload drawer -->
-    <PayloadDrawer
-      :payload="activePayload"
-      :title="payloadTitle"
-      :visible="isDrawerVisible"
-      @close="closeDrawer"
-    />
-  </DashboardShell>
+      <!-- Cola Human-In-The-Loop (HITL) -->
+      <PendingReviewsPanel
+        :pendingReviews="pendingHitlList"
+        :loading="isLoading"
+        :actionLoadingId="actionLoadingId"
+        @approve="handleApprove"
+        @reject="handleReject"
+        @inspect="handleInspect"
+      />
+
+      <!-- Timeline Vivo de Eventos -->
+      <AuditTimeline
+        :events="filteredEvents"
+        :loading="isLoading"
+        @inspect-payload="handleInspect"
+      />
+    </template>
+
+    <!-- Empty State -->
+    <div v-else class="empty-state-wrapper">
+      <EmptyState message="No hay eventos ni ejecuciones registradas en el log de auditoría." />
+    </div>
+  </div>
+
+  <!-- Payload drawer -->
+  <PayloadDrawer
+    :payload="activePayload"
+    :title="payloadTitle"
+    :visible="isDrawerVisible"
+    @close="closeDrawer"
+  />
 </template>
+
+<style scoped>
+.audit-dashboard-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+</style>
+
 
 <style scoped>
 .audit-dashboard-content {

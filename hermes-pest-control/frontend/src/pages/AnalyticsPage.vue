@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { getAnalyticsOverview } from '../api/analytics'
 import type { AnalyticsOverview } from '../api/types'
-import { ApiError } from '../api/types'
+import { useGlobalState } from '../composables/useGlobalState'
 
-import DashboardShell from '../components/dashboard/DashboardShell.vue'
 import PageHeader from '../components/dashboard/PageHeader.vue'
 import ErrorBanner from '../components/dashboard/ErrorBanner.vue'
 import LoadingState from '../components/dashboard/LoadingState.vue'
@@ -14,34 +13,20 @@ import SlaOverviewPanel from '../components/dashboard/SlaOverviewPanel.vue'
 import FunnelPanel from '../components/dashboard/FunnelPanel.vue'
 import TokenUsagePanel from '../components/dashboard/TokenUsagePanel.vue'
 
-// Routing & shell state
-const currentPath = ref('/analytics')
+const {
+  filterChannel,
+  filterPestType,
+  onRefresh,
+  removeRefresh
+} = useGlobalState()
+
 const isLoading = ref(false)
-const isFetching = ref(false)
-const lastUpdated = ref('--:--:--')
 const errorMsg = ref<string | null>(null)
-
-// Filters state
-const filterChannel = ref('all')
-const filterPestType = ref('all')
-const filterPriority = ref('all') // unifies shell v-model
-
 const businessMetrics = ref<AnalyticsOverview | null>(null)
 
-// Toasts notification system
-const toasts = ref<any[]>([])
-function showToast(title: string, message: string, type: 'success' | 'error' = 'success') {
-  const id = Date.now()
-  toasts.value.push({ id, title, message, type })
-  setTimeout(() => {
-    toasts.value = toasts.value.filter(t => t.id !== id)
-  }, 4000)
-}
-
 // Fetch analytics from api
-async function loadAnalytics(showSpinner = false) {
-  if (showSpinner) isLoading.value = true
-  isFetching.value = true
+async function loadAnalytics() {
+  isLoading.value = true
   errorMsg.value = null
   try {
     const params: Record<string, any> = {}
@@ -49,38 +34,19 @@ async function loadAnalytics(showSpinner = false) {
     if (filterPestType.value !== 'all') params.pest_type = filterPestType.value
 
     businessMetrics.value = await getAnalyticsOverview(params)
-    
-    const now = new Date()
-    lastUpdated.value = now.toTimeString().split(' ')[0]
   } catch (err) {
     console.error('Error cargando métricas:', err)
-    if (err instanceof ApiError) {
-      errorMsg.value = `Error: ${err.message}`
-      showToast('Error de Servidor', err.message, 'error')
-    } else {
-      errorMsg.value = err instanceof Error ? err.message : 'Error inesperado al cargar métricas'
-      showToast('Error', 'No se pudo conectar con la API.', 'error')
-    }
+    errorMsg.value = err instanceof Error ? err.message : 'Error inesperado al cargar métricas'
     businessMetrics.value = null
   } finally {
     isLoading.value = false
-    isFetching.value = false
   }
 }
 
-// Propagate navigation
-const emit = defineEmits<{
-  (e: 'navigate', path: string): void
-}>()
-
-function handleNavigate(path: string) {
-  emit('navigate', path)
-}
-
-// React to filters
-function handleFilterChange() {
-  loadAnalytics(true)
-}
+// React to global filters
+watch([filterChannel, filterPestType], () => {
+  void loadAnalytics()
+})
 
 // Computeds for secondary charts
 const slaComplianceRate = computed(() => {
@@ -125,115 +91,106 @@ const funnelData = computed(() => {
 })
 
 onMounted(() => {
-  loadAnalytics(true)
+  void loadAnalytics()
+  onRefresh(loadAnalytics)
+})
+
+onUnmounted(() => {
+  removeRefresh(loadAnalytics)
 })
 </script>
 
 <template>
-  <DashboardShell
-    :currentPath="currentPath"
-    :isLoading="isFetching"
-    :lastUpdated="lastUpdated"
-    v-model:channel="filterChannel"
-    v-model:pestType="filterPestType"
-    v-model:priority="filterPriority"
-    :toasts="toasts"
-    @update:channel="handleFilterChange"
-    @update:pestType="handleFilterChange"
-    @navigate="handleNavigate"
-    @refresh="loadAnalytics(true)"
-  >
-    <div class="analytics-content">
-      <!-- Error Banner -->
-      <ErrorBanner :error="errorMsg" @dismiss="errorMsg = null" />
+  <div class="analytics-content">
+    <!-- Error Banner -->
+    <ErrorBanner :error="errorMsg" @dismiss="errorMsg = null" />
 
-      <!-- Page Header -->
-      <PageHeader 
-        title="Resumen Ejecutivo Global" 
-        subtitle="Estado consolidado del negocio, facturación simulada, conversiones e incidencias críticas en tiempo real."
-      />
+    <!-- Page Header -->
+    <PageHeader
+      title="Resumen Ejecutivo Global"
+      subtitle="Estado consolidado del negocio, facturación simulada, conversiones e incidencias críticas en tiempo real."
+    />
 
-      <!-- Alert Banners -->
-      <div v-if="businessMetrics" class="alerts-section">
-        <div 
-          v-if="businessMetrics.sla_breaches > 0" 
-          class="alert-banner alert-critical"
-        >
-          <svg class="alert-banner-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          ALERTA CRÍTICA: Se han detectado {{ businessMetrics.sla_breaches }} incumplimientos de SLA en incidencias.
-        </div>
-      </div>
-
-      <!-- Loading State -->
-      <LoadingState v-if="isLoading" message="Cargando analíticas del negocio..." />
-
-      <template v-else-if="businessMetrics">
-        <!-- KPI Executive Grid -->
-        <AnalyticsKpiGrid 
-          :metrics="businessMetrics" 
-          :conversionRate="conversionRate"
-        />
-
-        <!-- Executive Row Charts / Funnels -->
-        <div class="executive-charts-row">
-          <!-- SLA Compliance Donut -->
-          <SlaOverviewPanel 
-            :slaComplianceRate="slaComplianceRate"
-            :slaOnTimeCount="slaOnTimeCount"
-            :slaBreaches="businessMetrics.sla_breaches"
-          />
-
-          <!-- Conversion Funnel -->
-          <FunnelPanel :funnelData="funnelData" />
-        </div>
-
-        <!-- LLM Telemetry Details -->
-        <div class="telemetry-section-container">
-          <div class="telemetry-header">
-            <h3 class="telemetry-title">Detalle y Telemetría del LLM</h3>
-            <p class="telemetry-subtitle">Consumo de recursos, tokens y latencia de inferencia</p>
-          </div>
-
-          <div class="telemetry-grid">
-            <!-- Latencia -->
-            <div class="telemetry-card">
-              <span class="card-label">Latencia Media Inferencia</span>
-              <div class="card-value-container">
-                <span class="card-value emerald">{{ businessMetrics.avg_llm_latency_ms }}</span>
-                <span class="card-unit">ms</span>
-              </div>
-              <p class="card-desc">Tiempo de respuesta medio del LLM</p>
-            </div>
-
-            <!-- Fallbacks -->
-            <div class="telemetry-card">
-              <span class="card-label">Llamadas de Fallback</span>
-              <div class="card-value-container">
-                <span class="card-value" :class="businessMetrics.fallback_count > 0 ? 'amber' : 'default'">
-                  {{ businessMetrics.fallback_count }}
-                </span>
-              </div>
-              <p class="card-desc">Redirecciones a motor de respaldo</p>
-            </div>
-
-            <!-- Tokens Breakdown -->
-            <TokenUsagePanel 
-              :promptTokens="businessMetrics.estimated_prompt_tokens"
-              :completionTokens="businessMetrics.estimated_completion_tokens"
-              :totalTokens="businessMetrics.estimated_total_tokens"
-            />
-          </div>
-        </div>
-      </template>
-
-      <!-- Empty State -->
-      <div v-else-if="!isLoading && !businessMetrics" class="empty-state-wrapper">
-        <EmptyState message="No hay métricas de negocio disponibles para los filtros seleccionados." />
+    <!-- Alert Banners -->
+    <div v-if="businessMetrics" class="alerts-section">
+      <div
+        v-if="businessMetrics.sla_breaches > 0"
+        class="alert-banner alert-critical"
+      >
+        <svg class="alert-banner-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+        </svg>
+        ALERTA CRÍTICA: Se han detectado {{ businessMetrics.sla_breaches }} incumplimientos de SLA en incidencias.
       </div>
     </div>
-  </DashboardShell>
+
+    <!-- Loading State -->
+    <LoadingState v-if="isLoading" message="Cargando analíticas del negocio..." />
+
+    <template v-else-if="businessMetrics">
+      <!-- KPI Executive Grid -->
+      <AnalyticsKpiGrid
+        :metrics="businessMetrics"
+        :conversionRate="conversionRate"
+      />
+
+      <!-- Executive Row Charts / Funnels -->
+      <div class="executive-charts-row">
+        <!-- SLA Compliance Donut -->
+        <SlaOverviewPanel
+          :slaComplianceRate="slaComplianceRate"
+          :slaOnTimeCount="slaOnTimeCount"
+          :slaBreaches="businessMetrics.sla_breaches"
+        />
+
+        <!-- Conversion Funnel -->
+        <FunnelPanel :funnelData="funnelData" />
+      </div>
+
+      <!-- LLM Telemetry Details -->
+      <div class="telemetry-section-container">
+        <div class="telemetry-header">
+          <h3 class="telemetry-title">Detalle y Telemetría del LLM</h3>
+          <p class="telemetry-subtitle">Consumo de recursos, tokens y latencia de inferencia</p>
+        </div>
+
+        <div class="telemetry-grid">
+          <!-- Latencia -->
+          <div class="telemetry-card">
+            <span class="card-label">Latencia Media Inferencia</span>
+            <div class="card-value-container">
+              <span class="card-value emerald">{{ businessMetrics.avg_llm_latency_ms }}</span>
+              <span class="card-unit">ms</span>
+            </div>
+            <p class="card-desc">Tiempo de respuesta medio del LLM</p>
+          </div>
+
+          <!-- Fallbacks -->
+          <div class="telemetry-card">
+            <span class="card-label">Llamadas de Fallback</span>
+            <div class="card-value-container">
+              <span class="card-value" :class="businessMetrics.fallback_count > 0 ? 'amber' : 'default'">
+                {{ businessMetrics.fallback_count }}
+              </span>
+            </div>
+            <p class="card-desc">Redirecciones a motor de respaldo</p>
+          </div>
+
+          <!-- Tokens Breakdown -->
+          <TokenUsagePanel
+            :promptTokens="businessMetrics.estimated_prompt_tokens"
+            :completionTokens="businessMetrics.estimated_completion_tokens"
+            :totalTokens="businessMetrics.estimated_total_tokens"
+          />
+        </div>
+      </div>
+    </template>
+
+    <!-- Empty State -->
+    <div class="empty-state-wrapper" v-else>
+      <EmptyState message="No hay métricas de negocio disponibles para los filtros seleccionados." />
+    </div>
+  </div>
 </template>
 
 <style scoped>

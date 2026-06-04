@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const props = defineProps<{
-  currentPath: string
   activeIncidentsCount?: number
   engineStatus?: {
     slaEngine: boolean
@@ -11,23 +11,27 @@ const props = defineProps<{
   }
 }>()
 
-const emit = defineEmits<{
-  (e: 'navigate', path: string): void
-}>()
+const route = useRoute()
+const router = useRouter()
 
 const currentTab = computed(() => {
-  if (props.currentPath === '/operations') return 'operations'
-  if (props.currentPath === '/ai-performance') return 'ai-performance'
-  if (props.currentPath === '/audit') return 'audit'
-  if (props.currentPath === '/analytics') return 'analytics'
-  if (props.currentPath.startsWith('/incidents')) return 'incidents'
-  if (props.currentPath.startsWith('/human-review')) return 'human-review'
-  if (props.currentPath.startsWith('/technicians')) return 'technicians'
-  if (props.currentPath.startsWith('/visits')) return 'visits'
-  if (props.currentPath.startsWith('/calendar')) return 'calendar'
-  if (props.currentPath.startsWith('/documents')) return 'documents'
+  const path = route.path
+  if (path === '/operations') return 'operations'
+  if (path === '/ai-performance') return 'ai-performance'
+  if (path === '/audit') return 'audit'
+  if (path === '/analytics') return 'analytics'
+  if (path.startsWith('/incidents')) return 'incidents'
+  if (path.startsWith('/reviews')) return 'human-review'
+  if (path.startsWith('/technicians')) return 'technicians'
+  if (path.startsWith('/visits')) return 'visits'
+  if (path.startsWith('/calendar')) return 'calendar'
+  if (path.startsWith('/documents')) return 'documents'
   return 'overview' // default is /dashboard or /
 })
+
+function navigateTo(path: string) {
+  void router.push(path)
+}
 
 const slaEngineOk = computed(() => props.engineStatus?.slaEngine ?? true)
 const dispatchOk = computed(() => props.engineStatus?.dispatchAssessment ?? true)
@@ -42,7 +46,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
       <div class="menu-list">
         <!-- Resumen Ejecutivo -->
         <button 
-          @click="emit('navigate', '/dashboard')" 
+          @click="navigateTo('/dashboard')"
           :class="{ 'active': currentTab === 'overview' }"
           class="menu-item"
         >
@@ -54,7 +58,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Analíticas -->
         <button 
-          @click="emit('navigate', '/analytics')" 
+          @click="navigateTo('/analytics')"
           :class="{ 'active': currentTab === 'analytics' }"
           class="menu-item"
         >
@@ -67,7 +71,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Rendimiento de la IA -->
         <button 
-          @click="emit('navigate', '/ai-performance')" 
+          @click="navigateTo('/ai-performance')"
           :class="{ 'active': currentTab === 'ai-performance' }"
           class="menu-item"
         >
@@ -79,7 +83,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Auditoría y Gobierno -->
         <button 
-          @click="emit('navigate', '/audit')" 
+          @click="navigateTo('/audit')"
           :class="{ 'active': currentTab === 'audit' }"
           class="menu-item"
         >
@@ -95,7 +99,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
       <div class="menu-list">
         <!-- Centro Operativo (HITL) -->
         <button 
-          @click="emit('navigate', '/operations')" 
+          @click="navigateTo('/operations')"
           :class="{ 'active': currentTab === 'operations' }"
           class="menu-item justify-between"
         >
@@ -112,7 +116,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Cola de Revisión Humana -->
         <button 
-          @click="emit('navigate', '/human-review')" 
+          @click="navigateTo('/reviews')"
           :class="{ 'active': currentTab === 'human-review' }"
           class="menu-item"
         >
@@ -128,7 +132,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
       <div class="menu-list">
         <!-- Incidencias -->
         <button 
-          @click="emit('navigate', '/incidents')" 
+          @click="navigateTo('/incidents')"
           :class="{ 'active': currentTab === 'incidents' }"
           class="menu-item"
         >
@@ -140,7 +144,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Técnicos -->
         <button 
-          @click="emit('navigate', '/technicians')" 
+          @click="navigateTo('/technicians')"
           :class="{ 'active': currentTab === 'technicians' }"
           class="menu-item"
         >
@@ -152,7 +156,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Visitas -->
         <button 
-          @click="emit('navigate', '/visits')" 
+          @click="navigateTo('/visits')"
           :class="{ 'active': currentTab === 'visits' }"
           class="menu-item"
         >
@@ -164,7 +168,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Calendario -->
         <button 
-          @click="emit('navigate', '/calendar')" 
+          @click="navigateTo('/calendar')"
           :class="{ 'active': currentTab === 'calendar' }"
           class="menu-item"
         >
@@ -176,7 +180,7 @@ const policyOk = computed(() => props.engineStatus?.policyEngine ?? true)
 
         <!-- Documentos -->
         <button 
-          @click="emit('navigate', '/documents')" 
+          @click="navigateTo('/documents')"
           :class="{ 'active': currentTab === 'documents' }"
           class="menu-item"
         >
