@@ -93,3 +93,34 @@ async def list_calendar_visits(
         technician_id=technician_id,
         status_filter=status_filter,
     )
+
+
+@router.post("/optimize-route")
+async def optimize_route(
+    payload: dict,
+) -> dict:
+    technician_id = payload.get("technician_id")
+    date_str = payload.get("date")
+    apply = payload.get("apply", False)
+
+    if not technician_id or not date_str:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="technician_id and date are required.",
+        )
+
+    try:
+        visit_date = date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid date format, use YYYY-MM-DD.",
+        )
+
+    from app.calendar.optimizer import RouteOptimizer
+    optimizer = RouteOptimizer()
+    return await optimizer.optimize_route(
+        technician_id=technician_id,
+        visit_date=visit_date,
+        apply=apply,
+    )

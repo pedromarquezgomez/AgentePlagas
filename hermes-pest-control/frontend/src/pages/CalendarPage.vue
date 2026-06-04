@@ -7,9 +7,11 @@ import {
   fetchIncidents,
   listCalendarVisits,
   isUnauthorizedError,
+  optimizeRoute,
   type Visit,
   type Technician,
   type Incident,
+  type RouteOptimizationResult,
   VISIT_STATUSES,
 } from '../services/api'
 import { formatStatus } from '../utils/labels'
@@ -51,7 +53,7 @@ const weekRange = computed(() => {
   // Ir al lunes de la semana (getDay: 0=domingo, 1=lunes)
   const dayOffset = base.getDay() === 0 ? -6 : 1 - base.getDay()
   start.setDate(base.getDate() + dayOffset)
-  
+
   const end = new Date(start)
   end.setDate(start.getDate() + 4) // Lunes + 4 días = Viernes
   return { start, end }
@@ -87,7 +89,7 @@ const techniciansMap = computed(() => {
 // --- KPIs Superiores ---
 const kpis = computed(() => {
   const todayStr = toDateInput(new Date())
-  
+
   let todayCount = 0
   let weeklyCount = visits.value.length
   let urgentCount = 0
@@ -158,54 +160,87 @@ function scheduleNewVisit() {
   void router.push('/visits/new')
 }
 
-// --- Optimización de Ruta con IA (Epic 4) ---
+// --- Optimización de Ruta con IA Real (Greedy TSP) ---
 const showOptModal = ref(false)
 const optLoading = ref(false)
 const optStep = ref<'intro' | 'loading' | 'success'>('intro')
 const selectedOptTechId = ref('')
+const optResult = ref<RouteOptimizationResult | null>(null)
 
 const optTechName = computed(() => {
   if (!selectedOptTechId.value) return 'Técnico'
   return technicians.value.find(t => t.id === selectedOptTechId.value)?.name || 'Técnico'
 })
 
+const originalFlow = computed(() => {
+  if (!optResult.value || !optResult.value.original_visits) return ''
+  return optResult.value.original_visits
+    .map(v => v.address || 'Local')
+    .join(' ➔ ')
+})
+
+const optimizedFlow = computed(() => {
+  if (!optResult.value || !optResult.value.optimized_visits) return ''
+  return optResult.value.optimized_visits
+    .map(v => v.address || 'Local')
+    .join(' ➔ ')
+})
+
+const savingsPercentage = computed(() => {
+  if (!optResult.value) return 0
+  const orig = optResult.value.original_distance_km
+  const opt = optResult.value.optimized_distance_km
+  if (orig <= 0) return 0
+  const diff = orig - opt
+  return Math.round((diff / orig) * 100)
+})
+
 function openOptimization() {
   showOptModal.value = true
   optStep.value = 'intro'
+  optResult.value = null
   if (technicians.value.length > 0) {
     selectedOptTechId.value = technicians.value[0].id
   }
 }
 
-function runOptimization() {
+async function runOptimization() {
+  if (!selectedOptTechId.value) return
   optStep.value = 'loading'
   optLoading.value = true
-  setTimeout(() => {
+  try {
+    const res = await optimizeRoute(
+      selectedOptTechId.value,
+      selectedDate.value,
+      false // solo cálculo, sin persistencia
+    )
+    optResult.value = res
     optStep.value = 'success'
+  } catch (err: any) {
+    alert(err?.message || 'Error optimizando ruta.')
+    optStep.value = 'intro'
+  } finally {
     optLoading.value = false
-  }, 1800)
+  }
 }
 
-function applyOptimization() {
-  const techId = selectedOptTechId.value
-  const techVisits = visits.value.filter(v => v.technician_id === techId)
-
-  if (techVisits.length > 1) {
-    techVisits.forEach((v, index) => {
-      if (v.scheduled_start) {
-        const date = new Date(v.scheduled_start)
-        date.setHours(8 + index * 2, 0, 0, 0)
-        v.scheduled_start = date.toISOString()
-
-        const dateEnd = new Date(date)
-        dateEnd.setHours(9 + index * 2, 30, 0, 0)
-        v.scheduled_end = dateEnd.toISOString()
-      }
-    })
+async function applyOptimization() {
+  if (!selectedOptTechId.value) return
+  optLoading.value = true
+  try {
+    await optimizeRoute(
+      selectedOptTechId.value,
+      selectedDate.value,
+      true // aplicar y guardar en la base de datos
+    )
+    // Recargar los datos del calendario para reflejar las horas optimizadas
+    await loadCalendarData()
+    showOptModal.value = false
+  } catch (err: any) {
+    alert(err?.message || 'Error aplicando optimización.')
+  } finally {
+    optLoading.value = false
   }
-
-  showOptModal.value = false
-  visits.value = [...visits.value]
 }
 
 watch([selectedDate, technicianFilter, statusFilter], () => {
@@ -307,7 +342,7 @@ onUnmounted(() => {
     <!-- Content Area (Grid Lunes a Viernes) -->
     <section class="calendar-content">
       <ErrorBanner :error="error" @dismiss="error = null" v-if="error" />
-      
+
       <WeeklyCalendar
         :days="weekDays"
         :visits="visits"
@@ -358,16 +393,19 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="route-comparison border-top-divider">
+            <div class="route-comparison border-top-divider" v-if="optResult">
               <div class="route-box original-route">
                 <span class="route-type-label">RUTA ORIGINAL</span>
-                <p class="route-flow text-xs">Málaga ➔ Fuengirola ➔ Torremolinos ➔ Benalmádena</p>
-                <span class="route-dist font-bold text-red">Distancia: 30 km</span>
+                <p class="route-flow text-xs">{{ originalFlow || 'Sin paradas geolocalizadas' }}</p>
+                <span class="route-dist font-bold text-red">Distancia: {{ optResult.original_distance_km.toFixed(1) }} km</span>
               </div>
               <div class="route-box optimal-route">
                 <span class="route-type-label text-emerald">RUTA OPTIMIZADA IA</span>
-                <p class="route-flow text-xs">Málaga ➔ Torremolinos ➔ Benalmádena ➔ Fuengirola</p>
-                <span class="route-dist font-bold text-emerald">Distancia: 18 km (¡Ahorro del 40%!)</span>
+                <p class="route-flow text-xs">{{ optimizedFlow || 'Sin paradas geolocalizadas' }}</p>
+                <span class="route-dist font-bold text-emerald">
+                  Distancia: {{ optResult.optimized_distance_km.toFixed(1) }} km
+                  <span v-if="savingsPercentage > 0">(¡Ahorro del {{ savingsPercentage }}%!)</span>
+                </span>
               </div>
             </div>
 

@@ -50,4 +50,6 @@ def _get_mock_firestore_service() -> MockFirestoreService:
     global _mock_firestore_service
     if _mock_firestore_service is None:
         _mock_firestore_service = MockFirestoreService()
+        from app.services.mock_seeder import seed_mock_data
+        seed_mock_data(_mock_firestore_service)
     return _mock_firestore_service

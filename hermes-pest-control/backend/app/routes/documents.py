@@ -158,5 +158,41 @@ async def generate_technician_brief(visit_id: str) -> dict:
     return document.model_dump()
 
 
+@router.get("/documents/{document_id}/versions")
+async def list_document_versions(document_id: str) -> list[dict]:
+    try:
+        return await document_service.list_document_versions(document_id)
+    except OperationalDocumentNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        ) from exc
+
+
+@router.post("/documents/{document_id}/versions", status_code=status.HTTP_201_CREATED)
+async def create_document_version(
+    document_id: str,
+    payload: dict,
+) -> dict:
+    content = payload.get("content")
+    generated_by = payload.get("generated_by", "admin")
+    if content is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Content field is required.",
+        )
+    try:
+        return await document_service.create_document_version(
+            document_id=document_id,
+            content=content,
+            generated_by=generated_by,
+        )
+    except OperationalDocumentNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        ) from exc
+
+
 def _value(value: object) -> str:
     return str(value) if value not in (None, "") else "Sin dato"

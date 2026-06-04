@@ -79,6 +79,8 @@ export interface Incident {
   queue_position?: number | null
   queue_score?: number | null
   queue_reason?: string | null
+  customer_id?: string | null
+  site_id?: string | null
 }
 
 export interface IncidentFilters {
@@ -316,6 +318,129 @@ export interface DashboardSummary {
     total: number
     active: number
   }
+}
+
+export interface Customer {
+  id: string
+  name: string
+  email: string
+  phone: string
+  customer_type: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CustomerFilters {
+  limit?: number
+}
+
+export interface CustomerCreate {
+  name: string
+  email: string
+  phone: string
+  customer_type: string
+}
+
+export interface CustomerUpdate {
+  name?: string
+  email?: string
+  phone?: string
+  customer_type?: string
+}
+
+export interface Site {
+  id: string
+  customer_id: string
+  name: string
+  address: string
+  latitude: number
+  longitude: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SiteCreate {
+  customer_id: string
+  name: string
+  address: string
+  latitude: number
+  longitude: number
+}
+
+export interface SiteUpdate {
+  name?: string
+  address?: string
+  latitude?: number
+  longitude?: number
+}
+
+export interface Contract {
+  id: string
+  customer_id: string
+  title: string
+  pest_type: string
+  frequency: string
+  amount: number
+  status: string
+  next_visit_due: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ContractCreate {
+  customer_id: string
+  title: string
+  pest_type: string
+  frequency: string
+  amount: number
+  status: string
+  next_visit_due?: string | null
+}
+
+export interface ContractUpdate {
+  title?: string
+  pest_type?: string
+  frequency?: string
+  amount?: number
+  status?: string
+  next_visit_due?: string | null
+}
+
+export interface OperationalDocumentVersion {
+  id: string
+  document_id: string
+  version_number: number
+  content: string
+  updated_at: string
+  generated_by: string
+}
+
+export interface Conversation {
+  id: string
+  customer_id?: string | null
+  channel: string
+  contact_identifier: string
+  created_at: string
+  updated_at?: string
+}
+
+export interface Message {
+  id: string | null
+  conversation_id: string
+  direction: 'inbound' | 'outbound'
+  channel: string
+  text: string
+  attachments?: string[]
+  metadata?: Record<string, unknown>
+  created_at: string
+}
+
+export interface RouteOptimizationResult {
+  original_visits: Visit[]
+  optimized_visits: Visit[]
+  original_distance_km: number
+  optimized_distance_km: number
+  was_improved: boolean
 }
 
 export interface OperationalDocument {
@@ -938,4 +1063,156 @@ export interface BusinessMetrics {
 
 export async function fetchBusinessMetrics(): Promise<BusinessMetrics> {
   return apiFetch<BusinessMetrics>('/analytics/overview', {}, 'No se pudieron cargar las métricas operativas')
+}
+
+export async function fetchCustomers(filters: CustomerFilters = {}): Promise<Customer[]> {
+  const params = new URLSearchParams()
+  if (filters.limit) params.set('limit', String(filters.limit))
+  const query = params.toString()
+  return apiFetch<Customer[]>(
+    `/customers${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar los clientes',
+  )
+}
+
+export async function fetchCustomer(customerId: string): Promise<Customer> {
+  return apiFetch<Customer>(
+    `/customers/${encodeURIComponent(customerId)}`,
+    {},
+    'No se pudo cargar el cliente',
+  )
+}
+
+export async function createCustomer(customer: CustomerCreate): Promise<Customer> {
+  return apiFetch<Customer>(
+    '/customers',
+    { method: 'POST', body: JSON.stringify(customer) },
+    'No se pudo crear el cliente',
+  )
+}
+
+export async function updateCustomer(customerId: string, update: CustomerUpdate): Promise<Customer> {
+  return apiFetch<Customer>(
+    `/customers/${encodeURIComponent(customerId)}`,
+    { method: 'PATCH', body: JSON.stringify(update) },
+    'No se pudo actualizar el cliente',
+  )
+}
+
+export async function fetchCustomerSites(customerId: string, limit?: number): Promise<Site[]> {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  const query = params.toString()
+  return apiFetch<Site[]>(
+    `/customers/${encodeURIComponent(customerId)}/sites${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar los locales del cliente',
+  )
+}
+
+export async function createCustomerSite(customerId: string, site: SiteCreate): Promise<Site> {
+  return apiFetch<Site>(
+    `/customers/${encodeURIComponent(customerId)}/sites`,
+    { method: 'POST', body: JSON.stringify(site) },
+    'No se pudo crear el local para el cliente',
+  )
+}
+
+export async function fetchCustomerContracts(customerId: string, limit?: number): Promise<Contract[]> {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  const query = params.toString()
+  return apiFetch<Contract[]>(
+    `/customers/${encodeURIComponent(customerId)}/contracts${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar los contratos del cliente',
+  )
+}
+
+export async function createCustomerContract(customerId: string, contract: ContractCreate): Promise<Contract> {
+  return apiFetch<Contract>(
+    `/customers/${encodeURIComponent(customerId)}/contracts`,
+    { method: 'POST', body: JSON.stringify(contract) },
+    'No se pudo crear el contrato para el cliente',
+  )
+}
+
+export async function fetchDocumentVersions(documentId: string): Promise<OperationalDocumentVersion[]> {
+  return apiFetch<OperationalDocumentVersion[]>(
+    `/documents/${encodeURIComponent(documentId)}/versions`,
+    {},
+    'No se pudieron cargar las versiones del documento',
+  )
+}
+
+export async function createDocumentVersion(
+  documentId: string,
+  content: string,
+  generatedBy: string = 'admin',
+): Promise<OperationalDocumentVersion> {
+  return apiFetch<OperationalDocumentVersion>(
+    `/documents/${encodeURIComponent(documentId)}/versions`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ content, generated_by: generatedBy }),
+    },
+    'No se pudo crear la versión del documento',
+  )
+}
+
+export async function optimizeRoute(
+  technicianId: string,
+  date: string,
+  apply: boolean = false,
+): Promise<RouteOptimizationResult> {
+  return apiFetch<RouteOptimizationResult>(
+    '/calendar/optimize-route',
+    {
+      method: 'POST',
+      body: JSON.stringify({ technician_id: technicianId, date, apply }),
+    },
+    'No se pudo optimizar la ruta',
+  )
+}
+
+export async function fetchConversations(limit?: number): Promise<Conversation[]> {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  const query = params.toString()
+  return apiFetch<Conversation[]>(
+    `/conversations${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar las conversaciones',
+  )
+}
+
+export async function fetchConversation(conversationId: string): Promise<Conversation> {
+  return apiFetch<Conversation>(
+    `/conversations/${encodeURIComponent(conversationId)}`,
+    {},
+    'No se pudo cargar la conversación',
+  )
+}
+
+export async function fetchConversationMessages(conversationId: string, limit?: number): Promise<Message[]> {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  const query = params.toString()
+  return apiFetch<Message[]>(
+    `/conversations/${encodeURIComponent(conversationId)}/messages${query ? `?${query}` : ''}`,
+    {},
+    'No se pudieron cargar los mensajes de la conversación',
+  )
+}
+
+export async function sendConversationMessage(conversationId: string, text: string): Promise<Message> {
+  return apiFetch<Message>(
+    `/conversations/${encodeURIComponent(conversationId)}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    },
+    'No se pudo enviar el mensaje',
+  )
 }

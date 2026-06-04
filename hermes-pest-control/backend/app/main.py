@@ -23,6 +23,8 @@ from app.routes import (
     whatsapp,
     evaluation,
     analytics,
+    customers,
+    conversations,
 )
 from app.realtime.routes import router as realtime_router
 
@@ -80,4 +82,6 @@ app.include_router(telegram.router)
 app.include_router(whatsapp.router)
 app.include_router(evaluation.router)
 app.include_router(analytics.router)
+app.include_router(customers.router)
+app.include_router(conversations.router)
 app.include_router(realtime_router)

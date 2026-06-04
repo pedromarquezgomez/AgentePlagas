@@ -2,126 +2,115 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  fetchIncidents,
-  type Incident
+  fetchConversations,
+  fetchConversationMessages,
+  sendConversationMessage,
+  fetchCustomers,
+  type Conversation,
+  type Message,
+  type Customer
 } from '../services/api'
-import { formatPestType, formatStatus } from '../utils/labels'
 import PageHeader from '../components/dashboard/PageHeader.vue'
 
 const router = useRouter()
 
-const incidents = ref<Incident[]>([])
+const conversations = ref<Conversation[]>([])
+const customers = ref<Customer[]>([])
 const loading = ref(true)
-const selectedIncidentId = ref<string | null>(null)
+const selectedConversationId = ref<string | null>(null)
+const messages = ref<Message[]>([])
 const chatInput = ref('')
+const loadingMessages = ref(false)
+const sending = ref(false)
 
-// Historial local de chat por incidente para interactividad
-const chatHistories = ref<Record<string, { sender: 'client' | 'hermes' | 'supervisor', name: string, text: string, time: string }[]>>({})
+// Mapeo rápido de customer_id a Customer
+const customersMap = computed(() => {
+  const map: Record<string, Customer> = {}
+  customers.value.forEach(c => {
+    map[c.id] = c
+  })
+  return map
+})
 
-// Cargar Incidencias
-async function loadConversations() {
+// Cargar Conversaciones y Clientes
+async function loadAllConversations() {
+  loading.value = true
   try {
-    const list = await fetchIncidents({ limit: 50 })
-    // Filtrar solo las que tengan canal de intake
-    incidents.value = list.filter(i => i.channel)
-    
-    if (incidents.value.length > 0) {
-      selectedIncidentId.value = incidents.value[0].id
+    const [convList, custList] = await Promise.all([
+      fetchConversations(100),
+      fetchCustomers()
+    ])
+    conversations.value = convList
+    customers.value = custList
+
+    if (convList.length > 0) {
+      selectedConversationId.value = convList[0].id
     }
-
-    // Inicializar los historiales
-    incidents.value.forEach(inc => {
-      if (!chatHistories.value[inc.id]) {
-        chatHistories.value[inc.id] = generateMockHistory(inc)
-      }
-    })
-
   } catch (err) {
-    console.error('Error cargando incidencias de chat:', err)
+    console.error('Error cargando conversaciones:', err)
   } finally {
     loading.value = false
   }
 }
 
-function generateMockHistory(inc: Incident): { sender: 'client' | 'hermes' | 'supervisor', name: string, text: string, time: string }[] {
-  const clientName = inc.location || 'Cliente'
-  const pest = formatPestType(inc.pest_type)
-  const channel = inc.channel || 'Telegram'
-  const dateStr = inc.created_at
-    ? new Date(inc.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-    : '12:01'
-
-  const channelText = channel.toUpperCase() === 'EMAIL' ? 'correo electrónico' : channel.toUpperCase() === 'WEB' ? 'formulario web' : channel
-
-  return [
-    {
-      sender: 'client',
-      name: 'Contacto Cliente',
-      text: `Hola, soy el encargado de ${clientName}. Tenemos presencia de ${pest} en el local (${inc.affected_area || 'cocina y almacén'}). Agradecería que nos programaran una visita técnica urgente.`,
-      time: dateStr,
-    },
-    {
-      sender: 'hermes',
-      name: 'Hermes IA',
-      text: `Hola. He registrado el aviso de intake recibido vía ${channelText} para ${clientName}. Evaluando severidad del vector de plagas...`,
-      time: dateStr,
-    },
-    {
-      sender: 'hermes',
-      name: 'Hermes IA',
-      text: `Incidencia operativa clasificada con prioridad ${inc.priority.toUpperCase()} y SLA de respuesta de ${inc.sla_hours || 4}h. Un supervisor está revisando la planificación de visitas.`,
-      time: dateStr,
-    }
-  ]
+// Cargar Mensajes al cambiar de conversación seleccionada
+async function loadMessages(convId: string) {
+  loadingMessages.value = true
+  try {
+    const list = await fetchConversationMessages(convId)
+    messages.value = list
+  } catch (err) {
+    console.error('Error al cargar mensajes:', err)
+  } finally {
+    loadingMessages.value = false
+  }
 }
 
-const activeIncident = computed(() => {
-  return incidents.value.find(i => i.id === selectedIncidentId.value) || null
+// Observar cambio de conversación activa
+watch(selectedConversationId, (newId) => {
+  if (newId) {
+    void loadMessages(newId)
+  } else {
+    messages.value = []
+  }
 })
 
-const activeChatHistory = computed(() => {
-  if (!selectedIncidentId.value) return []
-  return chatHistories.value[selectedIncidentId.value] || []
+const activeConversation = computed(() => {
+  return conversations.value.find(c => c.id === selectedConversationId.value) || null
 })
 
 // Enviar Mensaje
-function sendMessage() {
-  if (!chatInput.value.trim() || !selectedIncidentId.value) return
-  
+async function sendMessage() {
+  if (!chatInput.value.trim() || !selectedConversationId.value) return
+
+  sending.value = true
   const msgText = chatInput.value.trim()
   chatInput.value = ''
-  
-  const now = new Date()
-  const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 
-  // 1. Mensaje de Supervisor
-  chatHistories.value[selectedIncidentId.value].push({
-    sender: 'supervisor',
-    name: 'Supervisor (Tú)',
-    text: msgText,
-    time: timeStr
-  })
+  try {
+    const sentMessage = await sendConversationMessage(selectedConversationId.value, msgText)
+    messages.value.push(sentMessage)
 
-  // 2. Respuesta automática simulada de Hermes
-  setTimeout(() => {
-    if (selectedIncidentId.value) {
-      chatHistories.value[selectedIncidentId.value].push({
-        sender: 'hermes',
-        name: 'Hermes IA',
-        text: `Entendido. Registrando anotación en la bitácora del incidente: "${msgText}". Mensaje canalizado al técnico asignado.`,
-        time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-      })
-    }
-  }, 1000)
+    // Auto-scroll del feed al final tras enviar
+    setTimeout(() => {
+      const el = document.querySelector('.chat-messages-scroll')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
+
+  } catch (err: any) {
+    alert(err?.message || 'Error al enviar el mensaje.')
+  } finally {
+    sending.value = false
+  }
 }
 
 function selectConversation(id: string) {
-  selectedIncidentId.value = id
+  selectedConversationId.value = id
 }
 
-function openWorkspace() {
-  if (selectedIncidentId.value) {
-    void router.push(`/incidents/${selectedIncidentId.value}`)
+function openCustomerWorkspace() {
+  if (activeConversation.value?.customer_id) {
+    void router.push(`/customers/${activeConversation.value.customer_id}`)
   }
 }
 
@@ -134,8 +123,16 @@ function getChannelStyle(channel: string) {
   return { icon: '🌐', label: 'Web', class: 'chan-web' }
 }
 
+function formatDate(isoString?: string): string {
+  if (!isoString) return ''
+  return new Date(isoString).toLocaleTimeString('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 onMounted(() => {
-  void loadConversations()
+  void loadAllConversations()
 })
 </script>
 
@@ -157,87 +154,104 @@ onMounted(() => {
       <aside class="conversations-sidebar">
         <header class="sidebar-header">
           <h3>Bandeja de Entrada</h3>
-          <span class="conversations-count">{{ incidents.length }} Hilos activos</span>
+          <span class="conversations-count">{{ conversations.length }} Hilos activos</span>
         </header>
 
         <div class="threads-list">
-          <div 
-            v-for="inc in incidents" 
-            :key="inc.id" 
+          <div
+            v-for="conv in conversations"
+            :key="conv.id"
             class="thread-item"
-            :class="{ 'active': selectedIncidentId === inc.id }"
-            @click="selectConversation(inc.id)"
+            :class="{ 'active': selectedConversationId === conv.id }"
+            @click="selectConversation(conv.id)"
           >
             <div class="thread-header">
-              <span class="thread-channel-icon" :class="getChannelStyle(inc.channel).class">
-                {{ getChannelStyle(inc.channel).icon }}
+              <span class="thread-channel-icon" :class="getChannelStyle(conv.channel).class">
+                {{ getChannelStyle(conv.channel).icon }}
               </span>
-              <span class="thread-client-name">{{ inc.location || 'Localización S/D' }}</span>
-              <span class="thread-time" v-if="inc.created_at">
-                {{ inc.created_at.slice(11, 16) }}
+              <span class="thread-client-name">
+                {{ conv.customer_id && customersMap[conv.customer_id] ? customersMap[conv.customer_id].name : 'Contacto ' + getChannelStyle(conv.channel).label }}
+              </span>
+              <span class="thread-time" v-if="conv.created_at">
+                {{ formatDate(conv.created_at) }}
               </span>
             </div>
             <div class="thread-body">
-              <span class="thread-pest-type">{{ formatPestType(inc.pest_type) }}</span>
-              <p class="thread-snippet" v-if="chatHistories[inc.id]">
-                {{ chatHistories[inc.id][chatHistories[inc.id].length - 1].text }}
-              </p>
+              <span class="thread-pest-type">{{ conv.contact_identifier }}</span>
             </div>
           </div>
         </div>
       </aside>
 
       <!-- PANEL DERECHO: Panel de Conversación Activa -->
-      <main class="chat-viewport-container" v-if="activeIncident">
+      <main class="chat-viewport-container" v-if="activeConversation">
         <header class="chat-viewport-header">
           <div class="header-meta">
-            <span class="header-icon" :class="getChannelStyle(activeIncident.channel).class">
-              {{ getChannelStyle(activeIncident.channel).icon }}
+            <span class="header-icon" :class="getChannelStyle(activeConversation.channel).class">
+              {{ getChannelStyle(activeConversation.channel).icon }}
             </span>
             <div>
-              <h3>{{ activeIncident.location || 'Localización S/D' }}</h3>
-              <p>Incidencia #{{ activeIncident.id.slice(0, 8).toUpperCase() }} | Prioridad: <b>{{ activeIncident.priority.toUpperCase() }}</b></p>
+              <h3>
+                {{ activeConversation.customer_id && customersMap[activeConversation.customer_id] ? customersMap[activeConversation.customer_id].name : 'Canal Directo' }}
+              </h3>
+              <p>Identificador: <b>{{ activeConversation.contact_identifier }}</b> | Canal: <b>{{ getChannelStyle(activeConversation.channel).label }}</b></p>
             </div>
           </div>
-          <button class="primaryButton font-bold text-xs" type="button" @click="openWorkspace">
-            Ir a Consola 360°
+          <button
+            v-if="activeConversation.customer_id"
+            class="primaryButton font-bold text-xs"
+            type="button"
+            @click="openCustomerWorkspace"
+          >
+            Ir a Workspace 360°
           </button>
         </header>
 
         <!-- Mensajes -->
         <div class="chat-messages-scroll">
-          <div 
-            v-for="(msg, idx) in activeChatHistory" 
-            :key="idx" 
+          <LoadingState v-if="loadingMessages" message="Cargando historial..." />
+          <div v-else-if="messages.length === 0" class="no-messages">
+            No hay mensajes registrados en esta conversación.
+          </div>
+          <div
+            v-else
+            v-for="(msg, idx) in messages"
+            :key="msg.id || idx"
             class="bubble-container"
-            :class="`sender-${msg.sender}`"
+            :class="msg.direction === 'outbound' ? 'sender-supervisor' : 'sender-client'"
           >
             <span class="bubble-avatar">
-              {{ msg.sender === 'client' ? '👤' : msg.sender === 'hermes' ? '🤖' : '👨‍💼' }}
+              {{ msg.direction === 'outbound' ? '👨‍💼' : '👤' }}
             </span>
             <div class="bubble-content">
-              <span class="bubble-author">{{ msg.name }}</span>
+              <span class="bubble-author">
+                {{ msg.direction === 'outbound' ? 'Supervisor (Tú)' : 'Contacto Cliente' }}
+              </span>
               <p class="bubble-text">{{ msg.text }}</p>
-              <span class="bubble-timestamp">⏱️ {{ msg.time }}</span>
+              <span class="bubble-timestamp">⏱️ {{ formatDate(msg.created_at) }}</span>
             </div>
           </div>
         </div>
 
         <!-- Barra inferior de respuesta -->
         <form class="chat-input-bar" @submit.prevent="sendMessage">
-          <textarea 
+          <textarea
             v-model="chatInput"
             placeholder="Escribe una respuesta para el cliente a través del canal operativo..."
             rows="2"
+            required
+            :disabled="sending"
           ></textarea>
-          <button class="primaryButton send-btn" type="submit">Enviar Mensaje</button>
+          <button class="primaryButton send-btn" type="submit" :disabled="sending">
+            {{ sending ? 'Enviando...' : 'Enviar Mensaje' }}
+          </button>
         </form>
       </main>
 
       <div v-else class="chat-empty-state">
         <div class="empty-icon">✉️</div>
         <h3>No hay conversaciones activas</h3>
-        <p>No se encontraron registros de intake de clientes.</p>
+        <p>No se encontraron registros de comunicaciones capturadas.</p>
       </div>
 
     </div>
@@ -372,15 +386,7 @@ onMounted(() => {
   font-size: 10px;
   color: #71717a;
   font-weight: 700;
-}
-
-.thread-snippet {
-  font-size: 11px;
-  color: #a1a1aa;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 /* Chat Viewport */
@@ -438,6 +444,13 @@ onMounted(() => {
   gap: 16px;
 }
 
+.no-messages {
+  color: #71717a;
+  text-align: center;
+  font-size: 13px;
+  margin: auto;
+}
+
 .bubble-container {
   display: flex;
   gap: 12px;
@@ -448,7 +461,6 @@ onMounted(() => {
   align-self: flex-start;
 }
 
-.bubble-container.sender-hermes,
 .bubble-container.sender-supervisor {
   align-self: flex-end;
   flex-direction: row-reverse;
@@ -478,7 +490,6 @@ onMounted(() => {
 }
 
 .sender-client .bubble-content { border-top-left-radius: 0; }
-.sender-hermes .bubble-content { border-top-right-radius: 0; background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2); }
 .sender-supervisor .bubble-content { border-top-right-radius: 0; background: rgba(56, 189, 248, 0.05); border-color: rgba(56, 189, 248, 0.2); }
 
 .bubble-author {
@@ -487,7 +498,6 @@ onMounted(() => {
   color: #71717a;
 }
 
-.sender-hermes .bubble-author { color: #34d399; }
 .sender-supervisor .bubble-author { color: #38bdf8; }
 
 .bubble-text {

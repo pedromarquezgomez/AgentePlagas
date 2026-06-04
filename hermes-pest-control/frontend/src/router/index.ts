@@ -27,6 +27,8 @@ import ToolExecutionsPage from '../pages/ToolExecutionsPage.vue'
 import ToolExecutionDetailPage from '../pages/ToolExecutionDetailPage.vue'
 import ShadowDecisionDetailPage from '../pages/ShadowDecisionDetailPage.vue'
 import CalendarPage from '../pages/CalendarPage.vue'
+import CustomersPage from '../pages/CustomersPage.vue'
+import CustomerWorkspace from '../pages/CustomerWorkspace.vue'
 
 
 const routes: RouteRecordRaw[] = [
@@ -153,6 +155,17 @@ const routes: RouteRecordRaw[] = [
         path: 'calendar',
         name: 'calendar',
         component: CalendarPage
+      },
+      {
+        path: 'customers',
+        name: 'customers',
+        component: CustomersPage
+      },
+      {
+        path: 'customers/:id',
+        name: 'customer-detail',
+        component: CustomerWorkspace,
+        props: true
       }
     ]
   },

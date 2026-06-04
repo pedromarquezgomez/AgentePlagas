@@ -14,6 +14,9 @@ import {
   INCIDENT_STATUSES,
   INCIDENT_PRIORITIES,
   VISIT_STATUSES,
+  fetchCustomer,
+  fetchDocumentVersions,
+  createDocumentVersion,
   type Incident,
   type IncidentStatus,
   type IncidentPriority,
@@ -21,6 +24,7 @@ import {
   type VisitStatus,
   type OperationalDocument,
   type Technician,
+  type OperationalDocumentVersion,
 } from '../services/api'
 import {
   formatStatus,
@@ -76,20 +80,43 @@ const localChatMessages = ref<{ sender: 'client' | 'hermes' | 'supervisor', name
 const selectedDoc = ref<OperationalDocument | null>(null)
 const editingDocContent = ref('')
 const selectedDocVersion = ref<number | string>('current')
+const versions = ref<OperationalDocumentVersion[]>([])
+const customerName = ref<string | null>(null)
+
+// Cargar versiones reales del documento
+async function loadDocVersions(docId: string) {
+  try {
+    const list = await fetchDocumentVersions(docId)
+    versions.value = list
+  } catch (err) {
+    console.error('Error cargando versiones reales del documento:', err)
+  }
+}
 
 // Cargar Datos
 async function loadAllData() {
   loading.value = true
   error.value = null
+  customerName.value = null
   try {
     const loadedIncident = await fetchIncident(props.id)
     incident.value = loadedIncident
-    
+
     // Sincronizar formulario
     formStatus.value = (loadedIncident.status as IncidentStatus) || 'pending_review'
     formPriority.value = (loadedIncident.priority as IncidentPriority) || 'medium'
     formInternalNotes.value = loadedIncident.internal_notes || ''
     visitAddress.value = loadedIncident.location || ''
+
+    // Si tiene cliente, cargar su perfil de cliente
+    if (loadedIncident.customer_id) {
+      try {
+        const cust = await fetchCustomer(loadedIncident.customer_id)
+        customerName.value = cust.name
+      } catch (err) {
+        console.error('Error cargando cliente de la incidencia:', err)
+      }
+    }
 
     // Cargar Visitas, Documentos y Técnicos
     const [loadedVisits, loadedDocs, loadedTechs] = await Promise.all([
@@ -107,6 +134,7 @@ async function loadAllData() {
       selectedDoc.value = loadedDocs[0]
       editingDocContent.value = loadedDocs[0].content
       selectedDocVersion.value = 'current'
+      await loadDocVersions(loadedDocs[0].id)
     }
 
     // Inicializar chat simulado
@@ -161,7 +189,7 @@ function sendSupervisorMessage() {
   if (!chatInput.value.trim()) return
   const now = new Date()
   const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-  
+
   localChatMessages.value.push({
     sender: 'supervisor',
     name: 'Supervisor (Tú)',
@@ -222,7 +250,7 @@ async function handleCreateVisit() {
     visitStatus.value = 'draft'
     visitNotes.value = ''
     visitSuccessMsg.value = true
-    
+
     // Recargar visitas
     visits.value = await fetchVisits({ incident_id: props.id, limit: 100 })
   } catch (err) {
@@ -252,8 +280,7 @@ async function handleGenerateSummary() {
 
 // --- Epic 6: Documentos Vivos ---
 const docVersions = computed(() => {
-  if (!selectedDoc.value) return []
-  return (selectedDoc.value.metadata?.versions as any[]) || []
+  return versions.value
 })
 
 // Cambiar la versión visualizada
@@ -263,7 +290,7 @@ function handleVersionChange() {
     editingDocContent.value = selectedDoc.value.content
   } else {
     const verNum = Number(selectedDocVersion.value)
-    const verData = docVersions.value.find(v => v.version === verNum)
+    const verData = versions.value.find(v => v.version_number === verNum)
     if (verData) {
       editingDocContent.value = verData.content
     }
@@ -276,41 +303,20 @@ async function handleSaveNewVersion() {
   docSaving.value = true
 
   try {
-    let currentVersions = [...docVersions.value]
-    // Si no existen versiones previas, agregamos la versión actual original como v1
-    if (currentVersions.length === 0) {
-      currentVersions.push({
-        version: 1,
-        content: selectedDoc.value.content,
-        updated_at: selectedDoc.value.created_at || new Date().toISOString(),
-        generated_by: selectedDoc.value.generated_by
-      })
-    }
+    // 1. Guardar la versión real en base de datos
+    await createDocumentVersion(selectedDoc.value.id, editingDocContent.value, 'admin')
 
-    const nextVerNum = currentVersions.length + 1
-    const newVersionObj = {
-      version: nextVerNum,
-      content: editingDocContent.value,
-      updated_at: new Date().toISOString(),
-      generated_by: 'admin'
-    }
-
-    currentVersions.push(newVersionObj)
-
+    // 2. Actualizar el documento principal
     const updated = await updateDocument(selectedDoc.value.id, {
-      content: editingDocContent.value,
-      metadata: {
-        ...selectedDoc.value.metadata,
-        versions: currentVersions,
-        current_version: nextVerNum
-      }
+      content: editingDocContent.value
     })
 
     selectedDoc.value = updated
     editingDocContent.value = updated.content
     selectedDocVersion.value = 'current'
 
-    // Recargar documentos del caso
+    // 3. Recargar versiones y documentos del caso
+    await loadDocVersions(selectedDoc.value.id)
     documents.value = await fetchDocuments({ incident_id: props.id, limit: 100 })
   } catch (err) {
     console.error('Error al guardar versión:', err)
@@ -323,7 +329,7 @@ async function handleSaveNewVersion() {
 async function handleRestoreVersion() {
   if (!selectedDoc.value || selectedDocVersion.value === 'current') return
   const verNum = Number(selectedDocVersion.value)
-  const verData = docVersions.value.find(v => v.version === verNum)
+  const verData = versions.value.find(v => v.version_number === verNum)
   if (!verData) return
 
   editingDocContent.value = verData.content
@@ -367,17 +373,27 @@ onMounted(() => {
 
     <div v-if="loading" class="workspace-loading">Cargando consola operativa...</div>
     <div v-else-if="error" class="workspace-error">{{ error }}</div>
-    
+
     <div v-else-if="incident" class="workspace-layout">
-      
+
       <!-- COLUMNA 1: Datos Cliente & Ficha Técnica (SLA, Formulario) -->
       <aside class="workspace-col col-sidebar">
-        <!-- Panel 1: Cliente & Caso -->
+         <!-- Panel 1: Cliente & Caso -->
         <section class="workspace-card sidebar-card" aria-label="Ficha de cliente">
           <header class="card-header">
             <span class="card-eyebrow">Intake ID: #{{ incident.id.slice(0, 8).toUpperCase() }}</span>
             <h2 class="card-title">{{ incident.location || 'Localización S/D' }}</h2>
-            <p class="card-desc" v-if="incident.affected_area">📍 Zona: {{ incident.affected_area }}</p>
+            <div v-if="incident.customer_id" class="customer-link-container" style="margin-top: 6px;">
+              <span style="font-size: 11px; color: #71717a;">Cliente: </span>
+              <router-link
+                :to="`/customers/${incident.customer_id}`"
+                class="linkButton"
+                style="font-size: 13px; font-weight: 750;"
+              >
+                {{ customerName || 'Workspace 360°' }}
+              </router-link>
+            </div>
+            <p class="card-desc" v-if="incident.affected_area" style="margin-top: 6px;">📍 Zona: {{ incident.affected_area }}</p>
           </header>
 
           <div class="card-body">
@@ -410,8 +426,8 @@ onMounted(() => {
           <div class="card-body gap-12">
             <div class="sla-progress-box">
               <div class="progress-bar-bg">
-                <div 
-                  class="progress-bar-fill" 
+                <div
+                  class="progress-bar-fill"
                   :class="slaColorClass"
                   :style="{ width: `${slaPercentage}%` }"
                 ></div>
@@ -461,8 +477,8 @@ onMounted(() => {
 
             <label class="form-label">
               Notas internas del Supervisor
-              <textarea 
-                v-model="formInternalNotes" 
+              <textarea
+                v-model="formInternalNotes"
                 :disabled="saving"
                 placeholder="Escribe notas operativas..."
                 rows="4"
@@ -490,11 +506,11 @@ onMounted(() => {
             </div>
             <span class="channel-indicator badge channel-badge">{{ incident.channel.toUpperCase() }}</span>
           </header>
-          
+
           <div class="chat-body-messages">
-            <div 
-              v-for="(msg, idx) in localChatMessages" 
-              :key="idx" 
+            <div
+              v-for="(msg, idx) in localChatMessages"
+              :key="idx"
               class="chat-bubble-wrapper"
               :class="`sender-${msg.sender}`"
             >
@@ -508,9 +524,9 @@ onMounted(() => {
           </div>
 
           <form class="chat-footer" @submit.prevent="sendSupervisorMessage">
-            <input 
+            <input
               v-model="chatInput"
-              type="text" 
+              type="text"
               placeholder="Escribe un mensaje de respuesta del supervisor..."
             />
             <button class="primaryButton" type="submit">Enviar</button>
@@ -524,9 +540,9 @@ onMounted(() => {
             <p class="card-desc">Historial unificado y cruzado de toda la vida operativa del incidente</p>
           </header>
           <div class="card-body scroll-timeline">
-            <CaseTimeline 
-              :incidentId="id" 
-              :conversationId="incident.conversation_id" 
+            <CaseTimeline
+              :incidentId="id"
+              :conversationId="incident.conversation_id"
             />
           </div>
         </section>
@@ -545,9 +561,9 @@ onMounted(() => {
               No hay visitas agendadas para esta incidencia.
             </div>
             <div class="mini-visits-list" v-else>
-              <div 
-                v-for="v in visits" 
-                :key="v.id" 
+              <div
+                v-for="v in visits"
+                :key="v.id"
                 class="mini-visit-item"
                 @click="router.push(`/visits/${v.id}`)"
               >
@@ -574,7 +590,7 @@ onMounted(() => {
                   </option>
                 </select>
               </label>
-              
+
               <div class="form-row">
                 <label class="form-label flex-1">
                   Inicio
@@ -608,35 +624,35 @@ onMounted(() => {
         <section class="workspace-card docs-card" aria-label="Documentos vivos">
           <header class="card-header border-none justify-between items-center flex-row">
             <h3 class="card-subtitle">Documentos Vivos</h3>
-            <button 
-              class="primaryButton font-bold text-xs" 
-              type="button" 
-              :disabled="docGenerating" 
+            <button
+              class="primaryButton font-bold text-xs"
+              type="button"
+              :disabled="docGenerating"
               @click="handleGenerateSummary"
             >
               {{ docGenerating ? 'Generando...' : '🔄 Re-Generar Brief' }}
             </button>
           </header>
-          
+
           <div class="card-body gap-12" v-if="selectedDoc">
             <div class="doc-header-meta">
               <span class="font-bold text-sm text-highlight">📄 {{ selectedDoc.title }}</span>
-              
+
               <!-- Selector de versiones (Epic 6) -->
               <div class="version-selector-container">
                 <label class="version-label">Versión:</label>
-                <select 
-                  v-model="selectedDocVersion" 
-                  class="version-select" 
+                <select
+                  v-model="selectedDocVersion"
+                  class="version-select"
                   @change="handleVersionChange"
                 >
-                  <option value="current">Actual (v{{ docVersions.length || 1 }})</option>
-                  <option 
-                    v-for="v in docVersions" 
-                    :key="v.version" 
-                    :value="v.version"
+                  <option value="current">Actual (v{{ versions.length }})</option>
+                  <option
+                    v-for="v in versions"
+                    :key="v.id"
+                    :value="v.version_number"
                   >
-                    v{{ v.version }} ({{ v.updated_at.slice(5, 16).replace('T', ' ') }})
+                    v{{ v.version_number }} ({{ v.updated_at.slice(5, 16).replace('T', ' ') }})
                   </option>
                 </select>
               </div>
@@ -644,27 +660,27 @@ onMounted(() => {
 
             <!-- Editor del documento -->
             <div class="doc-editor-wrapper">
-              <textarea 
-                v-model="editingDocContent" 
-                class="doc-textarea" 
+              <textarea
+                v-model="editingDocContent"
+                class="doc-textarea"
                 rows="10"
                 placeholder="Escribe o modifica el brief del caso..."
               ></textarea>
             </div>
 
             <div class="doc-actions border-top-divider">
-              <button 
-                class="primaryButton flex-1 font-bold" 
-                type="button" 
-                :disabled="docSaving" 
+              <button
+                class="primaryButton flex-1 font-bold"
+                type="button"
+                :disabled="docSaving"
                 @click="handleSaveNewVersion"
               >
                 {{ docSaving ? 'Guardando...' : 'Guardar Nueva Versión' }}
               </button>
-              
-              <button 
-                class="secondaryButton font-bold" 
-                type="button" 
+
+              <button
+                class="secondaryButton font-bold"
+                type="button"
                 v-if="selectedDocVersion !== 'current'"
                 @click="handleRestoreVersion"
               >
