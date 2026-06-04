@@ -99,9 +99,53 @@ class ConversationService:
         )
 
         response = None
+
+        # 1. Build context
+        from app.context.customer_context_builder import CustomerContextBuilder
+        context_builder = CustomerContextBuilder(
+            customer_service=getattr(self, "customer_service", None),
+            incident_service=self.incident_service
+        )
+        customer_context = await context_builder.build(message)
+
+        # 2. Classify intent
+        from app.conversation.intent_classifier import IntentClassifier, IntentType
+        intent_classifier = IntentClassifier()
+
+        # Obtener textos de usuario en el flujo actual para una clasificación de intención robusta
+        from app.context.builders.history_builder import HistoryBuilder
+        history_builder = HistoryBuilder(self.firestore_service)
+        history_msgs = await history_builder.build(conversation_id, None)
+        all_msgs = list(history_msgs) if history_msgs else []
+        current_text = message.text or ""
+        has_current = any(msg.get("content") == current_text for msg in all_msgs)
+        if not has_current:
+            all_msgs.append({"role": "user", "content": current_text})
+
+        # Calcular cutoff
+        cutoff_idx = -1
+        for idx, msg in enumerate(all_msgs):
+            role = msg.get("role")
+            text_val = (msg.get("content") or "").casefold()
+            if role in ("assistant", "outbound", "bot"):
+                is_success = False
+                if any(term in text_val for term in ["he registrado", "he dejado el caso", "voy a pasar este caso", "registrado por el equipo", "incidencia registrada", "aviso registrado", "caso registrado"]):
+                    if "para registrar" not in text_val and "necesito" not in text_val:
+                        is_success = True
+                if is_success:
+                    cutoff_idx = idx
+
+        user_texts_flow = []
+        for msg in all_msgs[cutoff_idx + 1:]:
+            if msg.get("role") == "user":
+                user_texts_flow.append(msg.get("content") or "")
+
+        combined_user_text = " ".join(user_texts_flow) if user_texts_flow else current_text
+        intent = intent_classifier.classify(combined_user_text)
+
         from app.incidents.status_service import IncidentStatusService
         status_service = IncidentStatusService(self.firestore_service)
-        if status_service.is_status_query(message.text):
+        if intent == IntentType.STATUS_CHECK or status_service.is_status_query(message.text):
             status_message = await status_service.resolve_status_message(conversation_id)
             if status_message:
                 response = AgentResponse(
@@ -169,7 +213,13 @@ class ConversationService:
                         )
 
         if response is None:
-            response = await self._get_hermes_response(message, conversation_id, trace_id)
+            response = await self._get_hermes_response(
+                message,
+                conversation_id,
+                trace_id,
+                customer_context=customer_context,
+                intent=intent
+            )
 
         if response.incident and (response.action.type == "create_incident" or self._should_create_incident(response)):
             self._enrich_incident_operational_fields(message, response.incident)
@@ -181,6 +231,8 @@ class ConversationService:
                 conversation_id=conversation_id,
                 trace_id=trace_id,
                 response=response,
+                customer_context=customer_context,
+                intent=intent
             )
             if incident_id:
                 await self._propose_gmail_draft_tool(
@@ -198,7 +250,7 @@ class ConversationService:
                     response=response,
                 )
         elif self._should_create_incident(response):
-            incident = self._build_incident(message, conversation_id, response)
+            incident = self._build_incident(message, conversation_id, response, customer_context, intent)
             created_incident = await self.incident_service.create_incident(incident)
             incident_id = created_incident.id
             if response.incident is not None:
@@ -716,6 +768,8 @@ class ConversationService:
         conversation_id: str,
         trace_id: str,
         response: AgentResponse,
+        customer_context: Any = None,
+        intent: Any = None,
     ) -> str | None:
         from app.schemas.tool_harness import ToolExecutionRecord
         from app.policies.contracts import PolicyContext, PolicyDecision
@@ -764,6 +818,9 @@ class ConversationService:
                     "evidence": getattr(response.incident, "evidence", None) if response.incident else None,
                     "detected_terms": getattr(response.incident, "detected_terms", []) if response.incident else [],
                 } if response.incident else None,
+                "customer_id": customer_context.customer_id if customer_context else None,
+                "is_recurrence": intent.value == "RECURRENCE" if intent else False,
+                "parent_incident_id": customer_context.last_incident_id if customer_context and intent and intent.value == "RECURRENCE" else None,
                 **(response.metadata if response.metadata else {}),
             }
         }
@@ -860,6 +917,8 @@ class ConversationService:
         message: IncomingMessage,
         conversation_id: str,
         response: AgentResponse,
+        customer_context: Any = None,
+        intent: Any = None,
     ) -> IncidentDraft:
         incident_data = response.incident
 
@@ -869,6 +928,11 @@ class ConversationService:
             "source_message_type": message.message_type,
             "source_metadata": message.metadata,
         }
+        if customer_context:
+            metadata["customer_id"] = customer_context.customer_id
+            if intent and intent.value == "RECURRENCE":
+                metadata["is_recurrence"] = True
+                metadata["parent_incident_id"] = customer_context.last_incident_id
         if incident_data:
             if getattr(incident_data, "confidence", None):
                 metadata["confidence"] = incident_data.confidence
@@ -934,12 +998,16 @@ class ConversationService:
         message: IncomingMessage,
         conversation_id: str,
         trace_id: str,
+        customer_context: Any = None,
+        intent: Any = None,
     ) -> AgentResponse:
         if self._is_pilot_candidate(message):
             return await self._get_pilot_or_fallback_response(
                 message,
                 conversation_id,
                 trace_id,
+                customer_context=customer_context,
+                intent=intent,
             )
 
         if self.settings.hermes_pilot_mode:
@@ -951,6 +1019,11 @@ class ConversationService:
         try:
             business_context = default_business_context(conversation_id)
             business_context["trace_id"] = trace_id
+            if customer_context:
+                business_context["customer_context"] = customer_context.model_dump()
+            if intent:
+                business_context["intent"] = intent.value
+
             raw_response = await self.hermes_service.process_message(
                 message,
                 conversation_history=[],
@@ -967,6 +1040,8 @@ class ConversationService:
         message: IncomingMessage,
         conversation_id: str,
         trace_id: str,
+        customer_context: Any = None,
+        intent: Any = None,
     ) -> AgentResponse:
         gate_result = self.pilot_gate.evaluate(message)
         if not gate_result.eligible:
@@ -1001,6 +1076,8 @@ class ConversationService:
                 message,
                 conversation_id,
                 trace_id,
+                customer_context=customer_context,
+                intent=intent
             )
             self._merge_metadata(
                 response,
@@ -1018,6 +1095,11 @@ class ConversationService:
             business_context = default_business_context(conversation_id)
             business_context["trace_id"] = trace_id
             business_context["pilot_mode"] = True
+            if customer_context:
+                business_context["customer_context"] = customer_context.model_dump()
+            if intent:
+                business_context["intent"] = intent.value
+
             raw_response = await pilot_service.process_message(
                 message,
                 conversation_history=[],
@@ -1081,10 +1163,17 @@ class ConversationService:
         message: IncomingMessage,
         conversation_id: str,
         trace_id: str,
+        customer_context: Any = None,
+        intent: Any = None,
     ) -> AgentResponse:
         try:
             business_context = default_business_context(conversation_id)
             business_context["trace_id"] = trace_id
+            if customer_context:
+                business_context["customer_context"] = customer_context.model_dump()
+            if intent:
+                business_context["intent"] = intent.value
+
             raw_response = await self.hermes_service.process_message(
                 message,
                 conversation_history=[],
@@ -1114,6 +1203,8 @@ class ConversationService:
             message,
             conversation_id,
             trace_id,
+            customer_context=None, # In a full refactor, we would pass these down, but fallback is ok
+            intent=None
         )
         self._merge_metadata(
             response,

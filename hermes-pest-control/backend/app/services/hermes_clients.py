@@ -56,10 +56,86 @@ class HermesMockClient:
         if state.requires_human_review:
             return self._build_human_review_response(incoming_message.text or "")
 
+        customer_ctx_dict = (business_context or {}).get("customer_context")
+        from app.context.customer_context_builder import CustomerContext
+        from app.conversation.missing_data_service import MissingDataService
 
-        missing_fields = state.missing_fields
+        customer_context = CustomerContext(**customer_ctx_dict) if customer_ctx_dict else CustomerContext()
+        missing_fields = MissingDataService.resolve_missing_fields(state.missing_fields, customer_context)
+
+        # Si tiene múltiples locales, verificar si la ubicación provista coincide con alguno
+        if customer_context.has_multiple_sites and customer_context.site_locations:
+            matched = False
+            loc_val = (state.location or "").lower()
+            text_val = (incoming_message.text or "").lower()
+            for sl in customer_context.site_locations:
+                if sl in loc_val or sl in text_val:
+                    matched = True
+                    # Normalizar ubicación a la que coincide
+                    from app.incidents.intake_service import IncidentIntakeService
+                    intake_service = IncidentIntakeService()
+                    loc_spanish = sl.capitalize()
+                    for k, v in intake_service.normalized_locations.items():
+                        if k.casefold() == sl.casefold():
+                            loc_spanish = v
+                            break
+                    state.location = loc_spanish
+                    break
+            if not matched:
+                if "location" not in missing_fields:
+                    missing_fields.append("location")
+                state.location = None
+
+        # Si hay campos principales faltantes, no pedir el affected_area todavía
+        if "location" in missing_fields or "pest_type" in missing_fields or "customer_name" in missing_fields:
+            if "affected_area" in missing_fields:
+                missing_fields.remove("affected_area")
+
+        # Enriquecer state con datos conocidos para respuestas y creación
+        if "customer_name" not in missing_fields and customer_context.customer_name and not state.customer_name:
+            state.customer_name = customer_context.customer_name
+        if "location" not in missing_fields and customer_context.last_location and not state.location:
+            state.location = customer_context.last_location
+
+        intent = (business_context or {}).get("intent")
+        is_recurrence = intent == "RECURRENCE"
 
         if not missing_fields:
+            if is_recurrence:
+                pest_name = state.pest_type_spanish or state.pest_type or "plaga"
+                loc = state.location or "tu ubicación conocida"
+                reply = f"He detectado que esto es una reincidencia de tu caso anterior (ID: {customer_context.last_incident_id}). Gracias, {state.customer_name}. He registrado tu incidencia por presencia de {pest_name} en {loc}."
+                return AgentResponse(
+                    reply=reply,
+                    action={
+                        "type": "create_incident",
+                        "missing_fields": [],
+                    },
+                    incident={
+                        "should_create": True,
+                        "pest_type": state.pest_type or "COCKROACH",
+                        "location": state.location,
+                        "affected_area": state.affected_area or "cocina",
+                        "priority": _map_priority(state.priority) or state.recommended_priority or self._priority_for(state.pest_type_spanish or state.pest_type),
+                        "summary": f"Reincidencia registrada: presencia de {state.pest_type} en {state.location}.",
+                        "confidence": state.confidence,
+                        "evidence": state.evidence,
+                        "detected_terms": state.detected_terms,
+                        "severity": state.severity,
+                        "response_hours": state.response_hours,
+                        "assessment_reason": state.assessment_reason,
+                        "visit_type": state.visit_type,
+                        "technician_level": state.technician_level,
+                        "dispatch_bucket": state.dispatch_bucket,
+                        "sla_hours": state.sla_hours,
+                    },
+                    metadata={
+                        "customer_name": state.customer_name,
+                        "is_recurrence": True,
+                        "parent_incident_id": customer_context.last_incident_id,
+                    }
+                )
+
             if state.customer_name:
                 return AgentResponse(
                     reply=f"Gracias, {state.customer_name}. He registrado tu incidencia por presencia de {state.pest_type} en {state.location}.",
@@ -124,6 +200,8 @@ class HermesMockClient:
                 )
 
         is_legacy_flow = state.is_legacy_flow
+        if customer_context.customer_name:
+            is_legacy_flow = False
 
         if is_legacy_flow:
             reply = self._build_missing_data_reply(missing_fields)
@@ -131,6 +209,8 @@ class HermesMockClient:
             reply = "Entiendo.  Para registrar la incidencia necesito:\n  - ubicación\n  - nombre de contacto\n  ¿Podrías indicármelos?"
         elif "customer_name" in missing_fields:
             reply = "Necesito también un nombre de contacto para registrar la incidencia."
+        elif "affected_area" in missing_fields and state.location and not ("location" in missing_fields or "pest_type" in missing_fields):
+            reply = f"Perfecto, he localizado el aviso en el local de {state.location}. ¿La actividad está en cocina, almacén, comedor u otra zona?"
         else:
             if "location" in missing_fields:
                 reply = "Para registrar la incidencia necesito saber la ubicación de la plaga."
@@ -138,6 +218,15 @@ class HermesMockClient:
                 reply = "Para registrar la incidencia necesito saber qué tipo de plaga has visto."
             else:
                 reply = self._build_missing_data_reply(missing_fields)
+
+        metadata = {}
+        if is_recurrence:
+            metadata["is_recurrence"] = True
+            metadata["parent_incident_id"] = customer_context.last_incident_id
+            if customer_context.customer_name:
+                metadata["customer_name"] = customer_context.customer_name
+        elif customer_context.customer_name:
+            metadata["customer_name"] = customer_context.customer_name
 
         return AgentResponse(
             reply=reply,
@@ -149,6 +238,7 @@ class HermesMockClient:
                 "should_create": False,
                 "conversation_id": conversation_id,
             },
+            metadata=metadata,
         )
 
     def _requires_human_review(self, text: str) -> bool:

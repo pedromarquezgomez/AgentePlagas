@@ -418,6 +418,25 @@ onMounted(() => {
           </div>
         </section>
 
+        <!-- Panel 1.5: Memoria Conversacional / Reincidencia -->
+        <section v-if="incident.metadata?.is_recurrence" class="workspace-card sidebar-card" style="border: 1px solid #ef4444; background: #fef2f2;" aria-label="Alerta de Reincidencia">
+          <header class="card-header border-none" style="padding-bottom: 0;">
+            <h3 class="card-subtitle" style="color: #b91c1c; display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">⚠️</span> ALERTA DE REINCIDENCIA
+            </h3>
+          </header>
+          <div class="card-body" style="padding-top: 8px;">
+            <p style="font-size: 13px; color: #991b1b; margin-bottom: 8px; line-height: 1.4;">
+              El agente inteligente ha detectado que este cliente vuelve a reportar problemas de {{ formatPestType(incident.pest_type) }}.
+            </p>
+            <div v-if="incident.metadata?.parent_incident_id" style="font-size: 12px;">
+              <router-link :to="`/incidents/${incident.metadata.parent_incident_id}`" style="color: #b91c1c; text-decoration: underline; font-weight: 600;">
+                Ver caso original anterior
+              </router-link>
+            </div>
+          </div>
+        </section>
+
         <!-- Panel 2: Acuerdo SLA & Respuesta -->
         <section class="workspace-card sidebar-card" aria-label="Monitoreo de SLA">
           <header class="card-header border-none">

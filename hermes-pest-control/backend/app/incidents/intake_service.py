@@ -13,7 +13,7 @@ class IncidentIntakeService:
         from app.pests.classifier import PestClassifier
         self.classifier = classifier or PestClassifier()
 
-    area_terms = ["cocina", "garaje", "baño", "bano", "jardín", "jardin", "almacén", "almacen"]
+    area_terms = ["cocina", "garaje", "baño", "bano", "jardín", "jardin", "almacén", "almacen", "salón", "salon", "comedor"]
 
     location_terms = ["torremolinos", "málaga", "malaga", "benalmádena", "benalmadena", "fuengirola", "marbella"]
 
@@ -37,6 +37,8 @@ class IncidentIntakeService:
                     return "jardín"
                 if area == "almacen":
                     return "almacén"
+                if area == "salon":
+                    return "salón"
                 return area
         return None
 
@@ -66,14 +68,41 @@ class IncidentIntakeService:
         return None
 
     def _extract_customer_name(self, text: str) -> str | None:
-        cleaned_text = text.replace(".", "").replace(",", "").strip()
+        # 1. Intentar buscar de negocio/roles: "soy el encargado de Pizzería Roma", "soy gerente de Bar Pepe"
+        role_pattern = r"(?:encargado|encargada|gerente|propietario|propietaria|dueño|dueña|empleado|empleada|de parte de|representante|responsable|administrador|administradora|director|directora|socio|socia)\s+de\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)"
+        match = re.search(role_pattern, text, re.IGNORECASE)
+        if match:
+            name = match.group(1).strip()
+            # Limpiar puntuación que pudiera haber quedado al final
+            name = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()]+$', '', name).strip()
+            return name
+
+        # 2. Intentar buscar nombres personales ignorando artículos y roles
         name_match = re.search(
-            r"(?:mi nombre es|soy|me llamo|nombre es)\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ]+)",
-            cleaned_text,
+            r"(?:mi nombre es|soy|me llamo|nombre es)\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)",
+            text,
             re.IGNORECASE
         )
         if name_match:
-            return name_match.group(1).strip()
+            val = name_match.group(1).strip()
+            val = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()]+$', '', val).strip()
+            words = val.split()
+            if words:
+                blacklist = {
+                    "el", "la", "un", "una", "los", "las", "mi", "tu", "su",
+                    "encargado", "encargada", "gerente", "propietario", "propietaria",
+                    "dueño", "dueña", "empleado", "empleada", "tecnico", "técnico", "de",
+                    "representante", "responsable", "administrador", "administradora",
+                    "director", "directora", "socio", "socia"
+                }
+                first_word = words[0].lower()
+                if first_word in blacklist:
+                    if len(words) > 1 and words[0].lower() in {"el", "la", "un", "una"}:
+                        second_word = words[1]
+                        if second_word.lower() not in blacklist:
+                            return second_word
+                    return None
+                return words[0]
         return None
 
     async def process_intake(
@@ -96,8 +125,13 @@ class IncidentIntakeService:
         for i, msg in enumerate(all_messages):
             role = msg.get("role")
             text = (msg.get("content") or msg.get("text") or "").casefold()
-            if (role in ("assistant", "outbound", "bot") or msg.get("direction") == "outbound") and "registrad" in text:
-                cutoff_index = i
+            if role in ("assistant", "outbound", "bot") or msg.get("direction") == "outbound":
+                is_success = False
+                if any(term in text for term in ["he registrado", "he dejado el caso", "voy a pasar este caso", "registrado por el equipo", "incidencia registrada", "aviso registrado", "caso registrado"]):
+                    if "para registrar" not in text and "necesito" not in text:
+                        is_success = True
+                if is_success:
+                    cutoff_index = i
 
         user_texts = []
         for msg in all_messages[cutoff_index + 1:]:
@@ -176,6 +210,10 @@ class IncidentIntakeService:
                 missing_fields.append("location")
             if not customer_name:
                 missing_fields.append("customer_name")
+
+            # Pedir affected_area si los campos principales están resueltos pero falta el área
+            if not affected_area and not ("pest_type" in missing_fields or "location" in missing_fields or "customer_name" in missing_fields):
+                missing_fields.append("affected_area")
 
         ready_for_incident = not missing_fields
 

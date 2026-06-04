@@ -81,6 +81,7 @@ export interface Incident {
   queue_reason?: string | null
   customer_id?: string | null
   site_id?: string | null
+  metadata?: Record<string, any> | null
 }
 
 export interface IncidentFilters {

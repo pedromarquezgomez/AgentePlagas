@@ -189,6 +189,13 @@ class LLMRuntimeProvider:
                 "Minimum data for creating an incident: pest type, affected area, "
                 "location, and contact name when available. If essential data is "
                 "missing, use collect_missing_data.",
+                "IMPORTANT: Review the 'customer_context' in the business_context. "
+                "If the customer is known (e.g., name or location exists in customer_context), "
+                "DO NOT ask for that information again. Instead, use the known data implicitly "
+                "or confirm it subtly (e.g., '¿Es en la misma dirección de siempre?').",
+                "If the intent is RECURRENCE (e.g. they say pests are back), treat it as a continuation "
+                "of the previous incident and refer to it. Empathize with the customer and DO NOT ask "
+                "for location or name again if they are in the customer_context.",
                 "For unknown pests or low confidence, use collect_missing_data or "
                 "escalate_to_human and set metadata.requires_human_review when possible.",
                 "If the user asks about dangerous chemicals, product mixing, exposure "

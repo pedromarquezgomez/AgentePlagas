@@ -62,6 +62,24 @@ class CustomerService:
         )
         return await self.get_customer(customer_id)
 
+    async def get_customer_by_channel_id(self, channel: str, user_id: str) -> dict | None:
+        filters = {}
+        if channel == "telegram":
+            filters["telegram_user_id"] = user_id
+        elif channel == "whatsapp":
+            filters["whatsapp_phone"] = user_id
+        else:
+            return None
+
+        customers = await self.firestore_service.list_documents(
+            self.customers_collection,
+            filters=filters,
+            limit=1,
+        )
+        if customers:
+            return customers[0]
+        return None
+
     # --- SITES ---
     async def create_site(self, site_create: SiteCreate) -> Site:
         # Validamos que el cliente exista

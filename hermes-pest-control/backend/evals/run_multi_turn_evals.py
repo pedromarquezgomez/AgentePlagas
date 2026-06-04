@@ -34,6 +34,8 @@ class MultiTurnCase:
     id: str
     description: str
     turns: list[TurnEvaluation]
+    external_user_id: str | None = None
+    channel: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MultiTurnCase:
@@ -54,6 +56,8 @@ class MultiTurnCase:
             id=data["id"],
             description=data.get("description", ""),
             turns=turns,
+            external_user_id=data.get("external_user_id"),
+            channel=data.get("channel"),
         )
 
 
@@ -68,15 +72,19 @@ async def run_single_case(
 
     # Initialize isolated services for this case run
     firestore_service = MockFirestoreService()
+    from app.services.mock_seeder import seed_mock_data
+    seed_mock_data(firestore_service)
+
     settings = Settings(hermes_mode=hermes_mode, APP_ENV="test")
     conversation_service = ConversationService(
         firestore_service=firestore_service,
         settings=settings,
     )
 
-    external_user_id = f"eval-user-{case.id}"
+    channel = case.channel or "telegram"
+    external_user_id = case.external_user_id or f"eval-user-{case.id}"
     external_chat_id = f"eval-chat-{case.id}"
-    conversation_id = f"telegram:{external_user_id}"
+    conversation_id = f"{channel}:{external_user_id}"
 
     transcript.append(f"--- Caso: {case.id} ({case.description}) ---")
 
@@ -110,7 +118,7 @@ async def run_single_case(
 
         # 2. Build incoming message
         message = IncomingMessage(
-            channel="telegram",
+            channel=channel,
             external_user_id=external_user_id,
             external_chat_id=external_chat_id,
             message_type="text",
