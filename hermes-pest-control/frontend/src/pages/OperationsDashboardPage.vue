@@ -18,6 +18,7 @@ import KpiCard from '../components/dashboard/KpiCard.vue'
 import DispatchBucketCard from '../components/dashboard/DispatchBucketCard.vue'
 import OperationalIncidentsTable from '../components/dashboard/OperationalIncidentsTable.vue'
 import PayloadDrawer from '../components/dashboard/PayloadDrawer.vue'
+import ActivityFeed from '../components/dashboard/ActivityFeed.vue'
 
 const store = useDashboardStore()
 const {
@@ -28,6 +29,8 @@ const {
   toasts
 } = storeToRefs(store)
 const { onRefresh, removeRefresh } = store
+
+const activityFeedRef = ref<any>(null)
 
 const isLoading = ref(false)
 const actionLoadingId = ref<string | null>(null)
@@ -64,6 +67,9 @@ async function refreshData() {
     incidents.value = incList
     metrics.value = metData
     proposedTools.value = toolList
+    
+    // Refrescamos el feed de actividad operativa
+    activityFeedRef.value?.refresh()
   } catch (err) {
     console.error('Error cargando datos en operaciones:', err)
     errorMsg.value = err instanceof Error ? err.message : 'Error al conectar con la API.'
@@ -104,6 +110,7 @@ async function handleApprove(incidentId: string) {
       )
     }
     await refreshData()
+    activityFeedRef.value?.refresh()
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo confirmar la acción.'
     showToast('Error', msg, 'error')
@@ -123,6 +130,7 @@ async function handleCancel(incidentId: string) {
       'success'
     )
     await refreshData()
+    activityFeedRef.value?.refresh()
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo cancelar el caso.'
     showToast('Error', msg, 'error')
@@ -350,15 +358,24 @@ useEventStream((event) => {
         <DispatchBucketCard :buckets="dispatchBuckets" />
       </div>
 
-      <!-- Master Incidents table component -->
-      <OperationalIncidentsTable
-        :incidents="filteredIncidents"
-        :loading="isLoading"
-        :actionLoadingId="actionLoadingId"
-        @approve="handleApprove"
-        @cancel="handleCancel"
-        @inspect="handleInspect"
-      />
+      <!-- Master Incidents & Activity Feed layout -->
+      <div class="dashboard-operations-grid">
+        <div class="table-column">
+          <!-- Master Incidents table component -->
+          <OperationalIncidentsTable
+            :incidents="filteredIncidents"
+            :loading="isLoading"
+            :actionLoadingId="actionLoadingId"
+            @approve="handleApprove"
+            @cancel="handleCancel"
+            @inspect="handleInspect"
+          />
+        </div>
+        <div class="feed-column">
+          <!-- Recent Activity Feed -->
+          <ActivityFeed ref="activityFeedRef" />
+        </div>
+      </div>
     </template>
 
     <!-- Empty State -->
@@ -736,5 +753,26 @@ useEventStream((event) => {
 
 .legend-dot.low {
   background: #71717a;
+}
+
+.dashboard-operations-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 20px;
+  align-items: start;
+}
+
+.table-column {
+  min-width: 0;
+}
+
+.feed-column {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-operations-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

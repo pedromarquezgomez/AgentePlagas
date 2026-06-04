@@ -32,6 +32,7 @@ import {
   formatTechnicianLevel,
   formatVisitType,
 } from '../utils/labels'
+import IncidentTimeline from './dashboard/IncidentTimeline.vue'
 
 const props = defineProps<{
   incidentId: string
@@ -608,6 +609,16 @@ watch(
             {{ visitSaveError }}
           </div>
         </form>
+      </section>
+
+      <section class="detailPanel fullWidthPanel" aria-label="Línea de tiempo operativa">
+        <h3>Línea de Tiempo Operativa (Timeline)</h3>
+        <p class="sectionText" style="margin-bottom: 16px;">Cronología unificada de decisiones de IA, aprobaciones de supervisores, visitas y eventos de este caso.</p>
+        <IncidentTimeline
+          :incident-id="incidentId"
+          :conversation-id="incident.conversation_id"
+          @unauthorized="emit('unauthorized')"
+        />
       </section>
     </div>
   </section>
