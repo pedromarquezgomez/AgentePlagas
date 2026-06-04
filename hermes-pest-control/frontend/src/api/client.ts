@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getApps, initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth'
 import { ApiError } from './types'
 
 // Inicializar Firebase Auth de la misma manera que en el resto del proyecto
@@ -11,6 +11,18 @@ const firebaseApp = getApps()[0] ?? initializeApp({
 })
 
 export const auth = getAuth(firebaseApp)
+
+// Helper para obtener el usuario actual esperando a la inicialización si es necesario
+async function getCurrentFirebaseUser(): Promise<User | null> {
+  if (auth.currentUser) return auth.currentUser
+
+  return new Promise<User | null>((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe()
+      resolve(user)
+    })
+  })
+}
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
@@ -24,7 +36,6 @@ export const client = axios.create({
 // Interceptor de Request: Firebase Auth Token & Rutas Públicas
 client.interceptors.request.use(
   async (config) => {
-    const user = auth.currentUser
     const url = config.url || ''
 
     // Definir rutas públicas del backend
@@ -35,6 +46,11 @@ client.interceptors.request.use(
       url.endsWith('/config/status') ||
       url === '/ready' ||
       url.endsWith('/ready')
+
+    let user = auth.currentUser
+    if (!user && !isPublicRoute) {
+      user = await getCurrentFirebaseUser()
+    }
 
     if (user) {
       try {
