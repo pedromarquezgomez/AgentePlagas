@@ -12,6 +12,9 @@ import AiPerformancePage from '../pages/AiPerformancePage.vue'
 import AuditPage from '../pages/AuditPage.vue'
 import IncidentsPage from '../pages/IncidentsPage.vue'
 import IncidentDetailPage from '../pages/IncidentDetailPage.vue'
+import IncidentWorkspace from '../pages/IncidentWorkspace.vue'
+import OperationsMap from '../pages/OperationsMap.vue'
+import ConversationCenter from '../pages/ConversationCenter.vue'
 import VisitsPage from '../pages/VisitsPage.vue'
 import VisitDetailPage from '../pages/VisitDetailPage.vue'
 import TechniciansPage from '../pages/TechniciansPage.vue'
@@ -72,8 +75,18 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'incidents/:id',
         name: 'incident-detail',
-        component: IncidentDetailPage,
+        component: IncidentWorkspace,
         props: true
+      },
+      {
+        path: 'map',
+        name: 'operations-map',
+        component: OperationsMap
+      },
+      {
+        path: 'conversations',
+        name: 'conversation-center',
+        component: ConversationCenter
       },
       {
         path: 'visits',
