@@ -45,6 +45,9 @@ class AgentConfigLoader:
         )
         return self._read_file("system_prompt.md", fallback=fallback)
 
+    def load_personality(self) -> str:
+        return self._read_file("personality.md", fallback="")
+
     def load_conversation_rules(self) -> str:
         return self._read_file("conversation_rules.md", fallback="")
 
@@ -90,6 +93,7 @@ class AgentConfigLoader:
         sections = [
             "Return only strict JSON compatible with AgentResponse.",
             self.load_system_prompt(),
+            self.load_personality(),
             self.load_conversation_rules(),
             self.load_intake_policy(),
             self.load_recurrence_policy(),

@@ -21,4 +21,4 @@ async def test_diagnostic_engine_out_of_domain() -> None:
 async def test_diagnostic_engine_intake_known_pest() -> None:
     engine = DiagnosticEngine()
     assessment = await engine.assess("Tengo cucarachas en la cocina")
-    assert assessment.state == DiagnosisState.INTAKE
+    assert assessment.state == DiagnosisState.DISCOVERY

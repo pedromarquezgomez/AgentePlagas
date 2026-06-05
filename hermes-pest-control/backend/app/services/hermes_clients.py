@@ -45,6 +45,77 @@ class HermesMockClient:
         if self._requires_human_review(text):
             return self._build_human_review_response(text)
 
+        conv_state = (business_context or {}).get("conversation_state") or {}
+        current_phase = conv_state.get("phase")
+
+        customer_ctx_dict = (business_context or {}).get("customer_context")
+        from app.context.customer_context_builder import CustomerContext
+        customer_context = CustomerContext(**customer_ctx_dict) if customer_ctx_dict else CustomerContext()
+
+        from app.config.agent_loader import AgentConfigLoader
+        loader = AgentConfigLoader()
+        templates = loader.load_response_templates()
+
+        def get_template(section: str, key: str, fallback: str) -> str:
+            val = templates.get(section, {}).get(key, {}).get("es")
+            return val if val is not None else fallback
+
+        if current_phase == "DISCOVERY":
+            discovery_data = conv_state.get("discovery", {})
+            text_lower = text.lower()
+            is_recurrence_mention = "vuelto" in text_lower or "reincidencia" in text_lower or "otra vez" in text_lower or "anterior" in text_lower
+
+            if is_recurrence_mention and customer_context.last_incident_id:
+                reply = get_template(
+                    "discovery",
+                    "recurrence_question",
+                    "He visto que ya tratamos una incidencia similar anteriormente. Vamos a revisar si puede estar relacionada. ¿Los síntomas son parecidos a los del caso anterior?"
+                )
+                return AgentResponse(
+                    reply=reply,
+                    action={"type": "technical_discovery", "missing_fields": []},
+                    incident=None
+                )
+
+            # Si no sabemos el entorno
+            if not discovery_data.get("environment_type"):
+                reply = get_template(
+                    "discovery",
+                    "environment_question",
+                    "¿Las estás observando en una vivienda o en un negocio?"
+                )
+                return AgentResponse(
+                    reply=reply,
+                    action={"type": "technical_discovery", "missing_fields": []},
+                    incident=None
+                )
+            
+            # Si es negocio y no sabemos la zona
+            if discovery_data.get("environment_type") == "negocio" and not discovery_data.get("affected_zone"):
+                reply = get_template(
+                    "discovery",
+                    "business_question",
+                    "Perfecto. ¿Las estáis observando en cocina, almacén o comedor?"
+                )
+                return AgentResponse(
+                    reply=reply,
+                    action={"type": "technical_discovery", "missing_fields": []},
+                    incident=None
+                )
+
+            # Si falta severidad / tiempo
+            if not discovery_data.get("severity") or not discovery_data.get("first_seen"):
+                reply = get_template(
+                    "discovery",
+                    "severity_question",
+                    "¿Desde cuándo las habéis empezado a observar?"
+                )
+                return AgentResponse(
+                    reply=reply,
+                    action={"type": "technical_discovery", "missing_fields": []},
+                    incident=None
+                )
+
         from app.incidents.intake_service import IncidentIntakeService
         intake_service = IncidentIntakeService()
         state = await intake_service.process_intake(

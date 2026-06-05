@@ -318,6 +318,95 @@ class ConversationService:
                 )
                 return response
 
+            elif assessment.state == DiagnosisState.DISCOVERY:
+                import datetime
+                discovery_data = conv_state.get("discovery", {})
+                if not discovery_data:
+                    discovery_data = {
+                        "knowledge_key": assessment.knowledge_key,
+                        "environment_type": None,
+                        "business_type": None,
+                        "severity": None,
+                        "first_seen": None,
+                        "affected_zone": None,
+                    }
+                
+                # Extraer environment_type
+                msg_lower = (message.text or "").lower()
+                if any(word in msg_lower for word in ["vivienda", "casa", "piso", "hogar", "domicilio", "particular"]):
+                    discovery_data["environment_type"] = "vivienda"
+                elif any(word in msg_lower for word in ["restaurante", "bar", "cafetería", "pizzería", "pizzeria", "negocio", "local", "almacén", "almacen", "hotel", "comunidad", "industria"]):
+                    discovery_data["environment_type"] = "negocio"
+                    # Extraer business_type
+                    if "restaurante" in msg_lower or "pizzería" in msg_lower or "pizzeria" in msg_lower:
+                        discovery_data["business_type"] = "restaurante"
+                    elif "hotel" in msg_lower:
+                        discovery_data["business_type"] = "hotel"
+                    elif "almacén" in msg_lower or "almacen" in msg_lower:
+                        discovery_data["business_type"] = "almacen"
+                    elif "comunidad" in msg_lower:
+                        discovery_data["business_type"] = "comunidad"
+                    elif "industria" in msg_lower:
+                        discovery_data["business_type"] = "industria"
+
+                # Extraer affected_zone
+                if any(word in msg_lower for word in ["cocina", "comedor", "almacén", "almacen", "salón", "salon", "dormitorio", "baño", "jardín", "jardin", "garaje"]):
+                    for zone in ["cocina", "comedor", "almacén", "almacen", "salón", "salon", "dormitorio", "baño", "jardín", "jardin", "garaje"]:
+                        if zone in msg_lower:
+                            discovery_data["affected_zone"] = zone
+                            break
+
+                # Extraer severity / first_seen
+                if any(word in msg_lower for word in ["muchas", "muchos", "plaga", "nido", "plaga grave", "graves", "infestación"]):
+                    discovery_data["severity"] = "high"
+                elif any(word in msg_lower for word in ["pocas", "uno", "una", "algunas", "algunos"]):
+                    discovery_data["severity"] = "low"
+
+                if any(word in msg_lower for word in ["ayer", "hoy", "hace un día", "hace un dia", "desde hace poco"]):
+                    discovery_data["first_seen"] = "recent"
+                elif any(word in msg_lower for word in ["días", "semanas", "meses", "tiempo", "hace tiempo"]):
+                    discovery_data["first_seen"] = "older"
+
+                # Guardar timestamp
+                discovery_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                
+                # Guardar en conv_state
+                conv_state["phase"] = "DISCOVERY"
+                conv_state["discovery"] = discovery_data
+                
+                await self._upsert_conversation_with_state(message, conversation_id, conv_state)
+                
+                response = await self._get_hermes_response(
+                    message,
+                    conversation_id,
+                    trace_id,
+                    customer_context=customer_context,
+                    intent=intent,
+                    conversation_state=conv_state,
+                    injected_pest=discovery_data.get("knowledge_key"),
+                )
+                
+                if response.action.type == "technical_discovery":
+                    await self._store_outbound_message(message, conversation_id, trace_id, response)
+                    
+                    decision_record = await self._record_decision(
+                        message=message,
+                        conversation_id=conversation_id,
+                        trace_id=trace_id,
+                        message_id=inbound_message.get("id") if 'inbound_message' in locals() else None,
+                        incident_id=None,
+                        response=response,
+                    )
+                    await self._create_human_review_item_if_needed(
+                        message=message,
+                        conversation_id=conversation_id,
+                        trace_id=trace_id,
+                        incident_id=None,
+                        decision_record_id=decision_record.id if decision_record else None,
+                        response=response,
+                    )
+                    return response
+
             else:
                 # Transición a INTAKE
                 injected_pest = None
@@ -325,6 +414,16 @@ class ConversationService:
                     diag_data = conv_state.get("diagnosis", {})
                     if diag_data.get("knowledge_key") == "plant_pests":
                         injected_pest = "pulgón verde"
+                elif conv_state.get("phase") == "DISCOVERY":
+                    disc_data = conv_state.get("discovery", {})
+                    k_key = disc_data.get("knowledge_key")
+                    spanish_map = {
+                        "cockroaches": "cucarachas",
+                        "rodents": "roedores",
+                        "ants": "hormigas",
+                        "wasps": "avispas"
+                    }
+                    injected_pest = spanish_map.get(k_key, "cucarachas")
 
                 conv_state = {"phase": "INTAKE"}
                 await self._upsert_conversation_with_state(message, conversation_id, conv_state)
@@ -1158,7 +1257,8 @@ class ConversationService:
             if isinstance(raw_response, AgentResponse):
                 return raw_response
             return AgentResponse.model_validate(raw_response)
-        except Exception:
+        except Exception as exc:
+            logger.exception("Error en _get_hermes_response: %s", exc)
             return self._build_safe_agent_error_response()
 
     async def _get_pilot_or_fallback_response(

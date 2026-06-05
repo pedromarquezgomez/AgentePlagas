@@ -9,6 +9,7 @@ AgentActionType = Literal[
     "escalate_to_human",
     "schedule_visit_selection",
     "technical_diagnosis",
+    "technical_discovery",
     "out_of_domain",
 ]
 IncidentPriority = Literal["low", "medium", "high", "urgent"]

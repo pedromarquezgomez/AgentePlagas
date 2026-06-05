@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class DiagnosisState(str, Enum):
     DIAGNOSIS = "diagnosis"
+    DISCOVERY = "discovery"
     INTAKE = "intake"
     OUT_OF_DOMAIN = "out_of_domain"
 

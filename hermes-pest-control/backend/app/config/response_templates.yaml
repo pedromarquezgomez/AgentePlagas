@@ -6,7 +6,7 @@ intake:
   missing_location_and_name:
     es: "Para registrar el aviso necesito la ubicación y un nombre de contacto."
   ask_affected_area:
-    es: "Perfecto, he localizado el aviso en el local de {location}. ¿La actividad está en cocina, almacén, comedor u otra zona?"
+    es: "Perfecto, he localizado el aviso en {location}. ¿La actividad está en cocina, almacén, comedor u otra zona?"
   create_success:
     es: "Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}."
   create_success_no_name:
@@ -27,3 +27,15 @@ diagnosis:
 out_of_domain:
   default:
     es: "No relaciono esa información con una incidencia de plagas. Si quieres, dime qué insecto, animal o señal has observado."
+
+discovery:
+  known_pest:
+    es: "Entiendo. Vamos a intentar situar el problema. ¿Las estás viendo en una vivienda o en un negocio?"
+  environment_question:
+    es: "¿Las estás observando en una vivienda o en un negocio?"
+  business_question:
+    es: "Perfecto. ¿Qué tipo de negocio es? (por ejemplo, un restaurante, hotel, almacén...)"
+  severity_question:
+    es: "¿Desde cuándo las habéis empezado a observar?"
+  recurrence_question:
+    es: "He visto que ya tratamos una incidencia similar anteriormente. Vamos a revisar si puede estar relacionada. ¿Los síntomas son parecidos a los del caso anterior?"

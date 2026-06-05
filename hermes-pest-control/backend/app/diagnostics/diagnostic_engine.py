@@ -23,13 +23,13 @@ class DiagnosticEngine:
         context = context or {}
         conversation_state = conversation_state or {}
 
-        # 1. Si la fase de la conversación ya es INTAKE, continuar siempre en INTAKE
         current_phase = conversation_state.get("phase")
+
+        # 1. Si la fase de la conversación ya es INTAKE, continuar siempre en INTAKE
         if current_phase == "INTAKE":
             return DiagnosisAssessment(state=DiagnosisState.INTAKE)
 
         # 2. Si el texto contiene términos de seguridad/salud/revisión humana urgente, ir a INTAKE
-        # para que el pipeline de admisión normal realice la escalada a revisión humana
         safety_terms = [
             "intoxic", "he respirado", "mareo", "urgencias", "mascota", "perro", "gato",
             "restaurante", "bar", "negocio alimentario", "industria alimentaria",
@@ -40,20 +40,33 @@ class DiagnosticEngine:
         if any(term in text_lower for term in safety_terms):
             return DiagnosisAssessment(state=DiagnosisState.INTAKE)
 
-        # 3. Clasificación de Nivel 2: Semántica (opcional)
+        # 3. Si la fase es DISCOVERY, evaluar si transicionamos a INTAKE
+        if current_phase == "DISCOVERY":
+            discovery_data = conversation_state.get("discovery", {})
+            # Si ya se conocen el entorno (vivienda/negocio/restaurante/etc.) y la zona afectada, pasamos a INTAKE
+            if discovery_data.get("environment_type") and discovery_data.get("affected_zone"):
+                return DiagnosisAssessment(state=DiagnosisState.INTAKE)
+            else:
+                knowledge_key = discovery_data.get("knowledge_key") or "cockroaches"
+                return DiagnosisAssessment(
+                    state=DiagnosisState.DISCOVERY,
+                    knowledge_key=knowledge_key
+                )
+
+        # 4. Clasificación de Nivel 2: Semántica (opcional)
         semantic_result = await self.semantic_classifier.classify(text_lower, context)
         if semantic_result:
             return semantic_result
 
-        # 4. Nivel 1: Reglas Rápidas (Rule-based)
+        # 5. Nivel 1: Reglas Rápidas (Rule-based)
 
-        # Palabras clave de plagas conocidas directamente para admisión (INTAKE)
+        # Palabras clave de plagas conocidas directamente para admisión (DISCOVERY / INTAKE)
         intake_keywords = [
             "cucaracha", "cucarachas", "rata", "ratas", "raton", "ratón", "ratones",
             "roedor", "roedores", "hormiga", "hormigas", "avispa", "avispas",
             "gorgojo", "gorgojos", "polilla", "polillas", "termitas", "termita",
             "chinche", "chinches", "desinsectación", "fumigar", "desratización",
-            "bichos verdes", "bichitos verdes", "insectos verdes" # Pero bicho verde activa plant_pests si tiene limonero
+            "bichos verdes", "bichitos verdes", "insectos verdes"
         ]
 
         # Palabras clave de plantas/jardín para diagnóstico (DIAGNOSIS -> plant_pests)
@@ -68,8 +81,7 @@ class DiagnosticEngine:
         # Palabras clave de negocio / comerciales (están dentro del dominio)
         business_keywords = [
             "precio", "servicio", "presupuesto", "coste", "costo", "tarifa", 
-            "contratar", "llamar", "contacto", "información", "informacion",
-            "cucarachas", "ratas", "hormigas", "avispas"
+            "contratar", "llamar", "contacto", "información", "informacion"
         ]
 
         # Palabras clave del dominio de plagas general
@@ -79,13 +91,43 @@ class DiagnosticEngine:
             "bichos raros", "picadura", "picaduras", "mordedura", "excrementos", "caca"
         ]
 
-        # Comprobar si el texto contiene alguna plaga conocida o términos comerciales e ir a INTAKE
-        if any(kw in text_lower for kw in intake_keywords + business_keywords):
-            # Pero si contiene "bichos verdes" y "limonero" a la vez, va a diagnóstico
+        # Si menciona una plaga conocida directamente, y no es planta, ir a DISCOVERY
+        direct_pests = [
+            "cucaracha", "cucarachas", "rata", "ratas", "raton", "ratón", "ratones",
+            "roedor", "roedores", "hormiga", "hormigas", "avispa", "avispas",
+            "termita", "termitas"
+        ]
+        
+        has_direct_pest = any(pest in text_lower for pest in direct_pests)
+
+        if has_direct_pest:
+            # Si el mensaje ya contiene indicación de ubicación o local, ir a INTAKE directo para registro inmediato
+            location_hints = ["málaga", "malaga", "torremolinos", "fuengirola", "marbella", "calle", "avenida", "local central", "dirección", "direccion"]
+            has_location = any(hint in text_lower for hint in location_hints)
+            
+            if has_location:
+                return DiagnosisAssessment(state=DiagnosisState.INTAKE)
+
+            # Determinar knowledge_key
+            k_key = "cockroaches"
+            if any(p in text_lower for p in ["rata", "ratas", "raton", "ratón", "ratones", "roedor", "roedores"]):
+                k_key = "rodents"
+            elif any(p in text_lower for p in ["hormiga", "hormigas"]):
+                k_key = "ants"
+            elif any(p in text_lower for p in ["avispa", "avispas"]):
+                k_key = "wasps"
+            elif any(p in text_lower for p in ["termita", "termitas"]):
+                k_key = "ants" # fallback a ants/stored_product_pests
+            
+            # Pero si contiene "limonero" o "planta", va a diagnóstico de plantas
             if "limonero" in text_lower or "planta" in text_lower:
                 pass
             else:
-                return DiagnosisAssessment(state=DiagnosisState.INTAKE)
+                return DiagnosisAssessment(
+                    state=DiagnosisState.DISCOVERY,
+                    knowledge_key=k_key,
+                    reason="Plaga conocida detectada de forma directa. Iniciando fase Discovery."
+                )
 
         # Comprobar si contiene palabras de plantas e ir a DIAGNOSIS -> plant_pests
         is_plant_related = any(kw in text_lower for kw in plant_keywords)
@@ -129,6 +171,10 @@ class DiagnosticEngine:
                 reason="Detección de plaga en planta o limonero por palabras clave.",
                 knowledge_key="plant_pests"
             )
+
+        # Comprobar si es del dominio general comercial o de plagas conocido e ir a INTAKE
+        if any(kw in text_lower for kw in intake_keywords + business_keywords):
+            return DiagnosisAssessment(state=DiagnosisState.INTAKE)
 
         # Si el texto está completamente fuera del dominio de plagas, es OUT_OF_DOMAIN
         # Omitir comprobación fuera de dominio si es un saludo corto o pregunta general
