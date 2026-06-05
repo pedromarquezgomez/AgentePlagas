@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     nous_hermes_tools_enabled: bool = False
     nous_hermes_allowed_tools: str = ""
     tool_harness_enforcement: str = "strict"
+    agent_config_cache_enabled: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",

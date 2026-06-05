@@ -1,0 +1,29 @@
+intake:
+  missing_location:
+    es: "Para registrar el aviso necesito saber dónde ocurre. Puede ser localidad, dirección o local afectado."
+  missing_customer_name:
+    es: "¿A nombre de quién registramos el aviso?"
+  missing_location_and_name:
+    es: "Para registrar el aviso necesito la ubicación y un nombre de contacto."
+  ask_affected_area:
+    es: "Perfecto, he localizado el aviso en el local de {location}. ¿La actividad está en cocina, almacén, comedor u otra zona?"
+  create_success:
+    es: "Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}."
+  create_success_no_name:
+    es: "Gracias por la información. He registrado el aviso para que el equipo lo revise. Si puedes, envíanos una foto de la zona afectada para ayudar al técnico a valorar mejor el caso."
+  recurrence_success:
+    es: "He detectado que esto es una reincidencia de tu caso anterior (ID: {last_incident_id}). Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}."
+  missing_pest_type:
+    es: "Para registrar la incidencia necesito saber qué tipo de plaga has visto."
+
+diagnosis:
+  plant_pest_ambiguous:
+    es: "Podría tratarse de pulgón verde, cochinilla o chinche verde. ¿Los ves agrupados en brotes tiernos o debajo de las hojas? ¿Notas hojas pegajosas o brillantes?"
+  confirmed_plant_pest:
+    es: "El caso es compatible con presencia de pulgón verde. He registrado el aviso para el tratamiento de esta plaga."
+  unknown_pest:
+    es: "Para orientarte mejor necesito algún detalle: ¿son pequeños o grandes? ¿Vuelan, saltan o permanecen quietos?"
+
+out_of_domain:
+  default:
+    es: "No relaciono esa información con una incidencia de plagas. Si quieres, dime qué insecto, animal o señal has observado."

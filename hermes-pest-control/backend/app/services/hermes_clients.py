@@ -53,6 +53,13 @@ class HermesMockClient:
             conversation_id=conversation_id,
         )
 
+        injected_pest = (business_context or {}).get("injected_pest")
+        if injected_pest:
+            state.pest_type = "plant_pests"
+            state.pest_type_spanish = injected_pest
+            if "pest_type" in state.missing_fields:
+                state.missing_fields.remove("pest_type")
+
         if state.requires_human_review:
             return self._build_human_review_response(incoming_message.text or "")
 
@@ -100,11 +107,28 @@ class HermesMockClient:
         intent = (business_context or {}).get("intent")
         is_recurrence = intent == "RECURRENCE"
 
+        from app.config.agent_loader import AgentConfigLoader
+        loader = AgentConfigLoader()
+        templates = loader.load_response_templates()
+
+        def get_template(section: str, key: str, fallback: str) -> str:
+            val = templates.get(section, {}).get(key, {}).get("es")
+            return val if val is not None else fallback
+
         if not missing_fields:
             if is_recurrence:
                 pest_name = state.pest_type_spanish or state.pest_type or "plaga"
                 loc = state.location or "tu ubicación conocida"
-                reply = f"He detectado que esto es una reincidencia de tu caso anterior (ID: {customer_context.last_incident_id}). Gracias, {state.customer_name}. He registrado tu incidencia por presencia de {pest_name} en {loc}."
+                reply = get_template(
+                    "intake",
+                    "recurrence_success",
+                    "He detectado que esto es una reincidencia de tu caso anterior (ID: {last_incident_id}). Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}."
+                ).format(
+                    last_incident_id=customer_context.last_incident_id,
+                    customer_name=state.customer_name,
+                    pest_type=pest_name,
+                    location=loc
+                )
                 return AgentResponse(
                     reply=reply,
                     action={
@@ -137,8 +161,24 @@ class HermesMockClient:
                 )
 
             if state.customer_name:
+                if state.pest_type == "plant_pests":
+                    reply = get_template(
+                        "diagnosis",
+                        "confirmed_plant_pest",
+                        "El caso es compatible con presencia de pulgón verde. He registrado el aviso para el tratamiento de esta plaga."
+                    )
+                else:
+                    reply = get_template(
+                        "intake",
+                        "create_success",
+                        "Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}."
+                    ).format(
+                        customer_name=state.customer_name,
+                        pest_type=state.pest_type_spanish or state.pest_type,
+                        location=state.location
+                    )
                 return AgentResponse(
-                    reply=f"Gracias, {state.customer_name}. He registrado tu incidencia por presencia de {state.pest_type} en {state.location}.",
+                    reply=reply,
                     action={
                         "type": "create_incident",
                         "missing_fields": [],
@@ -166,12 +206,13 @@ class HermesMockClient:
                     }
                 )
             else:
+                reply = get_template(
+                    "intake",
+                    "create_success_no_name",
+                    "Gracias por la información. He registrado el aviso para que el equipo lo revise. Si puedes, envíanos una foto de la zona afectada para ayudar al técnico a valorar mejor el caso."
+                )
                 return AgentResponse(
-                    reply=(
-                        "Gracias por la información. He registrado el aviso para que el "
-                        "equipo lo revise. Si puedes, envíanos una foto de la zona afectada "
-                        "para ayudar al técnico a valorar mejor el caso."
-                    ),
+                    reply=reply,
                     action={
                         "type": "create_incident",
                         "missing_fields": [],
@@ -206,16 +247,36 @@ class HermesMockClient:
         if is_legacy_flow:
             reply = self._build_missing_data_reply(missing_fields)
         elif "location" in missing_fields and "customer_name" in missing_fields:
-            reply = "Entiendo.  Para registrar la incidencia necesito:\n  - ubicación\n  - nombre de contacto\n  ¿Podrías indicármelos?"
+            reply = get_template(
+                "intake",
+                "missing_location_and_name",
+                "Para registrar el aviso necesito la ubicación y un nombre de contacto."
+            )
         elif "customer_name" in missing_fields:
-            reply = "Necesito también un nombre de contacto para registrar la incidencia."
+            reply = get_template(
+                "intake",
+                "missing_customer_name",
+                "¿A nombre de quién registramos el aviso?"
+            )
         elif "affected_area" in missing_fields and state.location and not ("location" in missing_fields or "pest_type" in missing_fields):
-            reply = f"Perfecto, he localizado el aviso en el local de {state.location}. ¿La actividad está en cocina, almacén, comedor u otra zona?"
+            reply = get_template(
+                "intake",
+                "ask_affected_area",
+                "Perfecto, he localizado el aviso en el local de {location}. ¿La actividad está en cocina, almacén, comedor u otra zona?"
+            ).format(location=state.location)
         else:
             if "location" in missing_fields:
-                reply = "Para registrar la incidencia necesito saber la ubicación de la plaga."
+                reply = get_template(
+                    "intake",
+                    "missing_location",
+                    "Para registrar el aviso necesito saber dónde ocurre. Puede ser localidad, dirección o local afectado."
+                )
             elif "pest_type" in missing_fields:
-                reply = "Para registrar la incidencia necesito saber qué tipo de plaga has visto."
+                reply = get_template(
+                    "intake",
+                    "missing_pest_type",
+                    "Para registrar la incidencia necesito saber qué tipo de plaga has visto."
+                )
             else:
                 reply = self._build_missing_data_reply(missing_fields)
 

@@ -174,33 +174,23 @@ class LLMRuntimeProvider:
         skill_sections = "\n\n".join(
             skill.as_prompt_section() for skill in context.available_skills
         )
+        from app.config.agent_loader import AgentConfigLoader
+        loader = AgentConfigLoader(cache_enabled=self.settings.agent_config_cache_enabled)
+        knowledge_key = None
+        if context.metadata:
+            conv_state = context.metadata.get("conversation_state")
+            if conv_state and isinstance(conv_state, dict):
+                diag = conv_state.get("diagnosis")
+                if diag and isinstance(diag, dict):
+                    knowledge_key = diag.get("knowledge_key")
+            if not knowledge_key:
+                knowledge_key = context.metadata.get("knowledge_key")
+
+        system_instructions = loader.build_llm_prompt_sections(knowledge_key=knowledge_key)
+
         prompt = "\n\n".join(
             [
-                "Return only strict JSON compatible with AgentResponse.",
-                "You are Hermes Pest, a professional intake assistant for pest "
-                "control incidents.",
-                "You may reply to the client and propose actions, but you must never "
-                "execute tools, write databases, send Telegram/WhatsApp, send email, "
-                "or create calendar events.",
-                "The backend is the only component allowed to execute tools after "
-                "policy and controlled execution checks.",
-                "Do not promise fixed visit times, guaranteed elimination, closed "
-                "prices, or definitive diagnoses.",
-                "Minimum data for creating an incident: pest type, affected area, "
-                "location, and contact name when available. If essential data is "
-                "missing, use collect_missing_data.",
-                "IMPORTANT: Review the 'customer_context' in the business_context. "
-                "If the customer is known (e.g., name or location exists in customer_context), "
-                "DO NOT ask for that information again. Instead, use the known data implicitly "
-                "or confirm it subtly (e.g., '¿Es en la misma dirección de siempre?').",
-                "If the intent is RECURRENCE (e.g. they say pests are back), treat it as a continuation "
-                "of the previous incident and refer to it. Empathize with the customer and DO NOT ask "
-                "for location or name again if they are in the customer_context.",
-                "For unknown pests or low confidence, use collect_missing_data or "
-                "escalate_to_human and set metadata.requires_human_review when possible.",
-                "If the user asks about dangerous chemicals, product mixing, exposure "
-                "to pets/children/vulnerable people, or urgent health risk, escalate "
-                "to human review and do not provide dangerous instructions.",
+                system_instructions,
                 "# Product Skills",
                 skill_sections or "No product skills were provided.",
                 "# Policy Constraints",
@@ -347,6 +337,9 @@ class LLMRuntimeProvider:
                                 "collect_missing_data",
                                 "create_incident",
                                 "escalate_to_human",
+                                "schedule_visit_selection",
+                                "technical_diagnosis",
+                                "out_of_domain",
                             ],
                         },
                         "missing_fields": {

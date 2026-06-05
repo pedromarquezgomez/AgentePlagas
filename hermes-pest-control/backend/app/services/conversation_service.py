@@ -91,7 +91,28 @@ class ConversationService:
             message.channel,
             conversation_id,
         )
-        await self._upsert_conversation(message, conversation_id)
+        import datetime
+        existing_conv = await self.firestore_service.get_document("conversations", conversation_id)
+        conv_state = {"phase": "IDLE"}
+        if existing_conv and "conversation_state" in existing_conv:
+            conv_state = existing_conv["conversation_state"]
+
+        if conv_state.get("phase") == "DIAGNOSIS":
+            diagnosis_data = conv_state.get("diagnosis", {})
+            updated_at_str = diagnosis_data.get("updated_at")
+            if updated_at_str:
+                try:
+                    updated_at = datetime.datetime.fromisoformat(updated_at_str)
+                    if updated_at.tzinfo is None:
+                        updated_at = updated_at.replace(tzinfo=datetime.timezone.utc)
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    if (now - updated_at).total_seconds() > 30 * 60:
+                        conv_state = {"phase": "IDLE"}
+                except Exception as exc:
+                    logger.warning("Error parseando diagnosis updated_at, reseteando fase: %s", exc)
+                    conv_state = {"phase": "IDLE"}
+
+        await self._upsert_conversation_with_state(message, conversation_id, conv_state)
         inbound_message = await self._store_inbound_message(
             message,
             conversation_id,
@@ -213,13 +234,110 @@ class ConversationService:
                         )
 
         if response is None:
-            response = await self._get_hermes_response(
-                message,
-                conversation_id,
-                trace_id,
-                customer_context=customer_context,
-                intent=intent
-            )
+            from app.diagnostics.diagnostic_engine import DiagnosticEngine
+            from app.diagnostics.question_generator import QuestionGenerator
+            from app.diagnostics.contracts import DiagnosisState
+
+            diag_engine = DiagnosticEngine()
+            q_gen = QuestionGenerator()
+
+            # Realizar diagnóstico
+            assessment = await diag_engine.assess(message.text or "", context={}, conversation_state=conv_state)
+
+            if assessment.state == DiagnosisState.OUT_OF_DOMAIN:
+                from app.config.agent_loader import AgentConfigLoader
+                loader = AgentConfigLoader()
+                templates = loader.load_response_templates()
+                reply = templates.get("out_of_domain", {}).get("default", {}).get("es", "No relaciono esa información con una incidencia de plagas. Si quieres, dime qué insecto, animal o señal has observado.")
+
+                response = AgentResponse(
+                    reply=reply,
+                    action={"type": "out_of_domain", "missing_fields": []},
+                    incident=None
+                )
+                conv_state = {"phase": "IDLE"}
+                await self._upsert_conversation_with_state(message, conversation_id, conv_state)
+                await self._store_outbound_message(message, conversation_id, trace_id, response)
+
+                decision_record = await self._record_decision(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    message_id=inbound_message.get("id") if 'inbound_message' in locals() else None,
+                    incident_id=None,
+                    response=response,
+                )
+                await self._create_human_review_item_if_needed(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    incident_id=None,
+                    decision_record_id=decision_record.id if decision_record else None,
+                    response=response,
+                )
+                return response
+
+            elif assessment.state == DiagnosisState.DIAGNOSIS:
+                reply = q_gen.generate_question(assessment)
+                hypotheses_labels = [h.label for h in assessment.hypotheses]
+
+                conv_state = {
+                    "phase": "DIAGNOSIS",
+                    "diagnosis": {
+                        "knowledge_key": assessment.knowledge_key,
+                        "hypotheses": hypotheses_labels,
+                        "last_questions": [reply],
+                        "evidence": assessment.hypotheses[0].evidence if assessment.hypotheses else [],
+                        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    }
+                }
+
+                response = AgentResponse(
+                    reply=reply,
+                    action={"type": "technical_diagnosis", "missing_fields": []},
+                    incident=None
+                )
+                await self._upsert_conversation_with_state(message, conversation_id, conv_state)
+                await self._store_outbound_message(message, conversation_id, trace_id, response)
+
+                decision_record = await self._record_decision(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    message_id=inbound_message.get("id") if 'inbound_message' in locals() else None,
+                    incident_id=None,
+                    response=response,
+                )
+                await self._create_human_review_item_if_needed(
+                    message=message,
+                    conversation_id=conversation_id,
+                    trace_id=trace_id,
+                    incident_id=None,
+                    decision_record_id=decision_record.id if decision_record else None,
+                    response=response,
+                )
+                return response
+
+            else:
+                # Transición a INTAKE
+                injected_pest = None
+                if conv_state.get("phase") == "DIAGNOSIS":
+                    diag_data = conv_state.get("diagnosis", {})
+                    if diag_data.get("knowledge_key") == "plant_pests":
+                        injected_pest = "pulgón verde"
+
+                conv_state = {"phase": "INTAKE"}
+                await self._upsert_conversation_with_state(message, conversation_id, conv_state)
+
+                response = await self._get_hermes_response(
+                    message,
+                    conversation_id,
+                    trace_id,
+                    customer_context=customer_context,
+                    intent=intent,
+                    conversation_state=conv_state,
+                    injected_pest=injected_pest,
+                )
 
         if response.incident and (response.action.type == "create_incident" or self._should_create_incident(response)):
             self._enrich_incident_operational_fields(message, response.incident)
@@ -1000,6 +1118,8 @@ class ConversationService:
         trace_id: str,
         customer_context: Any = None,
         intent: Any = None,
+        conversation_state: dict | None = None,
+        injected_pest: str | None = None,
     ) -> AgentResponse:
         if self._is_pilot_candidate(message):
             return await self._get_pilot_or_fallback_response(
@@ -1008,6 +1128,8 @@ class ConversationService:
                 trace_id,
                 customer_context=customer_context,
                 intent=intent,
+                conversation_state=conversation_state,
+                injected_pest=injected_pest,
             )
 
         if self.settings.hermes_pilot_mode:
@@ -1019,6 +1141,10 @@ class ConversationService:
         try:
             business_context = default_business_context(conversation_id)
             business_context["trace_id"] = trace_id
+            if conversation_state:
+                business_context["conversation_state"] = conversation_state
+            if injected_pest:
+                business_context["injected_pest"] = injected_pest
             if customer_context:
                 business_context["customer_context"] = customer_context.model_dump()
             if intent:
@@ -1042,6 +1168,8 @@ class ConversationService:
         trace_id: str,
         customer_context: Any = None,
         intent: Any = None,
+        conversation_state: dict | None = None,
+        injected_pest: str | None = None,
     ) -> AgentResponse:
         gate_result = self.pilot_gate.evaluate(message)
         if not gate_result.eligible:
@@ -1060,6 +1188,8 @@ class ConversationService:
                 message,
                 conversation_id,
                 trace_id,
+                conversation_state=conversation_state,
+                injected_pest=injected_pest,
             )
             self._merge_metadata(
                 response,
@@ -1077,7 +1207,9 @@ class ConversationService:
                 conversation_id,
                 trace_id,
                 customer_context=customer_context,
-                intent=intent
+                intent=intent,
+                conversation_state=conversation_state,
+                injected_pest=injected_pest,
             )
             self._merge_metadata(
                 response,
@@ -1095,6 +1227,10 @@ class ConversationService:
             business_context = default_business_context(conversation_id)
             business_context["trace_id"] = trace_id
             business_context["pilot_mode"] = True
+            if conversation_state:
+                business_context["conversation_state"] = conversation_state
+            if injected_pest:
+                business_context["injected_pest"] = injected_pest
             if customer_context:
                 business_context["customer_context"] = customer_context.model_dump()
             if intent:
@@ -1165,10 +1301,16 @@ class ConversationService:
         trace_id: str,
         customer_context: Any = None,
         intent: Any = None,
+        conversation_state: dict | None = None,
+        injected_pest: str | None = None,
     ) -> AgentResponse:
         try:
             business_context = default_business_context(conversation_id)
             business_context["trace_id"] = trace_id
+            if conversation_state:
+                business_context["conversation_state"] = conversation_state
+            if injected_pest:
+                business_context["injected_pest"] = injected_pest
             if customer_context:
                 business_context["customer_context"] = customer_context.model_dump()
             if intent:
@@ -1337,6 +1479,39 @@ class ConversationService:
             "external_user_id": message.external_user_id,
             "external_chat_id": message.external_chat_id,
             "status": "active",
+        }
+
+        if existing_conversation is None:
+            await self.firestore_service.create_document(
+                "conversations",
+                conversation_data,
+                document_id=conversation_id,
+            )
+            return
+
+        await self.firestore_service.update_document(
+            "conversations",
+            conversation_id,
+            conversation_data,
+        )
+
+    async def _upsert_conversation_with_state(
+        self,
+        message: IncomingMessage,
+        conversation_id: str,
+        conv_state: dict,
+    ) -> None:
+        existing_conversation = await self.firestore_service.get_document(
+            "conversations",
+            conversation_id,
+        )
+        conversation_data = {
+            "id": conversation_id,
+            "channel": message.channel,
+            "external_user_id": message.external_user_id,
+            "external_chat_id": message.external_chat_id,
+            "status": "active",
+            "conversation_state": conv_state,
         }
 
         if existing_conversation is None:

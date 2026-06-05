@@ -49,7 +49,7 @@ async def test_partially_complete_message_requests_remaining_data() -> None:
     assert response.action.type == "collect_missing_data"
     assert "customer_name" in response.action.missing_fields
     assert "location" not in response.action.missing_fields
-    assert "nombre de contacto" in response.reply
+    assert "nombre" in response.reply or "contacto" in response.reply
 
 
 @pytest.mark.asyncio
