@@ -32,7 +32,6 @@ class DiagnosticEngine:
         # 2. Si el texto contiene términos de seguridad/salud/revisión humana urgente, ir a INTAKE
         safety_terms = [
             "intoxic", "he respirado", "mareo", "urgencias", "mascota", "perro", "gato",
-            "restaurante", "bar", "negocio alimentario", "industria alimentaria",
             "denuncia", "reclamación", "reclamacion", "muy enfadado", "producto químico",
             "producto quimico", "mezclar", "lejía", "lejia", "amoniaco", "garantía total",
             "garantia total", "precio cerrado"
@@ -43,8 +42,13 @@ class DiagnosticEngine:
         # 3. Si la fase es DISCOVERY, evaluar si transicionamos a INTAKE
         if current_phase == "DISCOVERY":
             discovery_data = conversation_state.get("discovery", {})
-            # Si ya se conocen el entorno (vivienda/negocio/restaurante/etc.) y la zona afectada, pasamos a INTAKE
-            if discovery_data.get("environment_type") and discovery_data.get("affected_zone"):
+            # Si ya se conocen el entorno, zona afectada, antigüedad y gravedad, pasamos a INTAKE
+            if (
+                discovery_data.get("environment_type")
+                and discovery_data.get("affected_zone")
+                and discovery_data.get("first_seen")
+                and discovery_data.get("severity")
+            ):
                 return DiagnosisAssessment(state=DiagnosisState.INTAKE)
             else:
                 knowledge_key = discovery_data.get("knowledge_key") or "cockroaches"
@@ -91,7 +95,18 @@ class DiagnosticEngine:
             "bichos raros", "picadura", "picaduras", "mordedura", "excrementos", "caca"
         ]
 
-        # Si menciona una plaga conocida directamente, y no es planta, ir a DISCOVERY
+        # Grupo 3: INTAKE DIRECTO (Admisión Inmediata)
+        intake_direct_terms = [
+            "avispero", "enjambre", "rata muerta", "ratón muerto", "raton muerto",
+            "chinche", "chinches"
+        ]
+        if any(term in text_lower for term in intake_direct_terms):
+            return DiagnosisAssessment(
+                state=DiagnosisState.INTAKE,
+                reason="Solicitud del Grupo 3 (Intake Directo) detectada."
+            )
+
+        # Grupo 1: DISCOVERY (Plagas comunes)
         direct_pests = [
             "cucaracha", "cucarachas", "rata", "ratas", "raton", "ratón", "ratones",
             "roedor", "roedores", "hormiga", "hormigas", "avispa", "avispas",

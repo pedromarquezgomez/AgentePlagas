@@ -329,13 +329,40 @@ class ConversationService:
                         "severity": None,
                         "first_seen": None,
                         "affected_zone": None,
+                        "is_recurrence": None,
+                        "recurrence_checked": None,
                     }
                 
-                # Extraer environment_type
                 msg_lower = (message.text or "").lower()
+
+                # Comprobación de reincidencia al inicio del flujo DISCOVERY
+                if discovery_data.get("is_recurrence") is None:
+                    is_recurrence_mention = any(word in msg_lower for word in ["vuelto", "reincidencia", "otra vez", "de nuevo", "anterior", "retorno"])
+                    is_history_recurrence = False
+                    if customer_context.last_incident_id and customer_context.last_pest_type:
+                        pest_map = {
+                            "cockroaches": "COCKROACH",
+                            "rodents": "RODENT",
+                            "ants": "ANT",
+                            "wasps": "WASPS",
+                        }
+                        mapped_pest = pest_map.get(assessment.knowledge_key, "")
+                        if customer_context.last_pest_type.upper() == mapped_pest or customer_context.last_pest_type.lower() == assessment.knowledge_key:
+                            if customer_context.days_since_last_incident is not None and customer_context.days_since_last_incident <= 90:
+                                is_history_recurrence = True
+                    if is_recurrence_mention or is_history_recurrence:
+                        discovery_data["is_recurrence"] = True
+                        discovery_data["recurrence_checked"] = False
+                    else:
+                        discovery_data["is_recurrence"] = False
+                elif discovery_data.get("is_recurrence") and not discovery_data.get("recurrence_checked"):
+                    # El usuario respondió a la pregunta de reincidencia
+                    discovery_data["recurrence_checked"] = True
+
+                # Extraer environment_type
                 if any(word in msg_lower for word in ["vivienda", "casa", "piso", "hogar", "domicilio", "particular"]):
                     discovery_data["environment_type"] = "vivienda"
-                elif any(word in msg_lower for word in ["restaurante", "bar", "cafetería", "pizzería", "pizzeria", "negocio", "local", "almacén", "almacen", "hotel", "comunidad", "industria"]):
+                elif any(word in msg_lower for word in ["restaurante", "bar", "cafetería", "cafeteria", "pizzería", "pizzeria", "negocio", "local", "almacén", "almacen", "hotel", "comunidad", "industria", "panadería", "panaderia"]):
                     discovery_data["environment_type"] = "negocio"
                     # Extraer business_type
                     if "restaurante" in msg_lower or "pizzería" in msg_lower or "pizzeria" in msg_lower:
@@ -364,7 +391,7 @@ class ConversationService:
 
                 if any(word in msg_lower for word in ["ayer", "hoy", "hace un día", "hace un dia", "desde hace poco"]):
                     discovery_data["first_seen"] = "recent"
-                elif any(word in msg_lower for word in ["días", "semanas", "meses", "tiempo", "hace tiempo"]):
+                elif any(word in msg_lower for word in ["días", "dias", "semanas", "meses", "tiempo", "hace tiempo"]):
                     discovery_data["first_seen"] = "older"
 
                 # Guardar timestamp
@@ -406,6 +433,9 @@ class ConversationService:
                         response=response,
                     )
                     return response
+                else:
+                    conv_state["phase"] = "INTAKE"
+                    await self._upsert_conversation_with_state(message, conversation_id, conv_state)
 
             else:
                 # Transición a INTAKE

@@ -24,7 +24,7 @@ async def test_incomplete_message_requests_missing_info() -> None:
     # Debe solicitar información de ubicación y nombre.
     firestore = MockFirestoreService()
     service = ConversationService(firestore_service=firestore)
-    message = _incoming_message("Tengo cucarachas", external_user_id="user-1")
+    message = _incoming_message("Tengo gorgojos", external_user_id="user-1")
 
     response = await service.handle_incoming_message(message)
 
@@ -42,7 +42,7 @@ async def test_partially_complete_message_requests_remaining_data() -> None:
     # Debe solicitar el dato restante (contacto).
     firestore = MockFirestoreService()
     service = ConversationService(firestore_service=firestore)
-    message = _incoming_message("Tengo cucarachas en la cocina del local central.", external_user_id="user-2")
+    message = _incoming_message("Tengo gorgojos en la cocina del local central.", external_user_id="user-2")
 
     response = await service.handle_incoming_message(message)
 
@@ -58,7 +58,7 @@ async def test_complete_message_proposes_create_incident() -> None:
     # Debe proponer la creación de incidencia.
     firestore = MockFirestoreService()
     service = ConversationService(firestore_service=firestore)
-    message = _incoming_message("Tengo cucarachas en la cocina del local central. Mi nombre es Carlos.", external_user_id="user-3")
+    message = _incoming_message("Tengo gorgojos en la cocina del local central. Mi nombre es Carlos.", external_user_id="user-3")
 
     response = await service.handle_incoming_message(message)
 
@@ -66,14 +66,14 @@ async def test_complete_message_proposes_create_incident() -> None:
     assert not response.action.missing_fields
     assert response.incident is not None
     assert response.incident.should_create is True
-    assert response.incident.pest_type == "COCKROACH"
+    assert response.incident.pest_type == "STORED_PRODUCT_INSECT"
     assert response.incident.location == "cocina del local central"
 
 
 @pytest.mark.asyncio
 async def test_multi_turn_flow_reconstructs_state_and_creates_incident() -> None:
     # Test 4: Flujo completo multi-turno
-    # Mensaje 1: "Tengo cucarachas"
+    # Mensaje 1: "Tengo gorgojos"
     # Mensaje 2: "Es en la cocina del local"
     # Mensaje 3: "Soy Carlos"
     # Debe terminar creando la incidencia.
@@ -82,7 +82,7 @@ async def test_multi_turn_flow_reconstructs_state_and_creates_incident() -> None
     user_id = "user-4"
 
     # Turno 1
-    msg1 = _incoming_message("Tengo cucarachas", external_user_id=user_id)
+    msg1 = _incoming_message("Tengo gorgojos", external_user_id=user_id)
     resp1 = await service.handle_incoming_message(msg1)
     assert resp1.action.type == "collect_missing_data"
 
@@ -99,14 +99,14 @@ async def test_multi_turn_flow_reconstructs_state_and_creates_incident() -> None
     assert resp3.action.type == "create_incident"
     assert resp3.incident is not None
     assert resp3.incident.should_create is True
-    assert resp3.incident.pest_type == "COCKROACH"
+    assert resp3.incident.pest_type == "STORED_PRODUCT_INSECT"
     assert resp3.incident.location == "cocina del local"
     assert resp3.incident.id is not None
 
     # Verificar que el incidente real existe en base de datos
     incident_in_db = await service.incident_service.get_incident(resp3.incident.id)
     assert incident_in_db is not None
-    assert incident_in_db["pest_type"] == "COCKROACH"
+    assert incident_in_db["pest_type"] == "STORED_PRODUCT_INSECT"
     assert incident_in_db["location"] == "cocina del local"
 
 
@@ -116,7 +116,7 @@ async def test_incident_creation_generates_audit_events() -> None:
     # Debe registrar: TOOL_PROPOSED, POLICY_EVALUATED, TOOL_EXECUTION_STARTED, TOOL_EXECUTION_COMPLETED
     firestore = MockFirestoreService()
     service = ConversationService(firestore_service=firestore)
-    message = _incoming_message("Tengo cucarachas en la cocina del local central. Mi nombre es Carlos.", external_user_id="user-5")
+    message = _incoming_message("Tengo gorgojos en la cocina del local central. Mi nombre es Carlos.", external_user_id="user-5")
 
     response = await service.handle_incoming_message(message)
 

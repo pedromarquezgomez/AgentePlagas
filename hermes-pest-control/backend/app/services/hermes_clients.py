@@ -63,9 +63,9 @@ class HermesMockClient:
         if current_phase == "DISCOVERY":
             discovery_data = conv_state.get("discovery", {})
             text_lower = text.lower()
-            is_recurrence_mention = "vuelto" in text_lower or "reincidencia" in text_lower or "otra vez" in text_lower or "anterior" in text_lower
 
-            if is_recurrence_mention and customer_context.last_incident_id:
+            # Si es reincidencia y no la hemos chequeado
+            if discovery_data.get("is_recurrence") and not discovery_data.get("recurrence_checked"):
                 reply = get_template(
                     "discovery",
                     "recurrence_question",
@@ -90,13 +90,16 @@ class HermesMockClient:
                     incident=None
                 )
             
-            # Si es negocio y no sabemos la zona
-            if discovery_data.get("environment_type") == "negocio" and not discovery_data.get("affected_zone"):
-                reply = get_template(
-                    "discovery",
-                    "business_question",
-                    "Perfecto. ¿Las estáis observando en cocina, almacén o comedor?"
-                )
+            # Si no sabemos la zona afectada
+            if not discovery_data.get("affected_zone"):
+                if discovery_data.get("environment_type") == "negocio":
+                    reply = get_template(
+                        "discovery",
+                        "business_question",
+                        "Perfecto. ¿Las estáis observando en cocina, almacén o comedor?"
+                    )
+                else:
+                    reply = "Entiendo. ¿Las estás observando en alguna zona concreta de la vivienda, como la cocina, el baño o el salón?"
                 return AgentResponse(
                     reply=reply,
                     action={"type": "technical_discovery", "missing_fields": []},
@@ -124,9 +127,29 @@ class HermesMockClient:
             conversation_id=conversation_id,
         )
 
+        discovery_data = conv_state.get("discovery", {})
+        if discovery_data:
+            if not state.affected_area and discovery_data.get("affected_zone"):
+                state.affected_area = discovery_data.get("affected_zone")
+            if "affected_area" in state.missing_fields:
+                state.missing_fields.remove("affected_area")
+
         injected_pest = (business_context or {}).get("injected_pest")
         if injected_pest:
-            state.pest_type = "plant_pests"
+            if injected_pest == "pulgón verde":
+                state.pest_type = "plant_pests"
+            else:
+                english_map = {
+                    "cucarachas": "COCKROACH",
+                    "cockroaches": "COCKROACH",
+                    "roedores": "RODENT",
+                    "rodents": "RODENT",
+                    "hormigas": "ANT",
+                    "ants": "ANT",
+                    "avispas": "WASPS",
+                    "wasps": "WASPS",
+                }
+                state.pest_type = english_map.get(injected_pest.lower(), injected_pest.upper())
             state.pest_type_spanish = injected_pest
             if "pest_type" in state.missing_fields:
                 state.missing_fields.remove("pest_type")
@@ -383,10 +406,6 @@ class HermesMockClient:
             "mascota",
             "perro",
             "gato",
-            "restaurante",
-            "bar",
-            "negocio alimentario",
-            "industria alimentaria",
             "denuncia",
             "reclamación",
             "reclamacion",

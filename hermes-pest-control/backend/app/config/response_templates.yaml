@@ -34,7 +34,7 @@ discovery:
   environment_question:
     es: "¿Las estás observando en una vivienda o en un negocio?"
   business_question:
-    es: "Perfecto. ¿Qué tipo de negocio es? (por ejemplo, un restaurante, hotel, almacén...)"
+    es: "Perfecto. ¿Las estáis observando en cocina, almacén o comedor?"
   severity_question:
     es: "¿Desde cuándo las habéis empezado a observar?"
   recurrence_question:

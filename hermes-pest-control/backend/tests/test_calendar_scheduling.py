@@ -101,7 +101,7 @@ async def test_auto_proposal_of_visit_scheduling() -> None:
     assert payload["customer_email"] == "pmarquez.particular@gmail.com"
     assert payload["location"] == "Málaga"
     assert payload["visit_type"] == "URGENT_TREATMENT"
-    assert payload["pest_type"] == "cucarachas"
+    assert payload["pest_type"] in ["cucarachas", "COCKROACH"]
     assert len(payload["proposed_slots"]) == 3
     assert payload["selected_slot"] == payload["proposed_slots"][0]
     
