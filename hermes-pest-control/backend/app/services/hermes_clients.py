@@ -490,12 +490,9 @@ class HermesMockClient:
                 "mascota",
                 "perro",
                 "gato",
-                "negocio alimentario",
-                "restaurante",
-                "bar",
-                "negocio",
             ]
         )
+
 
     def _priority_for(self, pest_type: str | None) -> str:
         if not pest_type:

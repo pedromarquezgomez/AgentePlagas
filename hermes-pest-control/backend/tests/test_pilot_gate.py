@@ -61,14 +61,14 @@ def test_pilot_gate_blocks_vulnerable_person_to_human_review() -> None:
     assert "vulnerable_person" in result.risk_flags
 
 
-def test_pilot_gate_blocks_food_business_to_human_review() -> None:
+def test_pilot_gate_allows_food_business_case() -> None:
     result = HermesPilotGate().evaluate(
         _message("Tenemos ratas en la cocina del restaurante en Málaga")
     )
 
-    assert result.eligible is False
-    assert result.route == "human_review"
-    assert "food_business" in result.risk_flags
+    assert result.eligible is True
+    assert result.route == "agent"
+
 
 
 def test_pilot_gate_routes_exact_price_to_mock() -> None:

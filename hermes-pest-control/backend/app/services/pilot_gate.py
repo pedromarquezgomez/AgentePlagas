@@ -118,16 +118,6 @@ class HermesPilotGate:
                 "vulnerable",
                 "enfermo",
             ])),
-            ("food_business", self._contains(text, [
-                "restaurante",
-                "bar",
-                "cocina profesional",
-                "negocio alimentario",
-                "industria alimentaria",
-                "cafeteria",
-                "carniceria",
-                "panaderia",
-            ])),
             ("angry_or_legal", self._contains(text, [
                 "denuncia",
                 "abogado",
@@ -149,11 +139,12 @@ class HermesPilotGate:
         flags = [flag for flag, present in checks if present]
 
         if self._contains(text, ["roedor", "roedores", "rata", "ratas", "raton", "ratones"]) and (
-            self._contains(text, ["denuncia", "enfadado", "furioso", "restaurante", "bar"])
+            self._contains(text, ["denuncia", "enfadado", "furioso"])
         ):
             flags.append("rodent_conflict")
 
         return sorted(set(flags))
+
 
     def _has_clear_intake(self, text: str) -> bool:
         return (

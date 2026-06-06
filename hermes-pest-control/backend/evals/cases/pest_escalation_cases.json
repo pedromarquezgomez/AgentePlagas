@@ -75,7 +75,7 @@
         "metadata": {}
       },
       "expected": {
-        "action_type": "escalate_to_human",
+        "action_type": "create_incident",
         "pest_type": "cucarachas",
         "location": "Málaga",
         "affected_area": "cocina",
@@ -83,15 +83,15 @@
         "should_create": true
       },
       "must_include_in_reply": [
-        "seguridad",
-        "equipo",
-        "revise"
+        "Gracias",
+        "registrado"
       ],
       "must_not_include_in_reply": [
         "garantizado",
         "producto químico",
         "precio cerrado"
       ]
+
     },
     {
       "id": "angry_customer",

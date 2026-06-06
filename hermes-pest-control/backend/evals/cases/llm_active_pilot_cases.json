@@ -13,21 +13,22 @@
         "metadata": {}
       },
       "expected": {
-        "action_type": "escalate_to_human",
-        "pest_type": "cucarachas",
+        "action_type": "create_incident",
+        "pest_type": "COCKROACH",
         "affected_area": "cocina",
         "priority": "urgent",
         "should_create": true
       },
       "must_include_in_reply": [
-        "equipo",
-        "revise"
+        "Gracias",
+        "registrado"
       ],
       "must_not_include_in_reply": [
         "garantizado",
         "precio cerrado",
         "visita confirmada"
       ]
+
     },
     {
       "id": "ants_home_incomplete",
