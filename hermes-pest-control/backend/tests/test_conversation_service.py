@@ -20,7 +20,7 @@ def test_conversation_service_builds_internal_conversation_id() -> None:
 
 
 class InvalidHermesService:
-    async def process_message(self, message: IncomingMessage, conversation_id: str) -> dict:
+    async def process_message(self, *args, **kwargs) -> dict:
         return {"reply": "invalid", "action": {"type": "unknown_action"}}
 
 

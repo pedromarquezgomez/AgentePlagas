@@ -1,10 +1,10 @@
 intake:
   missing_location:
-    es: "Para registrar el aviso necesito saber dónde ocurre. Puede ser localidad, dirección o local afectado."
+    es: "¿Me podrías indicar la dirección o localidad donde te encuentras para que podamos coordinar la visita del técnico?"
   missing_customer_name:
-    es: "¿A nombre de quién registramos el aviso?"
+    es: "¿Me indicas tu nombre, por favor? Así sé con quién estoy hablando."
   missing_location_and_name:
-    es: "Para registrar el aviso necesito la ubicación y un nombre de contacto."
+    es: "Para poder ayudarte y coordinar la visita del técnico, ¿podrías indicarme tu ubicación y un nombre de contacto?"
   ask_affected_area:
     es: "Perfecto, he localizado el aviso en {location}. ¿La actividad está en cocina, almacén, comedor u otra zona?"
   create_success:
@@ -14,7 +14,7 @@ intake:
   recurrence_success:
     es: "He detectado que esto es una reincidencia de tu caso anterior (ID: {last_incident_id}). Gracias, {customer_name}. He registrado tu incidencia por presencia de {pest_type} en {location}."
   missing_pest_type:
-    es: "Para registrar la incidencia necesito saber qué tipo de plaga has visto."
+    es: "Para poder darte las indicaciones correctas, ¿me podrías decir qué tipo de plaga o bicho has observado?"
 
 diagnosis:
   plant_pest_ambiguous:
@@ -30,7 +30,7 @@ out_of_domain:
 
 discovery:
   known_pest:
-    es: "Entiendo. Vamos a intentar situar el problema. ¿Las estás viendo en una vivienda o en un negocio?"
+    es: "Entiendo perfectamente la preocupación y molestia que causa esta situación. No te preocupes, vamos a solucionarlo de forma eficaz. Para poder organizar la actuación adecuada, ¿las estás observando en una vivienda o en un negocio?"
   environment_question:
     es: "¿Las estás observando en una vivienda o en un negocio?"
   business_question:

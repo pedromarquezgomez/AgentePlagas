@@ -20,3 +20,5 @@ class DiagnosisAssessment(BaseModel):
     reason: str | None = None
     suggested_reply: str | None = None
     knowledge_key: str | None = None
+    operational_readiness: bool = False
+

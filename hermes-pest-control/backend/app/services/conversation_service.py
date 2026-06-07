@@ -413,7 +413,7 @@ class ConversationService:
                     injected_pest=discovery_data.get("knowledge_key"),
                 )
                 
-                if response.action.type == "technical_discovery":
+                if (not getattr(assessment, "operational_readiness", False) or response.action.type == "technical_discovery") and response.action.type not in {"escalate_to_human", "create_incident"}:
                     await self._store_outbound_message(message, conversation_id, trace_id, response)
                     
                     decision_record = await self._record_decision(
@@ -436,6 +436,7 @@ class ConversationService:
                 else:
                     conv_state["phase"] = "INTAKE"
                     await self._upsert_conversation_with_state(message, conversation_id, conv_state)
+
 
             else:
                 # Transición a INTAKE

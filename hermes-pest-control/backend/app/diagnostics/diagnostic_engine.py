@@ -19,6 +19,57 @@ class DiagnosticEngine:
         context: dict[str, Any] | None = None,
         conversation_state: dict[str, Any] | None = None
     ) -> DiagnosisAssessment:
+        assessment = await self._assess_raw(text, context, conversation_state)
+        from app.diagnostics.contracts import DiagnosisState
+        
+        if assessment.state in {DiagnosisState.INTAKE, DiagnosisState.OUT_OF_DOMAIN}:
+            assessment.operational_readiness = True
+        elif assessment.state == DiagnosisState.DISCOVERY:
+            text_lower = (text or "").lower()
+            discovery_data = (conversation_state or {}).get("discovery", {})
+            
+            env = discovery_data.get("environment_type")
+            if not env:
+                if any(word in text_lower for word in ["vivienda", "casa", "piso", "hogar", "domicilio", "particular"]):
+                    env = "vivienda"
+                elif any(word in text_lower for word in ["restaurante", "bar", "cafetería", "cafeteria", "pizzería", "pizzeria", "negocio", "local", "almacén", "almacen", "hotel", "comunidad", "industria", "panadería", "panaderia"]):
+                    env = "negocio"
+
+            zone = discovery_data.get("affected_zone")
+            if not zone:
+                if any(word in text_lower for word in ["cocina", "comedor", "almacén", "almacen", "salón", "salon", "dormitorio", "baño", "jardín", "jardin", "garaje"]):
+                    zone = "zone"
+
+            severity = discovery_data.get("severity")
+            if not severity:
+                if any(word in text_lower for word in ["muchas", "muchos", "plaga", "nido", "plaga grave", "graves", "infestación", "pocas", "uno", "una", "algunas", "algunos"]):
+                    severity = "severity"
+
+            first_seen = discovery_data.get("first_seen")
+            if not first_seen:
+                if any(word in text_lower for word in ["ayer", "hoy", "hace un día", "hace un dia", "desde hace poco", "días", "dias", "semanas", "meses", "tiempo", "hace tiempo"]):
+                    first_seen = "first_seen"
+
+            if env and zone and severity and first_seen:
+                assessment.operational_readiness = True
+            else:
+                assessment.operational_readiness = False
+        elif assessment.state == DiagnosisState.DIAGNOSIS:
+            if assessment.hypotheses and any(h.confidence >= 0.85 for h in assessment.hypotheses):
+                assessment.operational_readiness = True
+            else:
+                assessment.operational_readiness = False
+        else:
+            assessment.operational_readiness = False
+        return assessment
+
+    async def _assess_raw(
+        self,
+        text: str,
+        context: dict[str, Any] | None = None,
+        conversation_state: dict[str, Any] | None = None
+    ) -> DiagnosisAssessment:
+
         text_lower = (text or "").lower().strip()
         context = context or {}
         conversation_state = conversation_state or {}

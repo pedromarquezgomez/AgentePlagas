@@ -118,6 +118,37 @@
         "producto químico",
         "precio cerrado"
       ]
+    },
+    {
+      "id": "sprint33_cucarachas_human_first_turn",
+      "description": "Usuario dice que tiene cucarachas, se evalúa empatía y la no burocracia en el primer turno",
+      "input": {
+        "channel": "telegram",
+        "external_user_id": "eval-user-14",
+        "external_chat_id": "eval-chat-14",
+        "message_type": "text",
+        "text": "Tengo cucarachas",
+        "attachments": [],
+        "metadata": {}
+      },
+      "expected": {
+        "action_type": "technical_discovery",
+        "should_create": false
+      },
+      "must_include_in_reply": [
+        "preocupación",
+        "molestias",
+        "solucionar",
+        "vivienda",
+        "negocio"
+      ],
+      "must_not_include_in_reply": [
+        "dirección",
+        "localidad",
+        "nombre",
+        "teléfono",
+        "telefono"
+      ]
     }
   ]
 }

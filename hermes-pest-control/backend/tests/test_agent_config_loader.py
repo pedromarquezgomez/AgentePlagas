@@ -13,7 +13,7 @@ def test_agent_loader_loads_response_templates() -> None:
     templates = loader.load_response_templates()
     assert isinstance(templates, dict)
     assert "intake" in templates
-    assert templates["intake"]["missing_customer_name"]["es"] == "¿A nombre de quién registramos el aviso?"
+    assert templates["intake"]["missing_customer_name"]["es"] == "¿Me indicas tu nombre, por favor? Así sé con quién estoy hablando."
 
 def test_agent_loader_graceful_degradation_missing_file() -> None:
     loader = AgentConfigLoader(cache_enabled=False)
