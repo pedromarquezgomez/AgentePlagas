@@ -7,6 +7,8 @@ from pydantic import ValidationError
 from app.config.settings import Settings
 from app.schemas.agent_response import AgentResponse
 from app.schemas.incoming_message import IncomingMessage
+from app.security.security_policy import SecurityPolicy
+from app.diagnostics.contracts import DiagnosisState
 
 logger = logging.getLogger(__name__)
 
@@ -41,38 +43,43 @@ class HermesMockClient:
     ) -> AgentResponse:
         text = (incoming_message.text or "").casefold()
         conversation_id = (business_context or {}).get("conversation_id")
+        business_context = business_context or {}
 
-        if self._requires_human_review(text):
-            return self._build_human_review_response(text)
+        # 1. Obtener o calcular assessment
+        assessment_dict = business_context.get("assessment")
+        conv_state = business_context.get("conversation_state") or {}
 
-        conv_state = (business_context or {}).get("conversation_state") or {}
-        current_phase = conv_state.get("phase")
-
-        if not current_phase:
-            text_lower = text.lower()
-            direct_pests = [
-                "cucaracha", "cucarachas", "rata", "ratas", "raton", "ratón", "ratones",
-                "roedor", "roedores", "hormiga", "hormigas", "avispa", "avispas",
-                "termita", "termitas"
-            ]
-            location_hints = ["málaga", "malaga", "torremolinos", "fuengirola", "marbella", "calle", "avenida", "local central", "dirección", "direccion"]
-            has_location = any(hint in text_lower for hint in location_hints)
+        if not assessment_dict:
+            from app.diagnostics.diagnostic_engine import DiagnosticEngine
+            from app.context.customer_context_builder import CustomerContext
+            customer_ctx_dict = business_context.get("customer_context")
+            customer_context = CustomerContext(**customer_ctx_dict) if customer_ctx_dict else CustomerContext()
             
-            safety_terms = [
-                "intoxic", "he respirado", "mareo", "urgencias", "mascota", "perro", "gato",
-                "denuncia", "reclamación", "reclamacion", "muy enfadado", "producto químico",
-                "producto quimico", "mezclar", "lejía", "lejia", "amoniaco", "garantía total",
-                "garantia total", "precio cerrado"
-            ]
-            has_safety = any(term in text_lower for term in safety_terms)
-            
-            is_old_eval = any(uid in conversation_id for uid in ["eval-llm-user-1", "eval-llm-user-2", "eval-user-3"])
-            if any(pest in text_lower for pest in direct_pests) and not has_location and not has_safety and not is_old_eval:
-                current_phase = "DISCOVERY"
+            sim_context = {
+                "customer_context": customer_context,
+                "conversation_id": conversation_id
+            }
+            diag_engine = DiagnosticEngine()
+            assessment = await diag_engine.assess(incoming_message.text or "", context=sim_context, conversation_state=conv_state)
+        else:
+            from app.diagnostics.contracts import DiagnosisAssessment
+            assessment = DiagnosisAssessment.model_validate(assessment_dict)
 
-        customer_ctx_dict = (business_context or {}).get("customer_context")
-        from app.context.customer_context_builder import CustomerContext
-        customer_context = CustomerContext(**customer_ctx_dict) if customer_ctx_dict else CustomerContext()
+        # 2. Si requiere revisión humana o escalado
+        if assessment.escalation_required or assessment.state == DiagnosisState.OUT_OF_DOMAIN:
+            if assessment.escalation_required:
+                return self._build_human_review_response(incoming_message.text or "")
+            else:
+                from app.config.agent_loader import AgentConfigLoader
+                loader = AgentConfigLoader()
+                templates = loader.load_response_templates()
+                reply = templates.get("out_of_domain", {}).get("default", {}).get("es", "No relaciono esa información con una incidencia de plagas. Si quieres, dime qué insecto, animal o señal has observado.")
+                return AgentResponse(
+                    reply=reply,
+                    action={"type": "out_of_domain", "missing_fields": []},
+                    incident=None,
+                    metadata={"operational_readiness": True}
+                )
 
         from app.config.agent_loader import AgentConfigLoader
         loader = AgentConfigLoader()
@@ -82,12 +89,11 @@ class HermesMockClient:
             val = templates.get(section, {}).get(key, {}).get("es")
             return val if val is not None else fallback
 
-        if current_phase == "DISCOVERY":
-            discovery_data = conv_state.get("discovery", {})
-            text_lower = text.lower()
-
-            # Si es reincidencia y no la hemos chequeado
-            if discovery_data.get("is_recurrence") and not discovery_data.get("recurrence_checked"):
+        # 3. Responder basándonos en la fase y objetivo del assessment
+        if assessment.phase == "DISCOVERY":
+            discovery_data = assessment.discovery_data or {}
+            
+            if assessment.next_objective == "is_recurrence":
                 reply = get_template(
                     "discovery",
                     "recurrence_question",
@@ -100,23 +106,18 @@ class HermesMockClient:
                     metadata={"operational_readiness": False}
                 )
 
-            # Si no sabemos el entorno (primer turno de plagas comunes)
-            if not discovery_data.get("environment_type"):
-                injected_pest = (business_context or {}).get("injected_pest") or ""
+            if assessment.next_objective == "environment_type":
+                injected_pest = business_context.get("injected_pest") or ""
                 pest_lower = injected_pest.lower()
                 if not pest_lower:
-                    if "cucaracha" in text_lower:
-                        pest_lower = "cucarachas"
-                    elif any(p in text_lower for p in ["rata", "ratas", "raton", "ratón", "ratones", "roedor", "roedores"]):
-                        pest_lower = "roedores"
-                    elif "hormiga" in text_lower:
-                        pest_lower = "hormigas"
-                    elif "avispa" in text_lower:
-                        pest_lower = "avispas"
-                    elif "termita" in text_lower:
-                        pest_lower = "termitas"
-                    else:
-                        pest_lower = "plaga"
+                    k_key = assessment.knowledge_key or "cockroaches"
+                    pest_map_inv = {
+                        "cockroaches": "cucarachas",
+                        "rodents": "roedores",
+                        "ants": "hormigas",
+                        "wasps": "avispas",
+                    }
+                    pest_lower = pest_map_inv.get(k_key, "plaga")
 
                 if "cucaracha" in pest_lower:
                     reply = "Entiendo perfectamente que esta situación con las cucarachas te cause preocupación y molestias en casa. No te preocupes, vamos a solucionarlo. Para poder organizar la actuación adecuada, ¿las estás observando en una vivienda o en un negocio?"
@@ -137,9 +138,8 @@ class HermesMockClient:
                     incident={"should_create": False},
                     metadata={"operational_readiness": False}
                 )
-            
-            # Si no sabemos la zona afectada
-            if not discovery_data.get("affected_zone"):
+
+            if assessment.next_objective == "affected_zone":
                 if discovery_data.get("environment_type") == "negocio":
                     reply = get_template(
                         "discovery",
@@ -155,8 +155,7 @@ class HermesMockClient:
                     metadata={"operational_readiness": False}
                 )
 
-            # Si falta severidad / tiempo
-            if not discovery_data.get("severity") or not discovery_data.get("first_seen"):
+            if assessment.next_objective == "severity":
                 reply = get_template(
                     "discovery",
                     "severity_question",
@@ -169,6 +168,7 @@ class HermesMockClient:
                     metadata={"operational_readiness": False}
                 )
 
+        # Si la fase es INTAKE
         from app.incidents.intake_service import IncidentIntakeService
         intake_service = IncidentIntakeService()
         state = await intake_service.process_intake(
@@ -177,14 +177,14 @@ class HermesMockClient:
             conversation_id=conversation_id,
         )
 
-        discovery_data = conv_state.get("discovery", {})
+        discovery_data = assessment.discovery_data or {}
         if discovery_data:
             if not state.affected_area and discovery_data.get("affected_zone"):
                 state.affected_area = discovery_data.get("affected_zone")
             if "affected_area" in state.missing_fields:
                 state.missing_fields.remove("affected_area")
 
-        injected_pest = (business_context or {}).get("injected_pest")
+        injected_pest = business_context.get("injected_pest")
         if injected_pest:
             if injected_pest == "pulgón verde":
                 state.pest_type = "plant_pests"
@@ -207,14 +207,14 @@ class HermesMockClient:
         if state.requires_human_review:
             return self._build_human_review_response(incoming_message.text or "")
 
-        customer_ctx_dict = (business_context or {}).get("customer_context")
+        customer_ctx_dict = business_context.get("customer_context")
         from app.context.customer_context_builder import CustomerContext
         from app.conversation.missing_data_service import MissingDataService
 
         customer_context = CustomerContext(**customer_ctx_dict) if customer_ctx_dict else CustomerContext()
         missing_fields = MissingDataService.resolve_missing_fields(state.missing_fields, customer_context)
 
-        # Si tiene múltiples locales, verificar si la ubicación provista coincide con alguno
+        # Ubicación con locales múltiples
         if customer_context.has_multiple_sites and customer_context.site_locations:
             matched = False
             loc_val = (state.location or "").lower()
@@ -222,9 +222,6 @@ class HermesMockClient:
             for sl in customer_context.site_locations:
                 if sl in loc_val or sl in text_val:
                     matched = True
-                    # Normalizar ubicación a la que coincide
-                    from app.incidents.intake_service import IncidentIntakeService
-                    intake_service = IncidentIntakeService()
                     loc_spanish = sl.capitalize()
                     for k, v in intake_service.normalized_locations.items():
                         if k.casefold() == sl.casefold():
@@ -237,27 +234,17 @@ class HermesMockClient:
                     missing_fields.append("location")
                 state.location = None
 
-        # Si hay campos principales faltantes, no pedir el affected_area todavía
         if "location" in missing_fields or "pest_type" in missing_fields or "customer_name" in missing_fields:
             if "affected_area" in missing_fields:
                 missing_fields.remove("affected_area")
 
-        # Enriquecer state con datos conocidos para respuestas y creación
         if "customer_name" not in missing_fields and customer_context.customer_name and not state.customer_name:
             state.customer_name = customer_context.customer_name
         if "location" not in missing_fields and customer_context.last_location and not state.location:
             state.location = customer_context.last_location
 
-        intent = (business_context or {}).get("intent")
+        intent = business_context.get("intent")
         is_recurrence = intent == "RECURRENCE"
-
-        from app.config.agent_loader import AgentConfigLoader
-        loader = AgentConfigLoader()
-        templates = loader.load_response_templates()
-
-        def get_template(section: str, key: str, fallback: str) -> str:
-            val = templates.get(section, {}).get(key, {}).get("es")
-            return val if val is not None else fallback
 
         if not missing_fields:
             if is_recurrence:
@@ -438,19 +425,7 @@ class HermesMockClient:
         elif customer_context.customer_name:
             metadata["customer_name"] = customer_context.customer_name
 
-        discovery_data = conv_state.get("discovery", {})
-        is_ready = False
-        if current_phase == "INTAKE":
-            is_ready = True
-        elif current_phase == "DISCOVERY":
-            if (
-                discovery_data.get("environment_type")
-                and discovery_data.get("affected_zone")
-                and discovery_data.get("first_seen")
-                and discovery_data.get("severity")
-            ):
-                is_ready = True
-        metadata["operational_readiness"] = is_ready
+        metadata["operational_readiness"] = assessment.operational_readiness
 
         return AgentResponse(
             reply=reply,
@@ -466,30 +441,7 @@ class HermesMockClient:
         )
 
     def _requires_human_review(self, text: str) -> bool:
-        cleaned_text = text.replace("bar pepe", "").replace("mi bar", "")
-        review_terms = [
-            "intoxic",
-            "he respirado",
-            "mareo",
-            "urgencias",
-            "mascota",
-            "perro",
-            "gato",
-            "denuncia",
-            "reclamación",
-            "reclamacion",
-            "muy enfadado",
-            "producto químico",
-            "producto quimico",
-            "mezclar",
-            "lejía",
-            "lejia",
-            "amoniaco",
-            "garantía total",
-            "garantia total",
-            "precio cerrado",
-        ]
-        return any(term in cleaned_text for term in review_terms)
+        return SecurityPolicy.requires_human_review(text)
 
     def _build_human_review_response(self, text: str) -> AgentResponse:
         from app.pests.classifier import PestClassifier
@@ -520,7 +472,6 @@ class HermesMockClient:
             priority_val = "high"
 
         priority = "urgent" if self._is_urgent_review(text) else priority_val
-
 
         return AgentResponse(
             reply=(
@@ -563,7 +514,6 @@ class HermesMockClient:
             ]
         )
 
-
     def _priority_for(self, pest_type: str | None) -> str:
         if not pest_type:
             return "medium"
@@ -586,7 +536,6 @@ class HermesMockClient:
             details = ", ".join(requested[:-1]) + f" y {requested[-1]}"
 
         return f"Para poder organizar la visita del técnico, ¿me podrías indicar {details}?"
-
 
 
 class HermesRealClient:

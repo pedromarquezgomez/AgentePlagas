@@ -1,5 +1,7 @@
 from enum import Enum
+from typing import Any
 from pydantic import BaseModel
+
 
 class DiagnosisState(str, Enum):
     DIAGNOSIS = "diagnosis"
@@ -16,9 +18,14 @@ class DiagnosisHypothesis(BaseModel):
 
 class DiagnosisAssessment(BaseModel):
     state: DiagnosisState
+    phase: str
+    next_objective: str | None = None
+    escalation_required: bool = False
+    discovery_data: dict[str, Any] = {}
     hypotheses: list[DiagnosisHypothesis] = []
     reason: str | None = None
     suggested_reply: str | None = None
     knowledge_key: str | None = None
     operational_readiness: bool = False
+
 

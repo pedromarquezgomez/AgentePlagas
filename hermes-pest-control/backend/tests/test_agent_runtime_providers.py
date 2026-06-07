@@ -175,7 +175,7 @@ async def test_llm_runtime_provider_falls_back_to_mock_on_invalid_response() -> 
 
     response = await provider.process(context)
 
-    assert response.action.type == "collect_missing_data"
+    assert response.action.type in {"collect_missing_data", "technical_discovery"}
     assert response.metadata["fallback_used"] is True
     assert response.metadata["fallback_reason"] == "LLMProviderError:invalid_response"
     assert response.metadata["fallback_provider"] == "mock"

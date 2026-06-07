@@ -242,7 +242,15 @@ class ConversationService:
             q_gen = QuestionGenerator()
 
             # Realizar diagnóstico
-            assessment = await diag_engine.assess(message.text or "", context={}, conversation_state=conv_state)
+            assessment_context = {
+                "customer_context": customer_context,
+                "history": all_msgs,
+                "channel": message.channel,
+                "external_user_id": message.external_user_id,
+                "conversation_id": conversation_id,
+                "message": message
+            }
+            assessment = await diag_engine.assess(message.text or "", context=assessment_context, conversation_state=conv_state)
 
             if assessment.state == DiagnosisState.OUT_OF_DOMAIN:
                 from app.config.agent_loader import AgentConfigLoader
@@ -320,80 +328,8 @@ class ConversationService:
 
             elif assessment.state == DiagnosisState.DISCOVERY:
                 import datetime
-                discovery_data = conv_state.get("discovery", {})
-                if not discovery_data:
-                    discovery_data = {
-                        "knowledge_key": assessment.knowledge_key,
-                        "environment_type": None,
-                        "business_type": None,
-                        "severity": None,
-                        "first_seen": None,
-                        "affected_zone": None,
-                        "is_recurrence": None,
-                        "recurrence_checked": None,
-                    }
+                discovery_data = assessment.discovery_data
                 
-                msg_lower = (message.text or "").lower()
-
-                # Comprobación de reincidencia al inicio del flujo DISCOVERY
-                if discovery_data.get("is_recurrence") is None:
-                    is_recurrence_mention = any(word in msg_lower for word in ["vuelto", "reincidencia", "otra vez", "de nuevo", "anterior", "retorno"])
-                    is_history_recurrence = False
-                    if customer_context.last_incident_id and customer_context.last_pest_type:
-                        pest_map = {
-                            "cockroaches": "COCKROACH",
-                            "rodents": "RODENT",
-                            "ants": "ANT",
-                            "wasps": "WASPS",
-                        }
-                        mapped_pest = pest_map.get(assessment.knowledge_key, "")
-                        if customer_context.last_pest_type.upper() == mapped_pest or customer_context.last_pest_type.lower() == assessment.knowledge_key:
-                            if customer_context.days_since_last_incident is not None and customer_context.days_since_last_incident <= 90:
-                                is_history_recurrence = True
-                    if is_recurrence_mention or is_history_recurrence:
-                        discovery_data["is_recurrence"] = True
-                        discovery_data["recurrence_checked"] = False
-                    else:
-                        discovery_data["is_recurrence"] = False
-                elif discovery_data.get("is_recurrence") and not discovery_data.get("recurrence_checked"):
-                    # El usuario respondió a la pregunta de reincidencia
-                    discovery_data["recurrence_checked"] = True
-
-                # Extraer environment_type
-                if any(word in msg_lower for word in ["vivienda", "casa", "piso", "hogar", "domicilio", "particular"]):
-                    discovery_data["environment_type"] = "vivienda"
-                elif any(word in msg_lower for word in ["restaurante", "bar", "cafetería", "cafeteria", "pizzería", "pizzeria", "negocio", "local", "almacén", "almacen", "hotel", "comunidad", "industria", "panadería", "panaderia"]):
-                    discovery_data["environment_type"] = "negocio"
-                    # Extraer business_type
-                    if "restaurante" in msg_lower or "pizzería" in msg_lower or "pizzeria" in msg_lower:
-                        discovery_data["business_type"] = "restaurante"
-                    elif "hotel" in msg_lower:
-                        discovery_data["business_type"] = "hotel"
-                    elif "almacén" in msg_lower or "almacen" in msg_lower:
-                        discovery_data["business_type"] = "almacen"
-                    elif "comunidad" in msg_lower:
-                        discovery_data["business_type"] = "comunidad"
-                    elif "industria" in msg_lower:
-                        discovery_data["business_type"] = "industria"
-
-                # Extraer affected_zone
-                if any(word in msg_lower for word in ["cocina", "comedor", "almacén", "almacen", "salón", "salon", "dormitorio", "baño", "jardín", "jardin", "garaje"]):
-                    for zone in ["cocina", "comedor", "almacén", "almacen", "salón", "salon", "dormitorio", "baño", "jardín", "jardin", "garaje"]:
-                        if zone in msg_lower:
-                            discovery_data["affected_zone"] = zone
-                            break
-
-                # Extraer severity / first_seen
-                if any(word in msg_lower for word in ["muchas", "muchos", "plaga", "nido", "plaga grave", "graves", "infestación"]):
-                    discovery_data["severity"] = "high"
-                elif any(word in msg_lower for word in ["pocas", "uno", "una", "algunas", "algunos"]):
-                    discovery_data["severity"] = "low"
-
-                if any(word in msg_lower for word in ["ayer", "hoy", "hace un día", "hace un dia", "desde hace poco"]):
-                    discovery_data["first_seen"] = "recent"
-                elif any(word in msg_lower for word in ["días", "dias", "semanas", "meses", "tiempo", "hace tiempo"]):
-                    discovery_data["first_seen"] = "older"
-
                 # Guardar timestamp
                 discovery_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 
@@ -411,6 +347,7 @@ class ConversationService:
                     intent=intent,
                     conversation_state=conv_state,
                     injected_pest=discovery_data.get("knowledge_key"),
+                    assessment=assessment,
                 )
                 
                 if (not getattr(assessment, "operational_readiness", False) or response.action.type == "technical_discovery") and response.action.type not in {"escalate_to_human", "create_incident"}:
@@ -435,8 +372,21 @@ class ConversationService:
                     return response
                 else:
                     conv_state["phase"] = "INTAKE"
+                    # Asegurar que no se pierdan datos de discovery
+                    conv_state["discovery"] = discovery_data
                     await self._upsert_conversation_with_state(message, conversation_id, conv_state)
 
+                    # Obtener respuesta final de INTAKE
+                    response = await self._get_hermes_response(
+                        message,
+                        conversation_id,
+                        trace_id,
+                        customer_context=customer_context,
+                        intent=intent,
+                        conversation_state=conv_state,
+                        injected_pest=discovery_data.get("knowledge_key"),
+                        assessment=assessment,
+                    )
 
             else:
                 # Transición a INTAKE
@@ -457,6 +407,8 @@ class ConversationService:
                     injected_pest = spanish_map.get(k_key, "cucarachas")
 
                 conv_state = {"phase": "INTAKE"}
+                if assessment.discovery_data:
+                    conv_state["discovery"] = assessment.discovery_data
                 await self._upsert_conversation_with_state(message, conversation_id, conv_state)
 
                 response = await self._get_hermes_response(
@@ -467,6 +419,7 @@ class ConversationService:
                     intent=intent,
                     conversation_state=conv_state,
                     injected_pest=injected_pest,
+                    assessment=assessment,
                 )
 
         if response.incident and (response.action.type == "create_incident" or self._should_create_incident(response)):
@@ -1250,6 +1203,7 @@ class ConversationService:
         intent: Any = None,
         conversation_state: dict | None = None,
         injected_pest: str | None = None,
+        assessment: Any = None,
     ) -> AgentResponse:
         if self._is_pilot_candidate(message):
             return await self._get_pilot_or_fallback_response(
@@ -1260,6 +1214,7 @@ class ConversationService:
                 intent=intent,
                 conversation_state=conversation_state,
                 injected_pest=injected_pest,
+                assessment=assessment,
             )
 
         if self.settings.hermes_pilot_mode:
@@ -1279,6 +1234,8 @@ class ConversationService:
                 business_context["customer_context"] = customer_context.model_dump()
             if intent:
                 business_context["intent"] = intent.value
+            if assessment:
+                business_context["assessment"] = assessment.model_dump()
 
             raw_response = await self.hermes_service.process_message(
                 message,
@@ -1301,6 +1258,7 @@ class ConversationService:
         intent: Any = None,
         conversation_state: dict | None = None,
         injected_pest: str | None = None,
+        assessment: Any = None,
     ) -> AgentResponse:
         gate_result = self.pilot_gate.evaluate(message)
         if not gate_result.eligible:
@@ -1321,6 +1279,7 @@ class ConversationService:
                 trace_id,
                 conversation_state=conversation_state,
                 injected_pest=injected_pest,
+                assessment=assessment,
             )
             self._merge_metadata(
                 response,
@@ -1341,6 +1300,7 @@ class ConversationService:
                 intent=intent,
                 conversation_state=conversation_state,
                 injected_pest=injected_pest,
+                assessment=assessment,
             )
             self._merge_metadata(
                 response,
@@ -1366,6 +1326,8 @@ class ConversationService:
                 business_context["customer_context"] = customer_context.model_dump()
             if intent:
                 business_context["intent"] = intent.value
+            if assessment:
+                business_context["assessment"] = assessment.model_dump()
 
             raw_response = await pilot_service.process_message(
                 message,
@@ -1384,6 +1346,7 @@ class ConversationService:
                     trace_id,
                     gate_result,
                     response.metadata.get("fallback_reason") or "agent_fallback",
+                    assessment=assessment,
                 )
             if len(response.reply or "") > self.settings.hermes_pilot_max_response_length:
                 return await self._pilot_fallback_to_primary(
@@ -1392,6 +1355,7 @@ class ConversationService:
                     trace_id,
                     gate_result,
                     "max_response_length",
+                    assessment=assessment,
                 )
             self._merge_metadata(
                 response,
@@ -1423,6 +1387,7 @@ class ConversationService:
                 trace_id,
                 gate_result,
                 f"UnexpectedError:{exc.__class__.__name__}",
+                assessment=assessment,
             )
 
     async def _get_primary_hermes_response(
@@ -1434,6 +1399,7 @@ class ConversationService:
         intent: Any = None,
         conversation_state: dict | None = None,
         injected_pest: str | None = None,
+        assessment: Any = None,
     ) -> AgentResponse:
         try:
             business_context = default_business_context(conversation_id)
@@ -1446,6 +1412,8 @@ class ConversationService:
                 business_context["customer_context"] = customer_context.model_dump()
             if intent:
                 business_context["intent"] = intent.value
+            if assessment:
+                business_context["assessment"] = assessment.model_dump()
 
             raw_response = await self.hermes_service.process_message(
                 message,
@@ -1465,6 +1433,7 @@ class ConversationService:
         trace_id: str,
         gate_result: PilotGateResult,
         fallback_reason: str,
+        assessment: Any = None,
     ) -> AgentResponse:
         logger.warning(
             "hermes_pilot_fallback trace_id=%s conversation_id=%s reason=%s",
@@ -1477,7 +1446,8 @@ class ConversationService:
             conversation_id,
             trace_id,
             customer_context=None, # In a full refactor, we would pass these down, but fallback is ok
-            intent=None
+            intent=None,
+            assessment=assessment,
         )
         self._merge_metadata(
             response,

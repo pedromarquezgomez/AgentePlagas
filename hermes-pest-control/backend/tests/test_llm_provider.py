@@ -402,7 +402,7 @@ async def test_llm_fallback_mock_always_returns_valid_agent_response() -> None:
     assert isinstance(response.reply, str)
     assert len(response.reply) > 0
     assert response.action.type in {
-        "reply_only", "create_incident", "collect_missing_data", "escalate_to_human"
+        "reply_only", "create_incident", "collect_missing_data", "escalate_to_human", "technical_discovery"
     }
     assert response.metadata.get("fallback_used") is True
     assert response.metadata.get("effective_agent_provider") == "mock"
