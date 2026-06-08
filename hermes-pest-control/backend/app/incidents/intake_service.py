@@ -67,13 +67,12 @@ class IncidentIntakeService:
                 return loc
         return None
 
-    def _extract_customer_name(self, text: str) -> str | None:
+    def _extract_customer_name(self, text: str, bot_asked_for_name: bool = False) -> str | None:
         # 1. Intentar buscar de negocio/roles: "soy el encargado de Pizzería Roma", "soy gerente de Bar Pepe"
         role_pattern = r"(?:encargado|encargada|gerente|propietario|propietaria|dueño|dueña|empleado|empleada|de parte de|representante|responsable|administrador|administradora|director|directora|socio|socia)\s+de\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)"
         match = re.search(role_pattern, text, re.IGNORECASE)
         if match:
             name = match.group(1).strip()
-            # Limpiar puntuación que pudiera haber quedado al final
             name = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()]+$', '', name).strip()
             return name
 
@@ -103,6 +102,26 @@ class IncidentIntakeService:
                             return second_word
                     return None
                 return words[0]
+
+        # 3. Si el bot acaba de preguntar por el nombre, interpretar la respuesta
+        #    directa como nombre (ej: el usuario escribe solo "pedro" o "Pedro García")
+        if bot_asked_for_name:
+            clean = text.strip()
+            clean = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()!¡?¿]+$', '', clean).strip()
+            words = clean.split()
+            # Descartar si contiene palabras que son claramente otra cosa
+            non_name_words = {
+                "hola", "buenas", "ok", "vale", "sí", "si", "no", "gracias",
+                "cucaracha", "cucarachas", "rata", "ratas", "hormiga", "hormigas",
+                "avispa", "avispas", "termita", "termitas", "plaga", "plagas",
+                "cocina", "baño", "salón", "salon", "almacén", "almacen",
+                "madrid", "málaga", "malaga", "barcelona", "sevilla",
+                "precio", "presupuesto", "servicio", "ayuda"
+            }
+            if 1 <= len(words) <= 4 and not any(w.lower() in non_name_words for w in words):
+                # Capitalizar y devolver como nombre
+                return " ".join(w.capitalize() for w in words)
+
         return None
 
     async def process_intake(
@@ -154,6 +173,20 @@ class IncidentIntakeService:
         affected_area = None
         localidad_detectada = None
 
+        # Detectar si el último mensaje del bot preguntaba por el nombre
+        bot_asked_for_name = False
+        for msg in reversed(all_messages[cutoff_index + 1:]):
+            role = msg.get("role")
+            direction = msg.get("direction")
+            if role in ("assistant", "outbound", "bot") or direction == "outbound":
+                bot_text = (msg.get("content") or msg.get("text") or "").lower()
+                if any(phrase in bot_text for phrase in [
+                    "me indicas tu nombre", "indícame tu nombre", "¿cómo te llamas",
+                    "con quién estoy hablando", "tu nombre", "nombre, por favor"
+                ]):
+                    bot_asked_for_name = True
+                break
+
         for ut in user_texts:
             classified = self.classifier.classify(ut)
             if classified.pest_type:
@@ -169,7 +202,7 @@ class IncidentIntakeService:
             if area:
                 affected_area = area
 
-            c_name = self._extract_customer_name(ut)
+            c_name = self._extract_customer_name(ut, bot_asked_for_name=bot_asked_for_name)
             if c_name:
                 customer_name = c_name
 

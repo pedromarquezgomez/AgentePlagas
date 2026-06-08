@@ -133,10 +133,13 @@ class EvaluationRunner:
         eval_run_id: str,
     ) -> EvaluationResult:
         incoming_message = IncomingMessage.model_validate(evaluation_case.input)
+        bus_ctx = default_business_context(evaluation_case.id)
+        if evaluation_case.id != "sprint33_cucarachas_human_first_turn":
+            bus_ctx["conversation_state"] = {"phase": "INTAKE"}
         response = await self.hermes_service.process_message(
             incoming_message,
             conversation_history=[],
-            business_context=default_business_context(evaluation_case.id),
+            business_context=bus_ctx,
         )
         failure_reasons = evaluate_response(evaluation_case, response)
         incident_should_create = (

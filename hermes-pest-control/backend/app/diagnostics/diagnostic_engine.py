@@ -34,22 +34,8 @@ class DiagnosticEngine:
         phase = current_phase
         state_val = None
 
-        # Bypass de evaluaciones antiguas para mantener compatibilidad
-        external_user_id = context.get("external_user_id") or ""
-        conversation_id = context.get("conversation_id") or ""
-        import re
-        is_old_eval = False
-        for identifier in [external_user_id, conversation_id]:
-            if identifier:
-                match = re.search(r'eval-(?:llm-)?user-(\d+)', identifier)
-                if match:
-                    num = int(match.group(1))
-                    if num < 14:
-                        is_old_eval = True
-                        break
-
-        # Si ya estábamos en INTAKE, o si se requiere escalado, o si es una evaluación antigua, la fase es INTAKE
-        if current_phase == "INTAKE" or escalation_required or is_old_eval:
+        # Si ya estábamos en INTAKE, o si se requiere escalado, la fase es INTAKE
+        if current_phase == "INTAKE" or escalation_required:
             phase = "INTAKE"
             state_val = DiagnosisState.INTAKE
         else:
